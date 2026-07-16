@@ -53,6 +53,7 @@ export async function PATCH(request: Request) {
     if (body.received !== undefined) changes.received = Math.max(0, Number(body.received));
     if (body.deliveryDate) changes.deliveryDate = String(body.deliveryDate);
     if (body.notes !== undefined) changes.notes = String(body.notes);
+    if (body.commercialStatus !== undefined) changes.commercialStatus = String(body.commercialStatus);
     if (!Object.keys(changes).length) return Response.json({ error: "Nenhuma alteração informada." }, { status: 400 });
     const [order] = await db.update(serviceOrders).set(changes).where(eq(serviceOrders.id, id)).returning();
     if (!order) return Response.json({ error: "OS não encontrada." }, { status: 404 });
