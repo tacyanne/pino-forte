@@ -14,9 +14,10 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as Record<string, string | number>;
-    const quantity = Math.max(1, Number(body.quantity || 1));
-    const unitPrice = Math.max(0, Number(body.unitPrice || 0));
+    const body = await request.json() as Record<string, unknown>;
+    const items = Array.isArray(body.items) ? (body.items as { code:string; quantity:number; unitPrice:number }[]).filter(item => item.code && Number(item.quantity) > 0) : [];
+    const quantity = items.length ? items.reduce((sum,item)=>sum+Math.max(1,Number(item.quantity)),0) : Math.max(1, Number(body.quantity || 1));
+    const unitPrice = items.length ? Math.max(0,Number(items[0].unitPrice)) : Math.max(0, Number(body.unitPrice || 0));
     const received = Math.max(0, Number(body.received || 0));
     if (!body.customerName || !body.productCode || !body.deliveryDate) {
       return Response.json({ error: "Cliente, pino e previsão de entrega são obrigatórios." }, { status: 400 });
@@ -28,8 +29,8 @@ export async function POST(request: Request) {
       number,
       customerName: String(body.customerName),
       origin: String(body.origin || "WhatsApp"),
-      productCode: String(body.productCode), quantity, unitPrice,
-      total: quantity * unitPrice, received,
+      productCode: items.length ? JSON.stringify(items) : String(body.productCode), quantity, unitPrice,
+      total: items.length ? items.reduce((sum,item)=>sum+Math.max(1,Number(item.quantity))*Math.max(0,Number(item.unitPrice)),0) : quantity * unitPrice, received,
       deliveryDate: String(body.deliveryDate),
       deliveryType: String(body.deliveryType || "Retirada no local"),
       paymentMethod: String(body.paymentMethod || "Pix"),
