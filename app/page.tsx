@@ -1221,14 +1221,6 @@ export default function Home() {
                     <button
                       type="submit"
                       disabled={saving}
-                      className="save-button"
-                      onClick={() => setSubmitAction("save")}
-                    >
-                      Salvar OS
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={saving}
                       className="primary-button"
                       onClick={() => setSubmitAction("pdf")}
                     >
