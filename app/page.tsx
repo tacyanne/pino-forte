@@ -29,6 +29,9 @@ export default function Home() {
   const [quantity, setQuantity] = useState(2);
   const [received, setReceived] = useState(0);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [savedNumber, setSavedNumber] = useState("OS-2026-0049");
   const product = useMemo(() => products.find((item) => item.code === selectedCode)!, [selectedCode]);
   const total = product.price * quantity;
 
@@ -37,6 +40,29 @@ export default function Home() {
     setMenuOpen(false);
     setSaved(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveOrder(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setSaveError("");
+    const value = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || "";
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ customerName: value("client"), origin: value("origin"), deliveryDate: value("delivery-date"), productCode: selectedCode, quantity, unitPrice: product.price, received, deliveryType: "Retirada no local", paymentMethod: value("payment"), notes: value("notes") }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Não foi possível salvar a OS.");
+      setSavedNumber(result.order.number);
+      setSaved(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Não foi possível salvar a OS.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -97,9 +123,10 @@ export default function Home() {
             <button className="back-button" onClick={() => goTo("dashboard")}>← Voltar ao início</button>
             <div className="page-heading compact"><div><p className="eyebrow">NOVA ORDEM DE SERVIÇO</p><h1>Criar nova OS</h1><p>Preencha os dados abaixo. Os campos com * são obrigatórios.</p></div><div className="os-number"><span>Número da OS</span><strong>OS-2026-0049</strong></div></div>
 
-            {saved && <div className="success-message"><span>✓</span><div><strong>Ordem de Serviço criada com sucesso.</strong><p>A OS-2026-0049 foi salva e já está disponível para acompanhamento.</p></div><button onClick={() => setSaved(false)}>×</button></div>}
+            {saved && <div className="success-message"><span>✓</span><div><strong>Ordem de Serviço criada com sucesso.</strong><p>A {savedNumber} foi salva e já está disponível para acompanhamento.</p></div><button onClick={() => setSaved(false)}>×</button></div>}
+            {saveError && <div className="success-message"><div><strong>Não foi possível salvar.</strong><p>{saveError}</p></div></div>}
 
-            <form onSubmit={(event) => { event.preventDefault(); setSaved(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <form onSubmit={saveOrder}>
               <section className="form-card"><div className="section-number">1</div><div className="form-content"><div className="form-title"><div><h2>Cliente</h2><p>Selecione um cliente cadastrado</p></div><button type="button" className="text-button">＋ Cadastrar novo cliente</button></div><div className="field full"><label htmlFor="client">Cliente *</label><select id="client" required defaultValue="Oficina São Jorge"><option>Oficina São Jorge</option><option>Carlos Roberto</option><option>Transporte Avenida</option></select></div><div className="selected-client"><div className="avatar orange">OS</div><div><strong>Oficina São Jorge</strong><span>WhatsApp: (43) 99912-3456 · CNPJ: 12.345.678/0001-90</span></div><span>✓ Selecionado</span></div></div></section>
 
               <section className="form-card"><div className="section-number">2</div><div className="form-content"><div className="form-title"><div><h2>Informações do serviço</h2><p>Dados gerais e prazo combinado</p></div></div><div className="form-grid"><div className="field"><label htmlFor="origin">Origem do pedido *</label><select id="origin"><option>WhatsApp</option><option>Painel administrativo</option><option>Outro</option></select></div><div className="field"><label htmlFor="delivery-date">Previsão de entrega *</label><input id="delivery-date" type="date" defaultValue="2026-07-18" /></div><div className="field"><label htmlFor="vehicle">Veículo <small>opcional</small></label><input id="vehicle" placeholder="Ex.: Mercedes-Benz" /></div><div className="field"><label htmlFor="plate">Placa <small>opcional</small></label><input id="plate" placeholder="ABC-1D23" maxLength={8} /></div></div></div></section>
@@ -110,7 +137,7 @@ export default function Home() {
 
               <section className="form-card notes-card"><div className="section-number">5</div><div className="form-content"><div className="form-title"><div><h2>Observações</h2><p>Informações importantes para a fabricação</p></div></div><div className="field full"><label htmlFor="notes">Observações da OS</label><textarea id="notes" rows={3} placeholder="Ex.: cliente solicitou acabamento especial..." /></div></div></section>
 
-              <div className="form-actions"><button type="button" className="cancel-button" onClick={() => goTo("dashboard")}>Cancelar</button><button type="submit" className="save-button secondary-save">Salvar OS</button><button type="submit" className="primary-button">Salvar e gerar PDF</button></div>
+              <div className="form-actions"><button type="button" className="cancel-button" onClick={() => goTo("dashboard")}>Cancelar</button><button type="submit" disabled={saving} className="save-button secondary-save">{saving ? "Salvando..." : "Salvar OS"}</button><button type="submit" disabled={saving} className="primary-button">{saving ? "Salvando..." : "Salvar e gerar PDF"}</button></div>
             </form>
           </div>
         )}
