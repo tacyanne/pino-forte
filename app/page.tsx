@@ -189,6 +189,7 @@ export default function Home() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
+  const [reportPaymentStatus, setReportPaymentStatus] = useState("");
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [walletPayment, setWalletPayment] = useState<{
     items: Order[];
@@ -294,9 +295,19 @@ export default function Home() {
       .includes(query.toLowerCase()),
   );
   const reportOrders = orders.filter(
-    (o) =>
-      (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
-      (!reportCustomer || o.customerName === reportCustomer),
+    (o) => {
+      const paymentStatus =
+        o.received >= o.total
+          ? "Pago"
+          : o.received > 0
+            ? "Pagamento parcial"
+            : "Aguardando pagamento";
+      return (
+        (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
+        (!reportCustomer || o.customerName === reportCustomer) &&
+        (!reportPaymentStatus || paymentStatus === reportPaymentStatus)
+      );
+    },
   );
   const reportSales = reportOrders.reduce((sum, o) => sum + o.total, 0);
   const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
@@ -1195,7 +1206,7 @@ export default function Home() {
               <div className="page">
                 <Heading
                   eyebrow="GESTÃO"
-                  title="Ordem de Serviço"
+                  title="Ordens de Serviço"
                   subtitle="Atualize produção, pagamentos e prazos."
                   action={
                     <button
@@ -1516,7 +1527,16 @@ export default function Home() {
                       {customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
                     </select>
                   </label>
-                  {(reportMonth || reportCustomer) && <button className="outline-button" onClick={() => { setReportMonth(""); setReportCustomer(""); }}>Limpar filtros</button>}
+                  <label className="field">
+                    <span>Status do pagamento</span>
+                    <select value={reportPaymentStatus} onChange={(e) => setReportPaymentStatus(e.target.value)}>
+                      <option value="">Todos os status</option>
+                      <option>Pago</option>
+                      <option>Pagamento parcial</option>
+                      <option>Aguardando pagamento</option>
+                    </select>
+                  </label>
+                  {(reportMonth || reportCustomer || reportPaymentStatus) && <button className="outline-button" onClick={() => { setReportMonth(""); setReportCustomer(""); setReportPaymentStatus(""); }}>Limpar filtros</button>}
                 </div>
                 <section className="metrics">
                   <Metric
