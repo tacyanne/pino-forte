@@ -722,14 +722,13 @@ export default function Home() {
     pdf.rect(158, 10, 37, 38);
     pdf.addImage(logo, "JPEG", 17, 12, 34, 34, undefined, "FAST");
     pdf.setTextColor(30);
-    pdf.setFontSize(14);
     pdf.setFont("helvetica", "bold");
-    pdf.text((companyName || "Pino de Balança").toUpperCase(), 57, 20, { maxWidth: 96 });
+    pdf.setFontSize(10);
+    pdf.text("PINOS DE BALANÇA | TRUCK E CARRETA", 57, 22);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(8.5);
-    pdf.text("PINOS DE BALANÇA | TRUCK E CARRETA", 57, 27);
-    pdf.text(`Responsável: ${responsible || "—"}`, 57, 34);
-    pdf.text(`WhatsApp: ${companyPhone || "—"}`, 57, 41);
+    pdf.setFontSize(9);
+    pdf.text(`Responsável: ${responsible || "—"}`, 57, 32);
+    pdf.text(`WhatsApp: ${companyPhone || "—"}`, 57, 40);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(9);
     pdf.text("ORDEM DE SERVIÇO", 176.5, 18, { align: "center" });
@@ -777,7 +776,7 @@ export default function Home() {
     });
     pdf.line(15, 201, 195, 201);
     pdf.setFont("helvetica", "bold");
-    pdf.text("TOTAL DA ORDEM", 118, 208, { align: "right" });
+    pdf.text("TOTAL DA ORDEM", 78.5, 208, { align: "center" });
     pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 126.5, 208, { align: "center" });
     pdf.text(money(order.total), 191, 208, { align: "right" });
     pdf.setFont("helvetica", "normal");
@@ -799,7 +798,7 @@ export default function Home() {
     pdf.text(responsible || "Responsável", 154, 261, { align: "center" });
     pdf.setFontSize(8);
     pdf.setTextColor(100);
-    pdf.text(orderFooter, 105, 282, { align: "center" });
+    pdf.text(orderFooter, 105, 275, { align: "center" });
     return pdf;
   }
   async function downloadPdf(order: Order) {
