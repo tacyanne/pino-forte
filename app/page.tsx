@@ -1538,7 +1538,7 @@ export default function Home() {
                   </label>
                   {(reportMonth || reportCustomer || reportPaymentStatus) && <button className="outline-button" onClick={() => { setReportMonth(""); setReportCustomer(""); setReportPaymentStatus(""); }}>Limpar filtros</button>}
                 </div>
-                <section className="metrics">
+                <section className="metrics report-metrics">
                   <Metric
                     icon="R$"
                     label="Vendas"
@@ -1553,11 +1553,6 @@ export default function Home() {
                     icon="…"
                     label="Pendente"
                     value={money(reportSales - reportReceived)}
-                  />
-                  <Metric
-                    icon="▤"
-                    label="OS cadastradas"
-                    value={reportOrders.length}
                   />
                 </section>
                 <div className="panel report-bars">
