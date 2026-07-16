@@ -1786,16 +1786,18 @@ export default function Home() {
               <span>Valor total</span>
               <b>{money(orderModal.total)}</b>
             </div>
-            <div>
-              <span>Valor recebido</span>
-              <b>{money(orderModal.received)}</b>
-            </div>
-            <div>
-              <span>Saldo devedor</span>
-              <b>
-                {money(Math.max(0, orderModal.total - orderModal.received))}
-              </b>
-            </div>
+            {orderModal.received > 0 && orderModal.received < orderModal.total && (
+              <>
+                <div>
+                  <span>Valor recebido</span>
+                  <b>{money(orderModal.received)}</b>
+                </div>
+                <div>
+                  <span>Saldo devedor</span>
+                  <b>{money(orderModal.total - orderModal.received)}</b>
+                </div>
+              </>
+            )}
           </div>
           <div className="status-only">
             <Field label="Status da produção">
