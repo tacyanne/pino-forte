@@ -17,11 +17,6 @@ export async function GET() {
     let productRows = await db.select().from(products).orderBy(asc(products.code));
     if (!productRows.length) {
       await db.insert(products).values(initialProducts.map(([code, sku, name, measure, price]) => ({ code, sku, name, measure, price })));
-      await db.insert(customers).values([
-        { name: "Oficina São Jorge", whatsapp: "(43) 99912-3456", document: "12.345.678/0001-90" },
-        { name: "Carlos Roberto", whatsapp: "(43) 98845-1122" },
-        { name: "Transporte Avenida", whatsapp: "(43) 99120-7744" },
-      ]);
       productRows = await db.select().from(products).orderBy(asc(products.code));
     }
     const customerRows = await db.select().from(customers).orderBy(asc(customers.name));

@@ -11,12 +11,7 @@ const products = [
   { code: "RO 235", name: "Pino de balança RO 235", measure: "235 mm", price: 68 },
 ];
 
-const orders = [
-  { id: "OS-2026-0048", client: "Oficina São Jorge", product: "RN 225 · 4 un.", date: "Hoje, 16:30", status: "Em produção", tone: "blue" },
-  { id: "OS-2026-0047", client: "Carlos Roberto", product: "RO 235 · 2 un.", date: "Hoje, 18:00", status: "Pronta", tone: "green" },
-  { id: "OS-2026-0046", client: "Transporte Avenida", product: "RN 205 · 6 un.", date: "Amanhã, 10:00", status: "Aguardando", tone: "amber" },
-  { id: "OS-2026-0045", client: "Mecânica União", product: "RN 190 · 2 un.", date: "12 jul.", status: "Atrasada", tone: "red" },
-];
+const orders: Array<{ id: string; client: string; product: string; date: string; status: string; tone: string }> = [];
 
 function Money({ value }: { value: number }) {
   return <>R$ {value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</>;
@@ -98,23 +93,23 @@ export default function Home() {
             </div>
 
             <section className="metrics" aria-label="Resumo das ordens">
-              <button className="metric"><div className="metric-icon blue">▤</div><div><span>Ordens abertas</span><strong>8</strong><small>Ver todas →</small></div></button>
-              <button className="metric"><div className="metric-icon navy">⚒</div><div><span>Em produção</span><strong>5</strong><small>Acompanhar →</small></div></button>
-              <button className="metric"><div className="metric-icon green">✓</div><div><span>Prontas</span><strong>3</strong><small>Ver retiradas →</small></div></button>
-              <button className="metric alert"><div className="metric-icon red">!</div><div><span>Atrasadas</span><strong>2</strong><small>Resolver agora →</small></div></button>
+              <button className="metric"><div className="metric-icon blue">▤</div><div><span>Ordens abertas</span><strong>0</strong><small>Ver todas →</small></div></button>
+              <button className="metric"><div className="metric-icon navy">⚒</div><div><span>Em produção</span><strong>0</strong><small>Acompanhar →</small></div></button>
+              <button className="metric"><div className="metric-icon green">✓</div><div><span>Prontas</span><strong>0</strong><small>Ver retiradas →</small></div></button>
+              <button className="metric"><div className="metric-icon red">!</div><div><span>Atrasadas</span><strong>0</strong><small>Ver todas →</small></div></button>
             </section>
 
             <section className="content-grid">
               <div className="panel deliveries">
                 <div className="panel-title"><div><h2>Próximas entregas</h2><p>Serviços previstos para hoje e amanhã</p></div><button>Ver agenda completa</button></div>
                 <div className="order-list">
-                  {orders.map((order) => <button className="order-row" key={order.id}><div className="date-box"><strong>{order.date.split(",")[0]}</strong><span>{order.date.split(",")[1] || ""}</span></div><div className="order-main"><strong>{order.client}</strong><span>{order.id} · {order.product}</span></div><span className={`status ${order.tone}`}>{order.status}</span><span className="arrow">›</span></button>)}
+                  {orders.length === 0 ? <div style={{padding:"70px 20px",textAlign:"center",color:"#69777a"}}><strong style={{display:"block",color:"#223033",marginBottom:7}}>Nenhuma Ordem de Serviço cadastrada</strong><span>Cadastre um cliente e crie a primeira OS.</span></div> : orders.map((order) => <button className="order-row" key={order.id}><div className="date-box"><strong>{order.date.split(",")[0]}</strong><span>{order.date.split(",")[1] || ""}</span></div><div className="order-main"><strong>{order.client}</strong><span>{order.id} · {order.product}</span></div><span className={`status ${order.tone}`}>{order.status}</span><span className="arrow">›</span></button>)}
                 </div>
               </div>
 
               <div className="side-stack">
-                <div className="panel attention"><div className="attention-head"><div className="round-alert">!</div><div><h2>Precisa de atenção</h2><p>2 ordens estão atrasadas</p></div></div><div className="attention-item"><div><strong>OS-2026-0045</strong><span>Mecânica União</span></div><span>3 dias</span></div><div className="attention-item"><div><strong>OS-2026-0041</strong><span>Auto Peças Brasil</span></div><span>1 dia</span></div><button className="secondary-button">Ver ordens atrasadas</button></div>
-                <div className="panel finance"><div><span>Resumo do mês</span><strong><Money value={6370} /></strong><small>Valor vendido em julho</small></div><div className="finance-line"><span><b><Money value={4820} /></b> recebido</span><span><b><Money value={1550} /></b> pendente</span></div></div>
+                <div className="panel attention"><div className="attention-head"><div className="round-alert">✓</div><div><h2>Tudo em dia</h2><p>Nenhuma ordem precisa de atenção</p></div></div></div>
+                <div className="panel finance"><div><span>Resumo do mês</span><strong><Money value={0} /></strong><small>Valor vendido em julho</small></div><div className="finance-line"><span><b><Money value={0} /></b> recebido</span><span><b><Money value={0} /></b> pendente</span></div></div>
               </div>
             </section>
           </div>
@@ -127,7 +122,7 @@ export default function Home() {
             {saveError && <div className="success-message"><div><strong>Não foi possível salvar.</strong><p>{saveError}</p></div></div>}
 
             <form onSubmit={saveOrder}>
-              <section className="form-card"><div className="section-number">1</div><div className="form-content"><div className="form-title"><div><h2>Cliente</h2><p>Selecione um cliente cadastrado</p></div><button type="button" className="text-button">＋ Cadastrar novo cliente</button></div><div className="field full"><label htmlFor="client">Cliente *</label><select id="client" required defaultValue="Oficina São Jorge"><option>Oficina São Jorge</option><option>Carlos Roberto</option><option>Transporte Avenida</option></select></div><div className="selected-client"><div className="avatar orange">OS</div><div><strong>Oficina São Jorge</strong><span>WhatsApp: (43) 99912-3456 · CNPJ: 12.345.678/0001-90</span></div><span>✓ Selecionado</span></div></div></section>
+              <section className="form-card"><div className="section-number">1</div><div className="form-content"><div className="form-title"><div><h2>Cliente</h2><p>Cadastre o primeiro cliente para criar a OS</p></div><button type="button" className="text-button">＋ Cadastrar novo cliente</button></div><div className="field full"><label htmlFor="client">Cliente *</label><select id="client" required defaultValue=""><option value="" disabled>Nenhum cliente cadastrado</option></select></div></div></section>
 
               <section className="form-card"><div className="section-number">2</div><div className="form-content"><div className="form-title"><div><h2>Informações do serviço</h2><p>Dados gerais e prazo combinado</p></div></div><div className="form-grid"><div className="field"><label htmlFor="origin">Origem do pedido *</label><select id="origin"><option>WhatsApp</option><option>Painel administrativo</option><option>Outro</option></select></div><div className="field"><label htmlFor="delivery-date">Previsão de entrega *</label><input id="delivery-date" type="date" defaultValue="2026-07-18" /></div><div className="field"><label htmlFor="vehicle">Veículo <small>opcional</small></label><input id="vehicle" placeholder="Ex.: Mercedes-Benz" /></div><div className="field"><label htmlFor="plate">Placa <small>opcional</small></label><input id="plate" placeholder="ABC-1D23" maxLength={8} /></div></div></div></section>
 
