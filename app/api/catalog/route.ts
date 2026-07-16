@@ -25,3 +25,17 @@ export async function GET() {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível carregar os cadastros." }, { status: 500 });
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json() as { name?: string; whatsapp?: string; document?: string; email?: string };
+    const name = body.name?.trim() || "";
+    const whatsapp = body.whatsapp?.trim() || "";
+    if (!name || !whatsapp) return Response.json({ error: "Nome e WhatsApp são obrigatórios." }, { status: 400 });
+    const db = await getDb();
+    const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "" }).returning();
+    return Response.json({ customer }, { status: 201 });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: 500 });
+  }
+}

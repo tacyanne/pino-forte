@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const products = [
   { code: "RN 180", name: "Pino de balança RN 180", measure: "180 mm", price: 49 },
@@ -27,8 +27,19 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [savedNumber, setSavedNumber] = useState("OS-2026-0049");
+  const [customers, setCustomers] = useState<Array<{ id: number; name: string; whatsapp: string; document: string }>>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [customerModal, setCustomerModal] = useState(false);
+  const [customerSaving, setCustomerSaving] = useState(false);
+  const [customerError, setCustomerError] = useState("");
   const product = useMemo(() => products.find((item) => item.code === selectedCode)!, [selectedCode]);
   const total = product.price * quantity;
+
+  useEffect(() => {
+    fetch("/api/catalog").then((response) => response.json()).then((data) => {
+      if (Array.isArray(data.customers)) setCustomers(data.customers);
+    }).catch(() => setCustomerError("Não foi possível carregar os clientes."));
+  }, []);
 
   function goTo(target: "dashboard" | "new-order") {
     setScreen(target);
@@ -58,6 +69,21 @@ export default function Home() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveCustomer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCustomerSaving(true); setCustomerError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/catalog", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), whatsapp: form.get("whatsapp"), document: form.get("document"), email: form.get("email") }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Não foi possível cadastrar o cliente.");
+      setCustomers((current) => [...current, result.customer].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedCustomer(result.customer.name);
+      setCustomerModal(false);
+    } catch (error) { setCustomerError(error instanceof Error ? error.message : "Não foi possível cadastrar o cliente."); }
+    finally { setCustomerSaving(false); }
   }
 
   return (
@@ -122,7 +148,7 @@ export default function Home() {
             {saveError && <div className="success-message"><div><strong>Não foi possível salvar.</strong><p>{saveError}</p></div></div>}
 
             <form onSubmit={saveOrder}>
-              <section className="form-card"><div className="section-number">1</div><div className="form-content"><div className="form-title"><div><h2>Cliente</h2><p>Cadastre o primeiro cliente para criar a OS</p></div><button type="button" className="text-button">＋ Cadastrar novo cliente</button></div><div className="field full"><label htmlFor="client">Cliente *</label><select id="client" required defaultValue=""><option value="" disabled>Nenhum cliente cadastrado</option></select></div></div></section>
+              <section className="form-card"><div className="section-number">1</div><div className="form-content"><div className="form-title"><div><h2>Cliente</h2><p>Selecione um cliente cadastrado</p></div><button type="button" className="text-button" onClick={() => { setCustomerError(""); setCustomerModal(true); }}>＋ Cadastrar novo cliente</button></div><div className="field full"><label htmlFor="client">Cliente *</label><select id="client" required value={selectedCustomer} onChange={(event) => setSelectedCustomer(event.target.value)}><option value="" disabled>{customers.length ? "Selecione o cliente" : "Nenhum cliente cadastrado"}</option>{customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name} · {customer.whatsapp}</option>)}</select></div>{selectedCustomer && <div className="selected-client"><div className="avatar orange">✓</div><div><strong>{selectedCustomer}</strong><span>Cliente selecionado para esta Ordem de Serviço</span></div><span>✓ Selecionado</span></div>}</div></section>
 
               <section className="form-card"><div className="section-number">2</div><div className="form-content"><div className="form-title"><div><h2>Informações do serviço</h2><p>Dados gerais e prazo combinado</p></div></div><div className="form-grid"><div className="field"><label htmlFor="origin">Origem do pedido *</label><select id="origin"><option>WhatsApp</option><option>Painel administrativo</option><option>Outro</option></select></div><div className="field"><label htmlFor="delivery-date">Previsão de entrega *</label><input id="delivery-date" type="date" defaultValue="2026-07-18" /></div><div className="field"><label htmlFor="vehicle">Veículo <small>opcional</small></label><input id="vehicle" placeholder="Ex.: Mercedes-Benz" /></div><div className="field"><label htmlFor="plate">Placa <small>opcional</small></label><input id="plate" placeholder="ABC-1D23" maxLength={8} /></div></div></div></section>
 
@@ -138,6 +164,7 @@ export default function Home() {
         )}
       </section>
       {menuOpen && <button className="overlay" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
+      {customerModal && <div className="modal-backdrop" role="presentation"><div className="customer-modal" role="dialog" aria-modal="true" aria-labelledby="customer-title"><div className="modal-head"><div><p className="eyebrow">NOVO CLIENTE</p><h2 id="customer-title">Cadastrar cliente</h2></div><button type="button" aria-label="Fechar" onClick={() => setCustomerModal(false)}>×</button></div><form onSubmit={saveCustomer}><div className="field full"><label htmlFor="customer-name">Nome ou razão social *</label><input id="customer-name" name="name" required autoFocus placeholder="Digite o nome do cliente" /></div><div className="form-grid"><div className="field"><label htmlFor="customer-whatsapp">WhatsApp *</label><input id="customer-whatsapp" name="whatsapp" required placeholder="(00) 00000-0000" /></div><div className="field"><label htmlFor="customer-document">CPF ou CNPJ</label><input id="customer-document" name="document" placeholder="Somente se houver" /></div></div><div className="field full"><label htmlFor="customer-email">E-mail</label><input id="customer-email" name="email" type="email" placeholder="cliente@email.com" /></div>{customerError && <p className="modal-error">{customerError}</p>}<div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setCustomerModal(false)}>Cancelar</button><button type="submit" className="primary-button" disabled={customerSaving}>{customerSaving ? "Salvando..." : "Salvar cliente"}</button></div></form></div></div>}
     </main>
   );
 }
