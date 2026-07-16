@@ -1771,13 +1771,21 @@ export default function Home() {
               </b>
             </div>
             <div>
-              <span>Saldo</span>
+              <span>Valor total</span>
+              <b>{money(orderModal.total)}</b>
+            </div>
+            <div>
+              <span>Valor recebido</span>
+              <b>{money(orderModal.received)}</b>
+            </div>
+            <div>
+              <span>Saldo devedor</span>
               <b>
                 {money(Math.max(0, orderModal.total - orderModal.received))}
               </b>
             </div>
           </div>
-          <div className="form-grid">
+          <div className="status-only">
             <Field label="Status da produção">
               <select
                 value={orderModal.productionStatus}
@@ -1797,24 +1805,6 @@ export default function Home() {
                   <option key={s}>{s}</option>
                 ))}
               </select>
-            </Field>
-            <Field label="Valor total recebido">
-              <input
-                inputMode="numeric"
-                value={money(orderModal.received)}
-                onChange={(e) =>
-                  setOrderModal({
-                    ...orderModal,
-                    received: Math.min(
-                      orderModal.total,
-                      parseCurrency(e.target.value),
-                    ),
-                  })
-                }
-                onBlur={() =>
-                  updateOrder(orderModal.id, { received: orderModal.received })
-                }
-              />
             </Field>
           </div>
           <div className="detail-actions two">
