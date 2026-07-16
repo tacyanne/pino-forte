@@ -99,6 +99,8 @@ const maskPhone = (value: string) =>
     .slice(0, 11)
     .replace(/(\d{2})(\d)/, "($1) $2")
     .replace(/(\d{5})(\d)/, "$1-$2");
+const formatPhone = (value:string) => maskPhone(value);
+const formatDocument = (value:string) => {const digits=value.replace(/\D/g,'');if(digits.length===11)return `CPF: ${maskDoc(digits,'CPF')}`;if(digits.length===14)return `CNPJ: ${maskDoc(digits,'CNPJ')}`;return value||'—';};
 const statusTone = (status: string) =>
   status === "Entregue" || status === "Pronta"
     ? "green"
@@ -137,6 +139,7 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [notice, setNotice] = useState("");
   const [customerModal, setCustomerModal] = useState(false);
+  const [editingCustomer,setEditingCustomer]=useState<Customer|null>(null); const [customerName,setCustomerName]=useState(''); const [customerEmail,setCustomerEmail]=useState('');
   const [productModal, setProductModal] = useState(false);
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [walletPayment, setWalletPayment] = useState<{
@@ -306,6 +309,7 @@ export default function Home() {
       items.map((item, i) => (i === index ? { ...item, ...changes } : item)),
     );
   }
+  function openCustomer(customer?:Customer){if(customer){setEditingCustomer(customer);setCustomerName(customer.name);setCustomerEmail(customer.email);setPhone(maskPhone(customer.whatsapp));const type=customer.document.toUpperCase().includes('CNPJ')||customer.document.replace(/\D/g,'').length===14?'CNPJ':'CPF';setDocType(type);setDoc(maskDoc(customer.document,type));}else{setEditingCustomer(null);setCustomerName('');setCustomerEmail('');setPhone('');setDocType('CPF');setDoc('');}setCustomerModal(true);}
 
   async function saveCustomer(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -318,25 +322,24 @@ export default function Home() {
       )
         throw new Error(`${docType} incompleto.`);
       const r = await fetch("/api/catalog", {
-        method: "POST",
+        method: editingCustomer ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: f.get("name"),
+          id: editingCustomer?.id,
+          name: customerName,
           whatsapp: phone,
           document: doc ? `${docType}: ${doc}` : "",
-          email: f.get("email"),
+          email: customerEmail,
         }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
-      setCustomers((v) =>
-        [...v, j.customer].sort((a, b) => a.name.localeCompare(b.name)),
-      );
+      setCustomers((v) => (editingCustomer?v.map(c=>c.id===j.customer.id?j.customer:c):[...v,j.customer]).sort((a,b)=>a.name.localeCompare(b.name)));
       setSelectedCustomer(j.customer.name);
       setCustomerModal(false);
       setDoc("");
       setPhone("");
-      flash("Cliente cadastrado com sucesso.");
+      flash(editingCustomer?"Cliente atualizado com sucesso.":"Cliente cadastrado com sucesso.");
     } catch (err) {
       flash(err instanceof Error ? err.message : "Erro ao cadastrar.");
     } finally {
@@ -586,6 +589,15 @@ export default function Home() {
       y + 47,
       { maxWidth: 174 },
     );
+    pdf.setDrawColor(100);
+    pdf.line(24, 250, 88, 250);
+    pdf.line(122, 250, 186, 250);
+    pdf.setFontSize(9);
+    pdf.setTextColor(70);
+    pdf.text("Assinatura do cliente", 56, 256, { align: "center" });
+    pdf.text(order.customerName, 56, 261, { align: "center" });
+    pdf.text("Responsável pela empresa", 154, 256, { align: "center" });
+    pdf.text(responsible || "Responsável", 154, 261, { align: "center" });
     pdf.setFontSize(8);
     pdf.setTextColor(120);
     pdf.text(orderFooter, 105, 282, { align: "center" });
@@ -816,7 +828,7 @@ export default function Home() {
                       <button
                         type="button"
                         className="text-button"
-                        onClick={() => setCustomerModal(true)}
+                        onClick={() => openCustomer()}
                       >
                         ＋ Cadastrar cliente
                       </button>
@@ -1066,7 +1078,7 @@ export default function Home() {
                   action={
                     <button
                       className="primary-button"
-                      onClick={() => setCustomerModal(true)}
+                      onClick={() => openCustomer()}
                     >
                       ＋ Novo cliente
                     </button>
@@ -1091,8 +1103,8 @@ export default function Home() {
                           <td>
                             <b>{c.name}</b>
                           </td>
-                          <td>{c.document || "—"}</td>
-                          <td>{c.whatsapp}</td>
+                          <td>{formatDocument(c.document)}</td>
+                          <td>{formatPhone(c.whatsapp)}</td>
                           <td>{c.email || "—"}</td>
                           <td>
                             <span
@@ -1102,6 +1114,7 @@ export default function Home() {
                             </span>
                           </td>
                           <td>
+                            <button className="link-button" onClick={() => openCustomer(c)}>Editar</button>
                             <button
                               className="link-button"
                               onClick={() =>
@@ -1409,10 +1422,10 @@ export default function Home() {
       </section>
       {menu && <button className="overlay" onClick={() => setMenu(false)} />}
       {customerModal && (
-        <Modal title="Cadastrar cliente" close={() => setCustomerModal(false)}>
+        <Modal title={editingCustomer?"Editar cliente":"Cadastrar cliente"} close={() => setCustomerModal(false)}>
           <form onSubmit={saveCustomer}>
             <Field label="Nome ou razão social *">
-              <input name="name" required autoFocus />
+              <input name="name" required autoFocus value={customerName} onChange={e=>setCustomerName(e.target.value)} />
             </Field>
             <div className="form-grid">
               <Field label="WhatsApp *">
@@ -1448,7 +1461,7 @@ export default function Home() {
               </Field>
             </div>
             <Field label="E-mail">
-              <input name="email" type="email" />
+              <input name="email" type="email" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} />
             </Field>
             <div className="modal-actions">
               <button
@@ -1459,7 +1472,7 @@ export default function Home() {
                 Cancelar
               </button>
               <button className="primary-button" disabled={saving}>
-                Salvar cliente
+                {editingCustomer?"Salvar alterações":"Salvar cliente"}
               </button>
             </div>
           </form>

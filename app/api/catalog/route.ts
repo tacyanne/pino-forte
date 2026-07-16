@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string };
     const id = Number(body.id);
     if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
     const db = await getDb();
@@ -72,6 +72,7 @@ export async function PATCH(request: Request) {
     if (body.name) changes.name = body.name.trim();
     if (body.whatsapp) changes.whatsapp = body.whatsapp.trim();
     if (body.email !== undefined) changes.email = body.email.trim();
+    if (body.document !== undefined) changes.document = body.document.trim();
     const [customer] = await db.update(customers).set(changes).where(eq(customers.id, id)).returning();
     return Response.json({ customer });
   } catch (error) {
