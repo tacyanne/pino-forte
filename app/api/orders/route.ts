@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, max } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { serviceOrders } from "../../../db/schema";
 
@@ -21,8 +21,9 @@ export async function POST(request: Request) {
     if (!body.customerName || !body.productCode || !body.deliveryDate) {
       return Response.json({ error: "Cliente, pino e previsão de entrega são obrigatórios." }, { status: 400 });
     }
-    const number = `OS-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
     const db = await getDb();
+    const [{ lastId }] = await db.select({ lastId: max(serviceOrders.id) }).from(serviceOrders);
+    const number = `OS-${new Date().getFullYear()}-${String(Number(lastId || 0) + 1).padStart(6, "0")}`;
     const [order] = await db.insert(serviceOrders).values({
       number,
       customerName: String(body.customerName),
