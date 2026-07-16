@@ -1826,34 +1826,30 @@ export default function Home() {
               </>
             )}
           </div>
-          <div className="status-only">
-            <Field label="Status da produção">
-              <select
-                value={orderModal.productionStatus}
-                onChange={(e) =>
-                  updateOrder(orderModal.id, {
-                    productionStatus: e.target.value,
-                  })
-                }
-              >
-                {[
-                  "Aguardando",
-                  "Em produção",
-                  "Pronta",
-                  "Entregue",
-                  "Cancelada",
-                ].map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </Field>
+          <div className="order-management">
+            <div className="status-only">
+              <Field label="Status da produção">
+                <select
+                  value={orderModal.productionStatus}
+                  onChange={(e) =>
+                    updateOrder(orderModal.id, {
+                      productionStatus: e.target.value,
+                    })
+                  }
+                >
+                  {["Aguardando", "Em produção", "Pronta", "Entregue", "Cancelada"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
+              <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
+                ✓ Confirmar pagamento
+              </button>
+            )}
           </div>
-          {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
-            <button className="primary-button boleto-pay" onClick={() => settleBoleto(orderModal)}>
-              Confirmar pagamento do boleto
-            </button>
-          )}
-          <div className="detail-actions two">
+          <div className="detail-actions document-actions">
             <button
               className="outline-button"
               onClick={() => downloadPdf(orderModal)}
