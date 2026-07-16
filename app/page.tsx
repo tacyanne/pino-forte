@@ -928,16 +928,17 @@ export default function Home() {
   if (!auth.user) return (
     <main className="auth-page">
       <section className="auth-card">
-        <img src="/logo-sistema.png" alt="Rogério Mendes" />
-        <h1>{auth.setupRequired ? "Criar acesso administrador" : "Entrar no sistema"}</h1>
-        <p>{auth.setupRequired ? "Cadastre sua senha para proteger clientes e ordens de serviço." : "Use seu e-mail e sua senha para continuar."}</p>
+        <div className="auth-logo"><img src="/logo-sistema.png" alt="Rogério Mendes" /></div>
+        <div className="auth-content">
+        <h1>Acesso ao sistema</h1>
         <form onSubmit={submitAuth} noValidate>
           {auth.setupRequired && <Field label="Seu nome"><input name="name" required autoFocus placeholder="Nome completo" /></Field>}
           <Field label="E-mail"><input name="email" type="email" required defaultValue={auth.setupRequired ? "tacytpr@gmail.com" : ""} readOnly={auth.setupRequired} autoFocus={!auth.setupRequired} /></Field>
-          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><div className="password-input"><input name="password" type={showAuthPassword ? "text" : "password"} minLength={8} required placeholder={auth.setupRequired ? "Maiúscula, número e caractere especial" : "Digite sua senha"} /><button type="button" onClick={() => setShowAuthPassword((value) => !value)} aria-label={showAuthPassword ? "Ocultar senha" : "Mostrar senha"}>{showAuthPassword ? "◉" : "◌"}</button></div></Field>
+          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><div className="password-input"><input name="password" type={showAuthPassword ? "text" : "password"} minLength={8} required placeholder={auth.setupRequired ? "Maiúscula, número e caractere especial" : "Digite sua senha"} /><button type="button" onClick={() => setShowAuthPassword((value) => !value)} aria-label={showAuthPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showAuthPassword} /></button></div></Field>
           {authError && <p className="modal-error">{authError}</p>}
           <button className="primary-button" type="submit" disabled={authSaving}>{authSaving ? (auth.setupRequired ? "Criando acesso..." : "Entrando...") : (auth.setupRequired ? "Criar acesso e entrar" : "Entrar")}</button>
         </form>
+        </div>
       </section>
     </main>
   );
@@ -1736,7 +1737,7 @@ export default function Home() {
                   <form className="user-create" onSubmit={createUser}>
                     <Field label="Nome"><input name="name" required placeholder="Nome da pessoa" /></Field>
                     <Field label="E-mail"><input name="email" type="email" required autoComplete="off" placeholder="E-mail da pessoa" /></Field>
-                    <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required placeholder="Maiúscula, número e caractere especial" /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}>{showTempPassword ? "◉" : "◌"}</button></div></Field>
+                    <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required placeholder="Maiúscula, número e caractere especial" /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
                     <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar usuário"}</button>
                   </form>
                   {authError && <p className="modal-error user-error">{authError}</p>}
@@ -2086,6 +2087,15 @@ function Field({
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="3" />
+      {!open && <path d="M4 4 20 20" />}
+    </svg>
   );
 }
 function Filters({
