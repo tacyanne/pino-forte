@@ -316,6 +316,8 @@ export default function Home() {
     setSaving(true);
     const f = new FormData(e.currentTarget);
     try {
+      if (!customerName.trim()) throw new Error("Informe o nome do cliente.");
+      if (phone.replace(/\D/g, "").length < 10) throw new Error("Informe um WhatsApp válido.");
       if (
         doc &&
         doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14)
@@ -351,6 +353,7 @@ export default function Home() {
     setSaving(true);
     const f = new FormData(e.currentTarget);
     try {
+      if (!String(f.get("code")||"").trim() || !String(f.get("name")||"").trim() || !String(f.get("measure")||"").trim()) throw new Error("Preencha código, descrição e medida do pino.");
       const r = await fetch("/api/catalog", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -380,6 +383,7 @@ export default function Home() {
     setSaving(true);
     const f = new FormData(e.currentTarget);
     try {
+      if (!selectedCustomer) throw new Error("Selecione um cliente.");
       if (!isValidBrDate(deliveryDate))
         throw new Error("Informe uma data válida no formato dd/mm/aaaa.");
       if (!orderItems.length) throw new Error("Adicione pelo menos um pino.");
@@ -610,20 +614,10 @@ export default function Home() {
     const customer = customers.find((c) => c.name === order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const text = `Olá, ${customer.name}! Segue a ${order.number}. Status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
-    const blob = createPdf(order).output("blob");
-    const file = new File([blob], `${order.number}.pdf`, {
-      type: "application/pdf",
-    });
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ title: order.number, text, files: [file] });
-        return;
-      } catch {}
-    }
     downloadPdf(order);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
-      `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF foi baixado para ser anexado nesta conversa.")}`,
+      `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF da OS foi baixado e está pronto para ser anexado nesta conversa.")}`,
       "_blank",
     );
   }
@@ -821,7 +815,7 @@ export default function Home() {
                   title="Criar nova OS"
                   subtitle="Preencha os dados obrigatórios."
                 />
-                <form onSubmit={saveOrder}>
+                <form onSubmit={saveOrder} noValidate>
                   <Card n="1" title="Cliente">
                     <div className="form-title">
                       <span></span>
@@ -1423,7 +1417,7 @@ export default function Home() {
       {menu && <button className="overlay" onClick={() => setMenu(false)} />}
       {customerModal && (
         <Modal title={editingCustomer?"Editar cliente":"Cadastrar cliente"} close={() => setCustomerModal(false)}>
-          <form onSubmit={saveCustomer}>
+          <form onSubmit={saveCustomer} noValidate>
             <Field label="Nome ou razão social *">
               <input name="name" required autoFocus value={customerName} onChange={e=>setCustomerName(e.target.value)} />
             </Field>
@@ -1480,7 +1474,7 @@ export default function Home() {
       )}
       {productModal && (
         <Modal title="Cadastrar pino" close={() => setProductModal(false)}>
-          <form onSubmit={saveProduct}>
+          <form onSubmit={saveProduct} noValidate>
             <div className="form-grid">
               <Field label="Código *">
                 <input name="code" required placeholder="Ex.: RN 250" />
@@ -1643,13 +1637,7 @@ export default function Home() {
               />
             </Field>
           </div>
-          <div className="detail-actions three">
-            <button
-              className="outline-button"
-              onClick={() => printOrder(orderModal)}
-            >
-              Imprimir OS
-            </button>
+          <div className="detail-actions two">
             <button
               className="outline-button"
               onClick={() => downloadPdf(orderModal)}
@@ -1664,8 +1652,8 @@ export default function Home() {
             </button>
           </div>
           <p className="send-help">
-            “Enviar ao cliente” usa o WhatsApp cadastrado e prepara a mensagem
-            com o PDF da OS.
+            “Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp
+            cadastrado do cliente.
           </p>
         </Modal>
       )}
