@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, like } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { customers, products } from "../../../db/schema";
 
@@ -81,5 +81,32 @@ export async function PATCH(request: Request) {
     return Response.json({ customer });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o cadastro." }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json() as { type?: string; id?: number; name?: string };
+    if (body.type !== "customer") {
+      return Response.json({ error: "Tipo de cadastro inválido." }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const id = Number(body.id);
+    const name = body.name?.trim() || "";
+    if (!id && !name) {
+      return Response.json({ error: "Informe o cliente que será excluído." }, { status: 400 });
+    }
+
+    const deleted = id
+      ? await db.delete(customers).where(eq(customers.id, id)).returning()
+      : await db.delete(customers).where(like(customers.name, name)).returning();
+
+    if (!deleted.length) {
+      return Response.json({ error: "Cliente não encontrado." }, { status: 404 });
+    }
+    return Response.json({ success: true, deleted: deleted.length });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível excluir o cliente." }, { status: 500 });
   }
 }
