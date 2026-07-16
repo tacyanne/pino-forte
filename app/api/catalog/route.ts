@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { customers, products } from "../../../db/schema";
 
@@ -28,14 +28,53 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { name?: string; whatsapp?: string; document?: string; email?: string };
+    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; code?: string; sku?: string; measure?: string; price?: number };
+    const db = await getDb();
+    if (body.type === "product") {
+      const code = body.code?.trim().toUpperCase() || "";
+      const name = body.name?.trim() || "";
+      const measure = body.measure?.trim() || "";
+      const price = Math.max(0, Number(body.price || 0));
+      if (!code || !name || !measure || !price) return Response.json({ error: "Código, descrição, medida e preço são obrigatórios." }, { status: 400 });
+      const [product] = await db.insert(products).values({ code, sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"), name, measure, price }).returning();
+      return Response.json({ product }, { status: 201 });
+    }
     const name = body.name?.trim() || "";
     const whatsapp = body.whatsapp?.trim() || "";
     if (!name || !whatsapp) return Response.json({ error: "Nome e WhatsApp são obrigatórios." }, { status: 400 });
-    const db = await getDb();
+    const document = body.document?.trim() || "";
+    if (document) {
+      const existing = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
+      if (existing.length) return Response.json({ error: "Este CPF/CNPJ já está cadastrado." }, { status: 409 });
+    }
     const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "" }).returning();
     return Response.json({ customer }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string };
+    const id = Number(body.id);
+    if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
+    const db = await getDb();
+    if (body.type === "product") {
+      const changes: Partial<typeof products.$inferInsert> = {};
+      if (body.active !== undefined) changes.active = body.active;
+      if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
+      const [product] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
+      return Response.json({ product });
+    }
+    const changes: Partial<typeof customers.$inferInsert> = {};
+    if (body.active !== undefined) changes.active = body.active;
+    if (body.name) changes.name = body.name.trim();
+    if (body.whatsapp) changes.whatsapp = body.whatsapp.trim();
+    if (body.email !== undefined) changes.email = body.email.trim();
+    const [customer] = await db.update(customers).set(changes).where(eq(customers.id, id)).returning();
+    return Response.json({ customer });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o cadastro." }, { status: 500 });
   }
 }

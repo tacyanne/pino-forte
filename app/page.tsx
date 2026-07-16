@@ -2,194 +2,67 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const products = [
-  { code: "RN 180", name: "Pino de balança RN 180", measure: "180 mm", price: 49 },
-  { code: "RN 190", name: "Pino de balança RN 190", measure: "190 mm", price: 55 },
-  { code: "RN 205", name: "Pino de balança RN 205", measure: "205 mm", price: 56 },
-  { code: "RN 225", name: "Pino de balança RN 225", measure: "225 mm", price: 57 },
-  { code: "RO 215", name: "Pino de balança RO 215", measure: "215 mm", price: 63 },
-  { code: "RO 235", name: "Pino de balança RO 235", measure: "235 mm", price: 68 },
-];
+type Screen = "dashboard" | "new-order" | "orders" | "customers" | "products" | "reports" | "settings";
+type Customer = { id:number; name:string; document:string; whatsapp:string; email:string; active:boolean; createdAt:string };
+type Product = { id:number; code:string; sku:string; name:string; measure:string; price:number; active:boolean };
+type Order = { id:number; number:string; customerName:string; origin:string; productCode:string; quantity:number; unitPrice:number; total:number; received:number; deliveryDate:string; deliveryType:string; paymentMethod:string; productionStatus:string; commercialStatus:string; notes:string; createdAt:string };
 
-const orders: Array<{ id: string; client: string; product: string; date: string; status: string; tone: string }> = [];
+const money = (n:number) => n.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+const brDate = (date:string) => { const value=date?.slice(0,10); const [y,m,d]=value?.split("-")||[]; return y&&m&&d?`${d}/${m}/${y}`:value||"—"; };
+const toIsoDate = (date:string) => { const [d,m,y]=date.split("/"); return d&&m&&y?`${y}-${m}-${d}`:""; };
+const todayIso = () => new Date().toISOString().slice(0,10);
+const maskDoc = (value:string,type:"CPF"|"CNPJ") => { const d=value.replace(/\D/g,"").slice(0,type==="CPF"?11:14); return type==="CPF"?d.replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d{1,2})$/,"$1-$2"):d.replace(/(\d{2})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1/$2").replace(/(\d{4})(\d{1,2})$/,"$1-$2"); };
+const maskPhone = (value:string) => value.replace(/\D/g,"").slice(0,11).replace(/(\d{2})(\d)/,"($1) $2").replace(/(\d{5})(\d)/,"$1-$2");
+const statusTone = (status:string) => status==="Entregue"||status==="Pronta"?"green":status==="Cancelada"?"red":status==="Em produção"?"blue":"amber";
 
-function Money({ value }: { value: number }) {
-  return <>R$ {value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</>;
+export default function Home(){
+  const [screen,setScreen]=useState<Screen>("dashboard"); const [menu,setMenu]=useState(false); const [loading,setLoading]=useState(true);
+  const [customers,setCustomers]=useState<Customer[]>([]); const [products,setProducts]=useState<Product[]>([]); const [orders,setOrders]=useState<Order[]>([]);
+  const [query,setQuery]=useState(""); const [statusFilter,setStatusFilter]=useState("Todos"); const [notice,setNotice]=useState("");
+  const [customerModal,setCustomerModal]=useState(false); const [productModal,setProductModal]=useState(false); const [orderModal,setOrderModal]=useState<Order|null>(null);
+  const [docType,setDocType]=useState<"CPF"|"CNPJ">("CPF"); const [doc,setDoc]=useState(""); const [phone,setPhone]=useState(""); const [saving,setSaving]=useState(false);
+  const [selectedCustomer,setSelectedCustomer]=useState(""); const [selectedCode,setSelectedCode]=useState(""); const [quantity,setQuantity]=useState(1); const [received,setReceived]=useState(0);
+
+  async function loadAll(){ setLoading(true); try{ const [cat,ord]=await Promise.all([fetch("/api/catalog").then(r=>r.json()),fetch("/api/orders").then(r=>r.json())]); setCustomers(cat.customers||[]); setProducts(cat.products||[]); setOrders(ord.orders||[]); if(!selectedCode&&cat.products?.[0])setSelectedCode(cat.products[0].code); }finally{setLoading(false);} }
+  useEffect(()=>{loadAll()},[]);
+  const product=products.find(p=>p.code===selectedCode)||products[0]; const total=(product?.price||0)*quantity;
+  const metrics=useMemo(()=>({open:orders.filter(o=>!["Entregue","Cancelada"].includes(o.productionStatus)).length,production:orders.filter(o=>o.productionStatus==="Em produção").length,ready:orders.filter(o=>o.productionStatus==="Pronta").length,late:orders.filter(o=>o.deliveryDate<todayIso()&&!['Entregue','Cancelada'].includes(o.productionStatus)).length,sales:orders.reduce((s,o)=>s+o.total,0),received:orders.reduce((s,o)=>s+o.received,0)}),[orders]);
+  const filteredOrders=orders.filter(o=>(statusFilter==="Todos"||o.productionStatus===statusFilter)&&`${o.number} ${o.customerName} ${o.productCode}`.toLowerCase().includes(query.toLowerCase()));
+  const filteredCustomers=customers.filter(c=>`${c.name} ${c.document} ${c.whatsapp}`.toLowerCase().includes(query.toLowerCase()));
+  function go(next:Screen){setScreen(next);setMenu(false);setQuery("");setNotice("");window.scrollTo({top:0});}
+  function flash(text:string){setNotice(text);setTimeout(()=>setNotice(""),3500);}
+
+  async function saveCustomer(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setSaving(true);const f=new FormData(e.currentTarget);try{if(doc&&doc.replace(/\D/g,"").length!==(docType==="CPF"?11:14))throw new Error(`${docType} incompleto.`);const r=await fetch('/api/catalog',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:f.get('name'),whatsapp:phone,document:doc?`${docType}: ${doc}`:'',email:f.get('email')})});const j=await r.json();if(!r.ok)throw new Error(j.error);setCustomers(v=>[...v,j.customer].sort((a,b)=>a.name.localeCompare(b.name)));setSelectedCustomer(j.customer.name);setCustomerModal(false);setDoc('');setPhone('');flash('Cliente cadastrado com sucesso.')}catch(err){flash(err instanceof Error?err.message:'Erro ao cadastrar.')}finally{setSaving(false)}}
+  async function saveProduct(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setSaving(true);const f=new FormData(e.currentTarget);try{const r=await fetch('/api/catalog',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'product',code:f.get('code'),name:f.get('name'),measure:f.get('measure'),price:Number(f.get('price'))})});const j=await r.json();if(!r.ok)throw new Error(j.error);setProducts(v=>[...v,j.product].sort((a,b)=>a.code.localeCompare(b.code)));setProductModal(false);flash('Pino cadastrado com sucesso.')}catch(err){flash(err instanceof Error?err.message:'Erro ao cadastrar.')}finally{setSaving(false)}}
+  async function saveOrder(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setSaving(true);const f=new FormData(e.currentTarget);try{const r=await fetch('/api/orders',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customerName:selectedCustomer,origin:f.get('origin'),deliveryDate:toIsoDate(String(f.get('deliveryDate'))),productCode:selectedCode,quantity,unitPrice:product.price,received,deliveryType:f.get('deliveryType'),paymentMethod:f.get('paymentMethod'),notes:f.get('notes')})});const j=await r.json();if(!r.ok)throw new Error(j.error);setOrders(v=>[j.order,...v]);flash(`${j.order.number} criada com sucesso.`);setOrderModal(j.order);setScreen('orders')}catch(err){flash(err instanceof Error?err.message:'Erro ao salvar a OS.')}finally{setSaving(false)}}
+  async function updateOrder(id:number,changes:Record<string,string|number>){const r=await fetch('/api/orders',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({id,...changes})});const j=await r.json();if(!r.ok){flash(j.error);return}setOrders(v=>v.map(o=>o.id===id?j.order:o));setOrderModal(j.order);flash('OS atualizada.');}
+  async function toggle(type:'customer'|'product',id:number,active:boolean){const r=await fetch('/api/catalog',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({type,id,active})});const j=await r.json();if(!r.ok){flash(j.error);return}if(type==='customer')setCustomers(v=>v.map(x=>x.id===id?j.customer:x));else setProducts(v=>v.map(x=>x.id===id?j.product:x));}
+  function whatsapp(order:Order){const customer=customers.find(c=>c.name===order.customerName);if(!customer?.whatsapp)return flash('Cliente sem WhatsApp cadastrado.');const number=customer.whatsapp.replace(/\D/g,'');const text=`Olá, ${customer.name}! A ${order.number} está com o status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;window.open(`https://wa.me/55${number}?text=${encodeURIComponent(text)}`,'_blank');}
+  function printOrder(order:Order){const p=products.find(x=>x.code===order.productCode);const w=window.open('','_blank');if(!w)return flash('Permita pop-ups para gerar o PDF.');w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #174a52;padding-bottom:18px}h1{color:#174a52;margin:0}.n{color:#d86b32;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#174a52;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino de Balança</h1><span>Ordem de Serviço de fabricação</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Origem</b><br>${order.origin}</div><div><b>Previsão</b><br>${brDate(order.deliveryDate)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name||''} · ${p?.measure||''}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0,order.total-order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes||'Sem observações.'}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`);w.document.close();}
+  function exportCsv(){const rows=[["OS","Cliente","Pino","Quantidade","Total","Recebido","Saldo","Entrega","Status"],...orders.map(o=>[o.number,o.customerName,o.productCode,o.quantity,o.total,o.received,o.total-o.received,brDate(o.deliveryDate),o.productionStatus])];const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(';')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download=`relatorio-os-${todayIso()}.csv`;a.click();URL.revokeObjectURL(a.href);}
+
+  const nav:[Screen,string,string][]=[["dashboard","⌂","Início"],["orders","▤","Ordens de Serviço"],["customers","♙","Clientes"],["products","⬡","Pinos"],["reports","▥","Relatórios"],["settings","⚙","Configurações"]];
+  return <main className="app-shell">
+    <aside className={`sidebar ${menu?'open':''}`}><div className="brand"><div className="brand-mark">PB</div><div><strong>Pino de Balança</strong><span>Gestão de serviços</span></div></div><nav>{nav.map(([s,i,l])=><button key={s} className={`nav-item ${screen===s?'active':''}`} onClick={()=>go(s)}><span>{i}</span>{l}</button>)}<button className="nav-item new" onClick={()=>go('new-order')}><span>＋</span>Nova OS</button></nav><div className="sidebar-bottom"><div className="user-card"><div className="avatar">RM</div><div><strong>Rogério Mendes</strong><span>Administrador</span></div></div></div></aside>
+    <section className="workspace"><header className="mobile-header"><button onClick={()=>setMenu(!menu)}>☰</button><strong>Pino de Balança</strong><button className="mobile-add" onClick={()=>go('new-order')}>＋</button></header>{notice&&<div className="toast">{notice}</div>}{loading?<div className="page"><div className="empty">Carregando dados...</div></div>:<>
+      {screen==='dashboard'&&<div className="page"><Heading eyebrow={brDate(todayIso())} title="Painel de controle" subtitle="Acompanhe produção, prazos e recebimentos." action={<button className="primary-button" onClick={()=>go('new-order')}>＋ Criar nova OS</button>}/><section className="metrics"><Metric icon="▤" label="Ordens abertas" value={metrics.open}/><Metric icon="⚒" label="Em produção" value={metrics.production}/><Metric icon="✓" label="Prontas" value={metrics.ready}/><Metric icon="!" label="Atrasadas" value={metrics.late} alert={metrics.late>0}/></section><section className="content-grid"><div className="panel"><div className="panel-title"><div><h2>Ordens recentes</h2><p>Últimos serviços cadastrados</p></div><button onClick={()=>go('orders')}>Ver todas</button></div><OrderList orders={orders.slice(0,6)} onOpen={setOrderModal}/></div><div className="side-stack"><div className="panel finance"><span>Valor vendido</span><strong>{money(metrics.sales)}</strong><small>Todo o período</small><div className="finance-line"><span><b>{money(metrics.received)}</b> recebido</span><span><b>{money(metrics.sales-metrics.received)}</b> pendente</span></div></div><div className="panel attention"><h2>{metrics.late?'Atenção aos prazos':'Tudo em dia'}</h2><p>{metrics.late?`${metrics.late} OS atrasada(s).`:'Nenhuma OS atrasada.'}</p></div></div></section></div>}
+      {screen==='new-order'&&<div className="page order-page"><button className="back-button" onClick={()=>go('dashboard')}>← Voltar ao início</button><Heading eyebrow="NOVA ORDEM DE SERVIÇO" title="Criar nova OS" subtitle="Preencha os dados obrigatórios."/><form onSubmit={saveOrder}><Card n="1" title="Cliente"><div className="form-title"><span></span><button type="button" className="text-button" onClick={()=>setCustomerModal(true)}>＋ Cadastrar cliente</button></div><Field label="Cliente *"><select required value={selectedCustomer} onChange={e=>setSelectedCustomer(e.target.value)}><option value="">Selecione</option>{customers.filter(c=>c.active).map(c=><option key={c.id}>{c.name}</option>)}</select></Field></Card><Card n="2" title="Serviço e prazo"><div className="form-grid"><Field label="Origem do pedido *"><select name="origin"><option>WhatsApp</option><option>Balcão</option><option>Outros</option></select></Field><Field label="Previsão de entrega *"><input name="deliveryDate" required inputMode="numeric" pattern="\d{2}/\d{2}/\d{4}" placeholder="dd/mm/aaaa"/></Field></div></Card><Card n="3" title="Pino"><div className="product-entry"><Field label="Código *"><select value={selectedCode} onChange={e=>setSelectedCode(e.target.value)}>{products.filter(p=>p.active).map(p=><option key={p.id}>{p.code}</option>)}</select></Field><div className="product-info"><span>Produto</span><strong>{product?.name}</strong><small>{product?.measure}</small></div><Field label="Quantidade *"><input type="number" min="1" value={quantity} onChange={e=>setQuantity(Math.max(1,+e.target.value))}/></Field><div className="subtotal"><span>Total</span><strong>{money(total)}</strong></div></div></Card><Card n="4" title="Entrega e pagamento"><div className="form-grid"><Field label="Forma de entrega"><select name="deliveryType"><option>Retirada no local</option><option>Entrega</option></select></Field><Field label="Forma de pagamento"><select name="paymentMethod"><option>Pix</option><option>Dinheiro</option><option>Transferência</option><option>Cartão</option><option>Boleto</option><option>Outro</option></select></Field><Field label="Valor recebido"><input type="number" min="0" max={total} step="0.01" value={received} onChange={e=>setReceived(Math.max(0,+e.target.value))}/></Field><div className="payment-summary"><span>Total <strong>{money(total)}</strong></span><span>Saldo <strong>{money(Math.max(0,total-received))}</strong></span></div></div></Card><Card n="5" title="Observações"><Field label="Informações para fabricação"><textarea name="notes" rows={3}/></Field></Card><div className="form-actions"><button type="button" className="cancel-button" onClick={()=>go('dashboard')}>Cancelar</button><button disabled={saving} className="primary-button">{saving?'Salvando...':'Salvar OS'}</button></div></form></div>}
+      {screen==='orders'&&<div className="page"><Heading eyebrow="GESTÃO" title="Ordens de Serviço" subtitle="Atualize produção, pagamentos e prazos." action={<button className="primary-button" onClick={()=>go('new-order')}>＋ Nova OS</button>}/><Filters query={query} setQuery={setQuery}><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option>Todos</option>{['Aguardando','Em produção','Pronta','Entregue','Cancelada'].map(s=><option key={s}>{s}</option>)}</select></Filters><div className="panel"><OrderList orders={filteredOrders} onOpen={setOrderModal}/></div></div>}
+      {screen==='customers'&&<div className="page"><Heading eyebrow="CADASTROS" title="Clientes" subtitle="Consulte clientes por nome, CPF, CNPJ ou WhatsApp." action={<button className="primary-button" onClick={()=>setCustomerModal(true)}>＋ Novo cliente</button>}/><Filters query={query} setQuery={setQuery}/><div className="table-wrap"><table><thead><tr><th>Cliente</th><th>CPF/CNPJ</th><th>WhatsApp</th><th>E-mail</th><th>Status</th><th></th></tr></thead><tbody>{filteredCustomers.map(c=><tr key={c.id}><td><b>{c.name}</b></td><td>{c.document||'—'}</td><td>{c.whatsapp}</td><td>{c.email||'—'}</td><td><span className={`status ${c.active?'green':'red'}`}>{c.active?'Ativo':'Inativo'}</span></td><td><button className="link-button" onClick={()=>toggle('customer',c.id,!c.active)}>{c.active?'Inativar':'Ativar'}</button></td></tr>)}</tbody></table></div></div>}
+      {screen==='products'&&<div className="page"><Heading eyebrow="CATÁLOGO" title="Pinos e preços" subtitle="Mantenha os modelos disponíveis e seus valores." action={<button className="primary-button" onClick={()=>setProductModal(true)}>＋ Novo pino</button>}/><div className="table-wrap"><table><thead><tr><th>Código</th><th>Descrição</th><th>Medida</th><th>Preço</th><th>Status</th><th></th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td><b>{p.code}</b></td><td>{p.name}</td><td>{p.measure}</td><td>{money(p.price)}</td><td><span className={`status ${p.active?'green':'red'}`}>{p.active?'Ativo':'Inativo'}</span></td><td><button className="link-button" onClick={()=>toggle('product',p.id,!p.active)}>{p.active?'Inativar':'Ativar'}</button></td></tr>)}</tbody></table></div></div>}
+      {screen==='reports'&&<div className="page"><Heading eyebrow="ANÁLISE" title="Relatórios" subtitle="Indicadores comerciais e financeiros." action={<button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button>}/><section className="metrics"><Metric icon="R$" label="Vendas" value={money(metrics.sales)}/><Metric icon="✓" label="Recebido" value={money(metrics.received)}/><Metric icon="…" label="Pendente" value={money(metrics.sales-metrics.received)}/><Metric icon="▤" label="OS cadastradas" value={orders.length}/></section><div className="panel report-bars">{products.map(p=>{const count=orders.filter(o=>o.productCode===p.code).reduce((s,o)=>s+o.quantity,0);const max=Math.max(1,...products.map(x=>orders.filter(o=>o.productCode===x.code).reduce((s,o)=>s+o.quantity,0)));return <div key={p.id}><span>{p.code}</span><div><i style={{width:`${count/max*100}%`}}/></div><b>{count} un.</b></div>})}</div></div>}
+      {screen==='settings'&&<div className="page"><Heading eyebrow="SISTEMA" title="Configurações" subtitle="Preferências usadas nos documentos e mensagens."/><div className="form-card settings-card"><Field label="Nome da empresa"><input defaultValue="Pino de Balança"/></Field><Field label="Responsável"><input defaultValue="Rogério Mendes"/></Field><Field label="WhatsApp da empresa"><input placeholder="(00) 00000-0000"/></Field><Field label="Rodapé da OS"><input defaultValue="Documento gerado pelo sistema Pino de Balança"/></Field><button className="primary-button" onClick={()=>flash('Configurações salvas neste dispositivo.')}>Salvar configurações</button></div></div>}
+    </>}</section>{menu&&<button className="overlay" onClick={()=>setMenu(false)}/>} 
+    {customerModal&&<Modal title="Cadastrar cliente" close={()=>setCustomerModal(false)}><form onSubmit={saveCustomer}><Field label="Nome ou razão social *"><input name="name" required autoFocus/></Field><div className="form-grid"><Field label="WhatsApp *"><input required value={phone} onChange={e=>setPhone(maskPhone(e.target.value))} placeholder="(00) 00000-0000"/></Field><Field label="Documento"><div className="doc-grid"><select value={docType} onChange={e=>{setDocType(e.target.value as 'CPF'|'CNPJ');setDoc('')}}><option>CPF</option><option>CNPJ</option></select><input value={doc} onChange={e=>setDoc(maskDoc(e.target.value,docType))} placeholder={docType==='CPF'?'000.000.000-00':'00.000.000/0000-00'}/></div></Field></div><Field label="E-mail"><input name="email" type="email"/></Field><div className="modal-actions"><button type="button" className="cancel-button" onClick={()=>setCustomerModal(false)}>Cancelar</button><button className="primary-button" disabled={saving}>Salvar cliente</button></div></form></Modal>}
+    {productModal&&<Modal title="Cadastrar pino" close={()=>setProductModal(false)}><form onSubmit={saveProduct}><div className="form-grid"><Field label="Código *"><input name="code" required placeholder="Ex.: RN 250"/></Field><Field label="Medida *"><input name="measure" required placeholder="Ex.: 250 mm"/></Field></div><Field label="Descrição *"><input name="name" required placeholder="Pino de balança..."/></Field><Field label="Preço *"><input name="price" required type="number" min="0.01" step="0.01"/></Field><div className="modal-actions"><button type="button" className="cancel-button" onClick={()=>setProductModal(false)}>Cancelar</button><button className="primary-button" disabled={saving}>Salvar pino</button></div></form></Modal>}
+    {orderModal&&<Modal title={orderModal.number} close={()=>setOrderModal(null)}><div className="order-detail"><div><span>Cliente</span><b>{orderModal.customerName}</b></div><div><span>Entrega</span><b>{brDate(orderModal.deliveryDate)}</b></div><div><span>Pino</span><b>{orderModal.productCode} · {orderModal.quantity} un.</b></div><div><span>Saldo</span><b>{money(Math.max(0,orderModal.total-orderModal.received))}</b></div></div><div className="form-grid"><Field label="Status da produção"><select value={orderModal.productionStatus} onChange={e=>updateOrder(orderModal.id,{productionStatus:e.target.value})}>{['Aguardando','Em produção','Pronta','Entregue','Cancelada'].map(s=><option key={s}>{s}</option>)}</select></Field><Field label="Valor total recebido"><input type="number" min="0" max={orderModal.total} step="0.01" value={orderModal.received} onChange={e=>setOrderModal({...orderModal,received:+e.target.value})} onBlur={e=>updateOrder(orderModal.id,{received:+e.target.value})}/></Field></div><div className="detail-actions"><button className="outline-button" onClick={()=>printOrder(orderModal)}>Imprimir / PDF</button><button className="whatsapp-button" onClick={()=>whatsapp(orderModal)}>Enviar WhatsApp</button></div></Modal>}
+  </main>
 }
 
-export default function Home() {
-  const [screen, setScreen] = useState<"dashboard" | "new-order">("dashboard");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [selectedCode, setSelectedCode] = useState("RN 225");
-  const [quantity, setQuantity] = useState(2);
-  const [received, setReceived] = useState(0);
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [savedNumber, setSavedNumber] = useState("OS-2026-0049");
-  const [customers, setCustomers] = useState<Array<{ id: number; name: string; whatsapp: string; document: string }>>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState("");
-  const [customerModal, setCustomerModal] = useState(false);
-  const [customerSaving, setCustomerSaving] = useState(false);
-  const [customerError, setCustomerError] = useState("");
-  const [submitAction, setSubmitAction] = useState<"save" | "pdf">("save");
-  const [documentType, setDocumentType] = useState<"CPF" | "CNPJ">("CPF");
-  const [documentValue, setDocumentValue] = useState("");
-  const product = useMemo(() => products.find((item) => item.code === selectedCode)!, [selectedCode]);
-  const total = product.price * quantity;
-  const maskDocument = (value: string, type: "CPF" | "CNPJ") => {
-    const digits = value.replace(/\D/g, "").slice(0, type === "CPF" ? 11 : 14);
-    return type === "CPF"
-      ? digits.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")
-      : digits.replace(/(\d{2})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1/$2").replace(/(\d{4})(\d{1,2})$/, "$1-$2");
-  };
-  const toIsoDate = (value: string) => { const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return match ? `${match[3]}-${match[2]}-${match[1]}` : ""; };
-
-  useEffect(() => {
-    fetch("/api/catalog").then((response) => response.json()).then((data) => {
-      if (Array.isArray(data.customers)) setCustomers(data.customers);
-    }).catch(() => setCustomerError("Não foi possível carregar os clientes."));
-  }, []);
-
-  function goTo(target: "dashboard" | "new-order") {
-    setScreen(target);
-    setMenuOpen(false);
-    setSaved(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  async function saveOrder(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const printWindow = submitAction === "pdf" ? window.open("", "_blank") : null;
-    if (printWindow) printWindow.document.write("<p style='font-family:Arial;padding:30px'>Gerando Ordem de Serviço...</p>");
-    setSaving(true);
-    setSaveError("");
-    const value = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || "";
-    try {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ customerName: value("client"), origin: value("origin"), deliveryDate: toIsoDate(value("delivery-date")), productCode: selectedCode, quantity, unitPrice: product.price, received, deliveryType: "Retirada no local", paymentMethod: value("payment"), notes: value("notes") }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Não foi possível salvar a OS.");
-      setSavedNumber(result.order.number);
-      setSaved(true);
-      if (submitAction === "pdf" && printWindow) {
-        const escapeHtml = (input: unknown) => String(input ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character] || character));
-        const order = result.order;
-        const pending = Math.max(0, Number(order.total) - Number(order.received));
-        const money = (amount: number) => amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-        printWindow.document.open();
-        const brDate = (date: string) => { const [year, month, day] = date.split("-"); return year && month && day ? `${day}/${month}/${year}` : date; };
-        printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(order.number)}</title><style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#213033;margin:0;font-size:12px}.header{display:flex;justify-content:space-between;border-bottom:4px solid #174a52;padding-bottom:18px}.brand{font-size:22px;font-weight:800;color:#174a52}.subtitle{color:#69777a;margin-top:4px}.number{text-align:right}.number strong{display:block;font-size:18px;color:#d86b32;margin-top:5px}.section{margin-top:24px}.section h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#174a52;border-bottom:1px solid #dce4e2;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 30px}.label{color:#69777a;font-size:10px;display:block;margin-bottom:4px}.value{font-weight:700}.items{width:100%;border-collapse:collapse;margin-top:10px}.items th{background:#174a52;color:#fff;text-align:left;padding:10px}.items td{padding:11px 10px;border-bottom:1px solid #dce4e2}.right{text-align:right!important}.totals{margin:18px 0 0 auto;width:280px}.totals div{display:flex;justify-content:space-between;padding:7px 0}.totals .grand{font-size:15px;font-weight:800;border-top:2px solid #174a52;color:#174a52}.footer{margin-top:60px;border-top:1px solid #cfd8d6;padding-top:12px;color:#69777a;text-align:center}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="window.print()">Imprimir / Salvar PDF</button><div class="header"><div><div class="brand">Pino de Balança</div><div class="subtitle">Ordem de Serviço de fabricação</div></div><div class="number"><span>ORDEM DE SERVIÇO</span><strong>${escapeHtml(order.number)}</strong></div></div><div class="section"><h2>Cliente e serviço</h2><div class="grid"><div><span class="label">Cliente</span><span class="value">${escapeHtml(order.customerName)}</span></div><div><span class="label">Origem do pedido</span><span class="value">${escapeHtml(order.origin)}</span></div><div><span class="label">Previsão de entrega</span><span class="value">${escapeHtml(brDate(order.deliveryDate))}</span></div><div><span class="label">Forma de entrega</span><span class="value">${escapeHtml(order.deliveryType)}</span></div></div></div><div class="section"><h2>Itens da OS</h2><table class="items"><thead><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr></thead><tbody><tr><td>${escapeHtml(order.productCode)}</td><td>${escapeHtml(product.name)} · ${escapeHtml(product.measure)}</td><td class="right">${escapeHtml(order.quantity)}</td><td class="right">${money(Number(order.unitPrice))}</td><td class="right">${money(Number(order.total))}</td></tr></tbody></table><div class="totals"><div><span>Total</span><strong>${money(Number(order.total))}</strong></div><div><span>Recebido</span><strong>${money(Number(order.received))}</strong></div><div class="grand"><span>Saldo pendente</span><strong>${money(pending)}</strong></div></div></div><div class="section"><h2>Pagamento e observações</h2><div class="grid"><div><span class="label">Forma de pagamento</span><span class="value">${escapeHtml(order.paymentMethod)}</span></div><div><span class="label">Situação da produção</span><span class="value">${escapeHtml(order.productionStatus)}</span></div></div>${order.notes ? `<p><span class="label">Observações</span>${escapeHtml(order.notes)}</p>` : ""}</div><div class="footer">Documento gerado pelo sistema Pino de Balança</div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
-        printWindow.document.close();
-      }
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (error) {
-      if (printWindow) printWindow.close();
-      setSaveError(error instanceof Error ? error.message : "Não foi possível salvar a OS.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveCustomer(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setCustomerSaving(true); setCustomerError("");
-    const form = new FormData(event.currentTarget);
-    try {
-      const requiredDigits = documentType === "CPF" ? 11 : 14;
-      if (documentValue && documentValue.replace(/\D/g, "").length !== requiredDigits) throw new Error(`${documentType} incompleto.`);
-      const response = await fetch("/api/catalog", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: form.get("name"), whatsapp: form.get("whatsapp"), document: documentValue ? `${documentType}: ${documentValue}` : "", email: form.get("email") }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Não foi possível cadastrar o cliente.");
-      setCustomers((current) => [...current, result.customer].sort((a, b) => a.name.localeCompare(b.name)));
-      setSelectedCustomer(result.customer.name);
-      setCustomerModal(false);
-    } catch (error) { setCustomerError(error instanceof Error ? error.message : "Não foi possível cadastrar o cliente."); }
-    finally { setCustomerSaving(false); }
-  }
-
-  return (
-    <main className="app-shell">
-      <aside className={menuOpen ? "sidebar open" : "sidebar"}>
-        <div className="brand">
-          <div className="brand-mark">PB</div>
-          <div><strong>Pino de Balança</strong><span>Gestão de serviços</span></div>
-        </div>
-        <nav aria-label="Menu principal">
-          <button className={screen === "dashboard" ? "nav-item active" : "nav-item"} onClick={() => goTo("dashboard")}><span>⌂</span> Início</button>
-          <button className="nav-item new" onClick={() => goTo("new-order")}><span>＋</span> Nova OS</button>
-          <button className="nav-item"><span>▤</span> Ordens de Serviço</button>
-          <button className="nav-item"><span>♙</span> Clientes</button>
-          <button className="nav-item"><span>⬡</span> Pinos</button>
-          <button className="nav-item"><span>▥</span> Relatórios</button>
-        </nav>
-        <div className="sidebar-bottom">
-          <button className="nav-item"><span>⚙</span> Configurações</button>
-          <button className="nav-item"><span>↪</span> Sair</button>
-          <div className="user-card"><div className="avatar">RM</div><div><strong>Rogério Mendes</strong><span>Administrador</span></div></div>
-        </div>
-      </aside>
-
-      <section className="workspace">
-        <header className="mobile-header"><button aria-label="Abrir menu" onClick={() => setMenuOpen(!menuOpen)}>☰</button><strong>Pino de Balança</strong><button className="mobile-add" onClick={() => goTo("new-order")}>＋</button></header>
-
-        {screen === "dashboard" ? (
-          <div className="page dashboard-page">
-            <div className="page-heading">
-              <div><p className="eyebrow">15/07/2026</p><h1>Boa tarde, Rogério</h1><p>Acompanhe o que precisa da sua atenção hoje.</p></div>
-              <button className="primary-button" onClick={() => goTo("new-order")}><span>＋</span> Criar nova OS</button>
-            </div>
-
-            <section className="metrics" aria-label="Resumo das ordens">
-              <button className="metric"><div className="metric-icon blue">▤</div><div><span>Ordens abertas</span><strong>0</strong><small>Ver todas →</small></div></button>
-              <button className="metric"><div className="metric-icon navy">⚒</div><div><span>Em produção</span><strong>0</strong><small>Acompanhar →</small></div></button>
-              <button className="metric"><div className="metric-icon green">✓</div><div><span>Prontas</span><strong>0</strong><small>Ver retiradas →</small></div></button>
-              <button className="metric"><div className="metric-icon red">!</div><div><span>Atrasadas</span><strong>0</strong><small>Ver todas →</small></div></button>
-            </section>
-
-            <section className="content-grid">
-              <div className="panel deliveries">
-                <div className="panel-title"><div><h2>Próximas entregas</h2><p>Serviços previstos para hoje e amanhã</p></div><button>Ver agenda completa</button></div>
-                <div className="order-list">
-                  {orders.length === 0 ? <div style={{padding:"70px 20px",textAlign:"center",color:"#69777a"}}><strong style={{display:"block",color:"#223033",marginBottom:7}}>Nenhuma Ordem de Serviço cadastrada</strong><span>Cadastre um cliente e crie a primeira OS.</span></div> : orders.map((order) => <button className="order-row" key={order.id}><div className="date-box"><strong>{order.date.split(",")[0]}</strong><span>{order.date.split(",")[1] || ""}</span></div><div className="order-main"><strong>{order.client}</strong><span>{order.id} · {order.product}</span></div><span className={`status ${order.tone}`}>{order.status}</span><span className="arrow">›</span></button>)}
-                </div>
-              </div>
-
-              <div className="side-stack">
-                <div className="panel attention"><div className="attention-head"><div className="round-alert">✓</div><div><h2>Tudo em dia</h2><p>Nenhuma ordem precisa de atenção</p></div></div></div>
-                <div className="panel finance"><div><span>Resumo do mês</span><strong><Money value={0} /></strong><small>Valor vendido em julho</small></div><div className="finance-line"><span><b><Money value={0} /></b> recebido</span><span><b><Money value={0} /></b> pendente</span></div></div>
-              </div>
-            </section>
-          </div>
-        ) : (
-          <div className="page order-page">
-            <button className="back-button" onClick={() => goTo("dashboard")}>← Voltar ao início</button>
-            <div className="page-heading compact"><div><p className="eyebrow">NOVA ORDEM DE SERVIÇO</p><h1>Criar nova OS</h1><p>Preencha os dados abaixo. Os campos com * são obrigatórios.</p></div><div className="os-number"><span>Número da OS</span><strong>OS-2026-0049</strong></div></div>
-
-            {saved && <div className="success-message"><span>✓</span><div><strong>Ordem de Serviço criada com sucesso.</strong><p>A {savedNumber} foi salva e já está disponível para acompanhamento.</p></div><button onClick={() => setSaved(false)}>×</button></div>}
-            {saveError && <div className="success-message"><div><strong>Não foi possível salvar.</strong><p>{saveError}</p></div></div>}
-
-            <form onSubmit={saveOrder}>
-              <section className="form-card"><div className="section-number">1</div><div className="form-content"><div className="form-title"><div><h2>Cliente</h2><p>Selecione um cliente cadastrado</p></div><button type="button" className="text-button" onClick={() => { setCustomerError(""); setCustomerModal(true); }}>＋ Cadastrar novo cliente</button></div><div className="field full"><label htmlFor="client">Cliente *</label><select id="client" required value={selectedCustomer} onChange={(event) => setSelectedCustomer(event.target.value)}><option value="" disabled>{customers.length ? "Selecione o cliente" : "Nenhum cliente cadastrado"}</option>{customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name} · {customer.whatsapp}</option>)}</select></div>{selectedCustomer && <div className="selected-client"><div className="avatar orange">✓</div><div><strong>{selectedCustomer}</strong><span>Cliente selecionado para esta Ordem de Serviço</span></div><span>✓ Selecionado</span></div>}</div></section>
-
-              <section className="form-card"><div className="section-number">2</div><div className="form-content"><div className="form-title"><div><h2>Informações do serviço</h2><p>Dados gerais e prazo combinado</p></div></div><div className="form-grid"><div className="field"><label htmlFor="origin">Origem do pedido *</label><select id="origin"><option>WhatsApp</option><option>Balcão</option><option>Outros</option></select></div><div className="field"><label htmlFor="delivery-date">Previsão de entrega *</label><input id="delivery-date" inputMode="numeric" required pattern="\d{2}/\d{2}/\d{4}" placeholder="dd/mm/aaaa" defaultValue="18/07/2026" /></div></div></div></section>
-
-              <section className="form-card"><div className="section-number">3</div><div className="form-content"><div className="form-title"><div><h2>Pinos</h2><p>Selecione o código para preencher os dados automaticamente</p></div></div><div className="product-entry"><div className="field"><label htmlFor="product">Código do pino *</label><select id="product" value={selectedCode} onChange={(e) => setSelectedCode(e.target.value)}>{products.map((item) => <option key={item.code}>{item.code}</option>)}</select></div><div className="product-info"><span>Produto</span><strong>{product.name}</strong><small>Medida: {product.measure}</small></div><div className="field small-field"><label htmlFor="quantity">Quantidade *</label><input id="quantity" type="number" min="1" value={quantity} onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))} /></div><div className="field price-field"><label htmlFor="price">Preço unitário</label><div className="currency-input"><span>R$</span><input id="price" value={product.price.toFixed(2).replace(".", ",")} readOnly /></div></div><div className="subtotal"><span>Subtotal</span><strong><Money value={total} /></strong></div></div><button type="button" className="outline-button">＋ Adicionar outro pino</button></div></section>
-
-              <section className="form-card"><div className="section-number">4</div><div className="form-content"><div className="form-title"><div><h2>Entrega e pagamento</h2><p>Como o cliente receberá e pagará</p></div></div><div className="form-grid"><fieldset className="field radio-field"><legend>Forma de entrega *</legend><label><input type="radio" name="delivery" defaultChecked /> Retirada no local</label><label><input type="radio" name="delivery" /> Entrega</label></fieldset><div className="field"><label htmlFor="payment">Forma de pagamento</label><select id="payment"><option>Pix</option><option>Dinheiro</option><option>Transferência</option><option>Cartão</option><option>Boleto</option><option>Outro</option></select></div><div className="field"><label htmlFor="received">Valor já recebido</label><div className="currency-input"><span>R$</span><input id="received" type="number" min="0" max={total} value={received} onChange={(e) => setReceived(Math.max(0, Number(e.target.value)))} /></div></div><div className="payment-summary"><span>Total da OS <strong><Money value={total} /></strong></span><span>Recebido <strong><Money value={received} /></strong></span><span className="pending">Saldo pendente <strong><Money value={Math.max(0, total - received)} /></strong></span></div></div></div></section>
-
-              <section className="form-card notes-card"><div className="section-number">5</div><div className="form-content"><div className="form-title"><div><h2>Observações</h2><p>Informações importantes para a fabricação</p></div></div><div className="field full"><label htmlFor="notes">Observações da OS</label><textarea id="notes" rows={3} placeholder="Ex.: cliente solicitou acabamento especial..." /></div></div></section>
-
-              <div className="form-actions"><button type="button" className="cancel-button" onClick={() => goTo("dashboard")}>Cancelar</button><button type="submit" disabled={saving} onClick={() => setSubmitAction("save")} className="save-button secondary-save">{saving ? "Salvando..." : "Salvar OS"}</button><button type="submit" disabled={saving} onClick={() => setSubmitAction("pdf")} className="primary-button">{saving ? "Gerando..." : "Salvar e gerar PDF"}</button></div>
-            </form>
-          </div>
-        )}
-      </section>
-      {menuOpen && <button className="overlay" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
-      {customerModal && <div className="modal-backdrop" role="presentation"><div className="customer-modal" role="dialog" aria-modal="true" aria-labelledby="customer-title"><div className="modal-head"><div><p className="eyebrow">NOVO CLIENTE</p><h2 id="customer-title">Cadastrar cliente</h2></div><button type="button" aria-label="Fechar" onClick={() => setCustomerModal(false)}>×</button></div><form onSubmit={saveCustomer}><div className="field full"><label htmlFor="customer-name">Nome ou razão social *</label><input id="customer-name" name="name" required autoFocus placeholder="Digite o nome do cliente" /></div><div className="form-grid"><div className="field"><label htmlFor="customer-whatsapp">WhatsApp *</label><input id="customer-whatsapp" name="whatsapp" required placeholder="(00) 00000-0000" /></div><div className="field"><label htmlFor="customer-document">Documento</label><div style={{display:"grid",gridTemplateColumns:"110px 1fr",gap:8}}><select aria-label="Tipo de documento" value={documentType} onChange={(event) => { setDocumentType(event.target.value as "CPF" | "CNPJ"); setDocumentValue(""); }}><option>CPF</option><option>CNPJ</option></select><input id="customer-document" name="document" inputMode="numeric" value={documentValue} onChange={(event) => setDocumentValue(maskDocument(event.target.value, documentType))} placeholder={documentType === "CPF" ? "000.000.000-00" : "00.000.000/0000-00"} /></div></div></div><div className="field full"><label htmlFor="customer-email">E-mail</label><input id="customer-email" name="email" type="email" placeholder="cliente@email.com" /></div>{customerError && <p className="modal-error">{customerError}</p>}<div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setCustomerModal(false)}>Cancelar</button><button type="submit" className="primary-button" disabled={customerSaving}>{customerSaving ? "Salvando..." : "Salvar cliente"}</button></div></form></div></div>}
-    </main>
-  );
-}
+function Heading({eyebrow,title,subtitle,action}:{eyebrow:string;title:string;subtitle:string;action?:React.ReactNode}){return <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{subtitle}</p></div>{action}</div>}
+function Metric({icon,label,value,alert}:{icon:string;label:string;value:string|number;alert?:boolean}){return <div className={`metric ${alert?'alert':''}`}><div className={`metric-icon ${alert?'red':'blue'}`}>{icon}</div><div><span>{label}</span><strong>{value}</strong></div></div>}
+function Card({n,title,children}:{n:string;title:string;children:React.ReactNode}){return <section className="form-card"><div className="section-number">{n}</div><div className="form-content"><div className="form-title"><div><h2>{title}</h2></div></div>{children}</div></section>}
+function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="field"><span>{label}</span>{children}</label>}
+function Filters({query,setQuery,children}:{query:string;setQuery:(v:string)=>void;children?:React.ReactNode}){return <div className="filters"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar..."/>{children}</div>}
+function OrderList({orders,onOpen}:{orders:Order[];onOpen:(o:Order)=>void}){return <div className="order-list">{!orders.length?<div className="empty">Nenhuma Ordem de Serviço encontrada.</div>:orders.map(o=><button className="order-row" key={o.id} onClick={()=>onOpen(o)}><div className="date-box"><strong>{brDate(o.deliveryDate)}</strong><span>{o.origin}</span></div><div className="order-main"><strong>{o.customerName}</strong><span>{o.number} · {o.productCode} · {money(o.total)}</span></div><span className={`status ${statusTone(o.productionStatus)}`}>{o.productionStatus}</span><span className="arrow">›</span></button>)}</div>}
+function Modal({title,close,children}:{title:string;close:()=>void;children:React.ReactNode}){return <div className="modal-backdrop"><div className="customer-modal"><div className="modal-head"><h2>{title}</h2><button onClick={close}>×</button></div>{children}</div></div>}
