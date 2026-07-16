@@ -749,7 +749,7 @@ export default function Home() {
     await downloadPdf(order);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
-      `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF da OS foi baixado e está pronto para ser anexado nesta conversa.")}`,
+      `https://wa.me/55${number}?text=${encodeURIComponent(text)}`,
       "_blank",
     );
   }
