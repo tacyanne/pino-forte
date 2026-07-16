@@ -180,6 +180,7 @@ export default function Home() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [lateOnly, setLateOnly] = useState(false);
   const [notice, setNotice] = useState("");
   const [customerModal, setCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -285,6 +286,9 @@ export default function Home() {
   const filteredOrders = orders.filter(
     (o) =>
       (statusFilter === "Todos" || o.productionStatus === statusFilter) &&
+      (!lateOnly ||
+        (o.deliveryDate < todayIso() &&
+          !["Entregue", "Cancelada"].includes(o.productionStatus))) &&
       `${o.number} ${o.customerName} ${o.productCode}`
         .toLowerCase()
         .includes(query.toLowerCase()),
@@ -354,6 +358,7 @@ export default function Home() {
     [orders],
   );
   function go(next: Screen) {
+    setLateOnly(false);
     if (next === "new-order") {
       const first = products.find((p) => p.active)?.code || "";
       setSelectedCustomer("");
@@ -367,6 +372,13 @@ export default function Home() {
     setMenu(false);
     setQuery("");
     setNotice("");
+    window.scrollTo({ top: 0 });
+  }
+  function openLateOrders() {
+    setLateOnly(true);
+    setStatusFilter("Todos");
+    setQuery("");
+    setScreen("orders");
     window.scrollTo({ top: 0 });
   }
   function flash(text: string) {
@@ -964,7 +976,7 @@ export default function Home() {
                             : "Nenhuma ordem está atrasada no momento."}
                         </p>
                         {metrics.late > 0 && (
-                          <button onClick={() => go("orders")}>
+                          <button onClick={openLateOrders}>
                             Ver ordens atrasadas →
                           </button>
                         )}
@@ -1234,6 +1246,12 @@ export default function Home() {
                     ))}
                   </select>
                 </Filters>
+                {lateOnly && (
+                  <div className="active-filter">
+                    <span>Exibindo somente ordens atrasadas</span>
+                    <button onClick={() => setLateOnly(false)}>Mostrar todas</button>
+                  </div>
+                )}
                 <div className="panel">
                   <OrderList orders={filteredOrders} onOpen={setOrderModal} />
                 </div>
