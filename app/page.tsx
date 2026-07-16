@@ -32,6 +32,7 @@ export default function Home() {
   const [customerModal, setCustomerModal] = useState(false);
   const [customerSaving, setCustomerSaving] = useState(false);
   const [customerError, setCustomerError] = useState("");
+  const [submitAction, setSubmitAction] = useState<"save" | "pdf">("save");
   const product = useMemo(() => products.find((item) => item.code === selectedCode)!, [selectedCode]);
   const total = product.price * quantity;
 
@@ -50,6 +51,8 @@ export default function Home() {
 
   async function saveOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const printWindow = submitAction === "pdf" ? window.open("", "_blank") : null;
+    if (printWindow) printWindow.document.write("<p style='font-family:Arial;padding:30px'>Gerando Ordem de Serviço...</p>");
     setSaving(true);
     setSaveError("");
     const value = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value || "";
@@ -63,8 +66,18 @@ export default function Home() {
       if (!response.ok) throw new Error(result.error || "Não foi possível salvar a OS.");
       setSavedNumber(result.order.number);
       setSaved(true);
+      if (submitAction === "pdf" && printWindow) {
+        const escapeHtml = (input: unknown) => String(input ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character] || character));
+        const order = result.order;
+        const pending = Math.max(0, Number(order.total) - Number(order.received));
+        const money = (amount: number) => amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        printWindow.document.open();
+        printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(order.number)}</title><style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#213033;margin:0;font-size:12px}.header{display:flex;justify-content:space-between;border-bottom:4px solid #174a52;padding-bottom:18px}.brand{font-size:22px;font-weight:800;color:#174a52}.subtitle{color:#69777a;margin-top:4px}.number{text-align:right}.number strong{display:block;font-size:18px;color:#d86b32;margin-top:5px}.section{margin-top:24px}.section h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#174a52;border-bottom:1px solid #dce4e2;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 30px}.label{color:#69777a;font-size:10px;display:block;margin-bottom:4px}.value{font-weight:700}.items{width:100%;border-collapse:collapse;margin-top:10px}.items th{background:#174a52;color:#fff;text-align:left;padding:10px}.items td{padding:11px 10px;border-bottom:1px solid #dce4e2}.right{text-align:right!important}.totals{margin:18px 0 0 auto;width:280px}.totals div{display:flex;justify-content:space-between;padding:7px 0}.totals .grand{font-size:15px;font-weight:800;border-top:2px solid #174a52;color:#174a52}.footer{margin-top:60px;border-top:1px solid #cfd8d6;padding-top:12px;color:#69777a;text-align:center}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="window.print()">Imprimir / Salvar PDF</button><div class="header"><div><div class="brand">Pino de Balança</div><div class="subtitle">Ordem de Serviço de fabricação</div></div><div class="number"><span>ORDEM DE SERVIÇO</span><strong>${escapeHtml(order.number)}</strong></div></div><div class="section"><h2>Cliente e serviço</h2><div class="grid"><div><span class="label">Cliente</span><span class="value">${escapeHtml(order.customerName)}</span></div><div><span class="label">Origem do pedido</span><span class="value">${escapeHtml(order.origin)}</span></div><div><span class="label">Previsão de entrega</span><span class="value">${escapeHtml(order.deliveryDate)}</span></div><div><span class="label">Forma de entrega</span><span class="value">${escapeHtml(order.deliveryType)}</span></div></div></div><div class="section"><h2>Itens da OS</h2><table class="items"><thead><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr></thead><tbody><tr><td>${escapeHtml(order.productCode)}</td><td>${escapeHtml(product.name)} · ${escapeHtml(product.measure)}</td><td class="right">${escapeHtml(order.quantity)}</td><td class="right">${money(Number(order.unitPrice))}</td><td class="right">${money(Number(order.total))}</td></tr></tbody></table><div class="totals"><div><span>Total</span><strong>${money(Number(order.total))}</strong></div><div><span>Recebido</span><strong>${money(Number(order.received))}</strong></div><div class="grand"><span>Saldo pendente</span><strong>${money(pending)}</strong></div></div></div><div class="section"><h2>Pagamento e observações</h2><div class="grid"><div><span class="label">Forma de pagamento</span><span class="value">${escapeHtml(order.paymentMethod)}</span></div><div><span class="label">Situação da produção</span><span class="value">${escapeHtml(order.productionStatus)}</span></div></div>${order.notes ? `<p><span class="label">Observações</span>${escapeHtml(order.notes)}</p>` : ""}</div><div class="footer">Documento gerado pelo sistema Pino de Balança</div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+        printWindow.document.close();
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
+      if (printWindow) printWindow.close();
       setSaveError(error instanceof Error ? error.message : "Não foi possível salvar a OS.");
     } finally {
       setSaving(false);
@@ -158,7 +171,7 @@ export default function Home() {
 
               <section className="form-card notes-card"><div className="section-number">5</div><div className="form-content"><div className="form-title"><div><h2>Observações</h2><p>Informações importantes para a fabricação</p></div></div><div className="field full"><label htmlFor="notes">Observações da OS</label><textarea id="notes" rows={3} placeholder="Ex.: cliente solicitou acabamento especial..." /></div></div></section>
 
-              <div className="form-actions"><button type="button" className="cancel-button" onClick={() => goTo("dashboard")}>Cancelar</button><button type="submit" disabled={saving} className="save-button secondary-save">{saving ? "Salvando..." : "Salvar OS"}</button><button type="submit" disabled={saving} className="primary-button">{saving ? "Salvando..." : "Salvar e gerar PDF"}</button></div>
+              <div className="form-actions"><button type="button" className="cancel-button" onClick={() => goTo("dashboard")}>Cancelar</button><button type="submit" disabled={saving} onClick={() => setSubmitAction("save")} className="save-button secondary-save">{saving ? "Salvando..." : "Salvar OS"}</button><button type="submit" disabled={saving} onClick={() => setSubmitAction("pdf")} className="primary-button">{saving ? "Gerando..." : "Salvar e gerar PDF"}</button></div>
             </form>
           </div>
         )}
