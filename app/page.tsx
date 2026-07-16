@@ -174,6 +174,9 @@ const orderItemSummary = (order: Order) =>
 export default function Home() {
   const [auth, setAuth] = useState<{ loading: boolean; setupRequired: boolean; user: any; users: any[] }>({ loading: true, setupRequired: false, user: null, users: [] });
   const [authError, setAuthError] = useState("");
+  const [authSaving, setAuthSaving] = useState(false);
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [showTempPassword, setShowTempPassword] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [menu, setMenu] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -267,10 +270,26 @@ export default function Home() {
   async function submitAuth(event: any) {
     event.preventDefault(); setAuthError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: auth.setupRequired ? "setup" : "login", name: form.get("name"), email: form.get("email"), password: form.get("password") }) });
-    const data = await response.json();
-    if (!response.ok) return setAuthError(data.error || "Não foi possível entrar.");
-    location.reload();
+    const name = String(form.get("name") || "").trim();
+    const email = String(form.get("email") || "").trim();
+    const password = String(form.get("password") || "");
+    if (auth.setupRequired && !name) return setAuthError("Informe seu nome.");
+    if (!email.includes("@")) return setAuthError("Informe um e-mail válido.");
+    if (password.length < 8) return setAuthError("A senha precisa ter pelo menos 8 caracteres.");
+    if (auth.setupRequired && !/[A-Z]/.test(password)) return setAuthError("A senha precisa ter pelo menos uma letra maiúscula.");
+    if (auth.setupRequired && !/\d/.test(password)) return setAuthError("A senha precisa ter pelo menos um número.");
+    if (auth.setupRequired && !/[^A-Za-z0-9]/.test(password)) return setAuthError("A senha precisa ter pelo menos um caractere especial.");
+    setAuthSaving(true);
+    try {
+      const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: auth.setupRequired ? "setup" : "login", name, email, password }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return setAuthError(data.error || "Não foi possível criar o acesso. Tente novamente.");
+      location.reload();
+    } catch {
+      setAuthError("Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.");
+    } finally {
+      setAuthSaving(false);
+    }
   }
 
   async function logout() { await fetch("/api/auth", { method: "DELETE" }); location.reload(); }
@@ -903,12 +922,12 @@ export default function Home() {
         <img src="/logo-sistema.png" alt="Rogério Mendes" />
         <h1>{auth.setupRequired ? "Criar acesso administrador" : "Entrar no sistema"}</h1>
         <p>{auth.setupRequired ? "Cadastre sua senha para proteger clientes e ordens de serviço." : "Use seu e-mail e sua senha para continuar."}</p>
-        <form onSubmit={submitAuth}>
+        <form onSubmit={submitAuth} noValidate>
           {auth.setupRequired && <Field label="Seu nome"><input name="name" required autoFocus placeholder="Nome completo" /></Field>}
           <Field label="E-mail"><input name="email" type="email" required defaultValue={auth.setupRequired ? "tacytpr@gmail.com" : ""} readOnly={auth.setupRequired} autoFocus={!auth.setupRequired} /></Field>
-          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><input name="password" type="password" minLength={8} required placeholder="Mínimo de 8 caracteres" /></Field>
+          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><div className="password-input"><input name="password" type={showAuthPassword ? "text" : "password"} minLength={8} required placeholder={auth.setupRequired ? "Maiúscula, número e caractere especial" : "Digite sua senha"} /><button type="button" onClick={() => setShowAuthPassword((value) => !value)} aria-label={showAuthPassword ? "Ocultar senha" : "Mostrar senha"}>{showAuthPassword ? "◉" : "◌"}</button></div></Field>
           {authError && <p className="modal-error">{authError}</p>}
-          <button className="primary-button" type="submit">{auth.setupRequired ? "Criar acesso e entrar" : "Entrar"}</button>
+          <button className="primary-button" type="submit" disabled={authSaving}>{authSaving ? (auth.setupRequired ? "Criando acesso..." : "Entrando...") : (auth.setupRequired ? "Criar acesso e entrar" : "Entrar")}</button>
         </form>
       </section>
     </main>
@@ -1708,7 +1727,7 @@ export default function Home() {
                   <form className="user-create" onSubmit={createUser}>
                     <Field label="Nome"><input name="name" required placeholder="Nome da pessoa" /></Field>
                     <Field label="E-mail"><input name="email" type="email" required defaultValue="sampaio.mendes101@gmail.com" /></Field>
-                    <Field label="Senha temporária"><input name="password" type="password" minLength={8} required placeholder="Mínimo de 8 caracteres" /></Field>
+                    <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required placeholder="Maiúscula, número e caractere especial" /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}>{showTempPassword ? "◉" : "◌"}</button></div></Field>
                     <button className="primary-button">Cadastrar usuário</button>
                   </form>
                   {authError && <p className="modal-error user-error">{authError}</p>}

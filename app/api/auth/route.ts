@@ -1,6 +1,8 @@
 import { currentUser, ensureAuthTables, passwordHash, sessionCookie } from "../../../lib/auth";
 
 const cleanEmail = (value: unknown) => String(value || "").trim().toLowerCase();
+const validNewPassword = (password: string) => password.length >= 8 && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+const passwordRuleError = "A senha deve ter no mínimo 8 caracteres, uma letra maiúscula, um número e um caractere especial.";
 
 export async function GET(request: Request) {
   const db = await ensureAuthTables();
@@ -22,7 +24,8 @@ export async function POST(request: Request) {
     const password = String(body.password || "");
     const name = String(body.name || "").trim();
     if (email !== "tacytpr@gmail.com") return Response.json({ error: "Use o e-mail administrador autorizado." }, { status: 400 });
-    if (!name || password.length < 8) return Response.json({ error: "Informe seu nome e uma senha com pelo menos 8 caracteres." }, { status: 400 });
+    if (!name) return Response.json({ error: "Informe seu nome." }, { status: 400 });
+    if (!validNewPassword(password)) return Response.json({ error: passwordRuleError }, { status: 400 });
     const { hash, salt } = await passwordHash(password);
     const result = await db.prepare("INSERT INTO app_users(name,email,password_hash,salt,role) VALUES(?,?,?,?, 'admin')").bind(name, email, hash, salt).run();
     return createSession(db, Number(result.meta.last_row_id));
@@ -44,7 +47,8 @@ export async function POST(request: Request) {
     const email = cleanEmail(body.email);
     const password = String(body.password || "");
     const name = String(body.name || "").trim();
-    if (!name || !email.includes("@") || password.length < 8) return Response.json({ error: "Informe nome, e-mail e senha temporária com pelo menos 8 caracteres." }, { status: 400 });
+    if (!name || !email.includes("@")) return Response.json({ error: "Informe nome e e-mail válidos." }, { status: 400 });
+    if (!validNewPassword(password)) return Response.json({ error: passwordRuleError }, { status: 400 });
     const { hash, salt } = await passwordHash(password);
     try { await db.prepare("INSERT INTO app_users(name,email,password_hash,salt,role) VALUES(?,?,?,?, 'user')").bind(name,email,hash,salt).run(); }
     catch { return Response.json({ error: "Este e-mail já está cadastrado." }, { status: 409 }); }
