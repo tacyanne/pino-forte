@@ -828,7 +828,7 @@ export default function Home() {
     items.forEach((item) => {
       const p = products.find((x) => x.code === item.code);
       pdf.text(item.code, 18, y);
-      pdf.text(`${p?.name || "Pino de balança"} · ${p?.measure || ""}`, 42, y, { maxWidth: 72 });
+      pdf.text(`${p?.name || "Pino de balança"} (COMUM) · ${p?.measure || ""}`, 42, y, { maxWidth: 72 });
       pdf.text(String(item.quantity), 126.5, y, { align: "center" });
       pdf.text(money(item.unitPrice), 159, y, { align: "right" });
       pdf.text(money(item.unitPrice * item.quantity), 191, y, { align: "right" });
