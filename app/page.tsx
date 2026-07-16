@@ -99,8 +99,13 @@ const maskPhone = (value: string) =>
     .slice(0, 11)
     .replace(/(\d{2})(\d)/, "($1) $2")
     .replace(/(\d{5})(\d)/, "$1-$2");
-const formatPhone = (value:string) => maskPhone(value);
-const formatDocument = (value:string) => {const digits=value.replace(/\D/g,'');if(digits.length===11)return `CPF: ${maskDoc(digits,'CPF')}`;if(digits.length===14)return `CNPJ: ${maskDoc(digits,'CNPJ')}`;return value||'—';};
+const formatPhone = (value: string) => maskPhone(value);
+const formatDocument = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11) return `CPF: ${maskDoc(digits, "CPF")}`;
+  if (digits.length === 14) return `CNPJ: ${maskDoc(digits, "CNPJ")}`;
+  return value || "—";
+};
 const statusTone = (status: string) =>
   status === "Entregue" || status === "Pronta"
     ? "green"
@@ -139,7 +144,9 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [notice, setNotice] = useState("");
   const [customerModal, setCustomerModal] = useState(false);
-  const [editingCustomer,setEditingCustomer]=useState<Customer|null>(null); const [customerName,setCustomerName]=useState(''); const [customerEmail,setCustomerEmail]=useState('');
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
   const [productModal, setProductModal] = useState(false);
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [walletPayment, setWalletPayment] = useState<{
@@ -309,7 +316,29 @@ export default function Home() {
       items.map((item, i) => (i === index ? { ...item, ...changes } : item)),
     );
   }
-  function openCustomer(customer?:Customer){if(customer){setEditingCustomer(customer);setCustomerName(customer.name);setCustomerEmail(customer.email);setPhone(maskPhone(customer.whatsapp));const type=customer.document.toUpperCase().includes('CNPJ')||customer.document.replace(/\D/g,'').length===14?'CNPJ':'CPF';setDocType(type);setDoc(maskDoc(customer.document,type));}else{setEditingCustomer(null);setCustomerName('');setCustomerEmail('');setPhone('');setDocType('CPF');setDoc('');}setCustomerModal(true);}
+  function openCustomer(customer?: Customer) {
+    if (customer) {
+      setEditingCustomer(customer);
+      setCustomerName(customer.name);
+      setCustomerEmail(customer.email);
+      setPhone(maskPhone(customer.whatsapp));
+      const type =
+        customer.document.toUpperCase().includes("CNPJ") ||
+        customer.document.replace(/\D/g, "").length === 14
+          ? "CNPJ"
+          : "CPF";
+      setDocType(type);
+      setDoc(maskDoc(customer.document, type));
+    } else {
+      setEditingCustomer(null);
+      setCustomerName("");
+      setCustomerEmail("");
+      setPhone("");
+      setDocType("CPF");
+      setDoc("");
+    }
+    setCustomerModal(true);
+  }
 
   async function saveCustomer(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -317,7 +346,8 @@ export default function Home() {
     const f = new FormData(e.currentTarget);
     try {
       if (!customerName.trim()) throw new Error("Informe o nome do cliente.");
-      if (phone.replace(/\D/g, "").length < 10) throw new Error("Informe um WhatsApp válido.");
+      if (phone.replace(/\D/g, "").length < 10)
+        throw new Error("Informe um WhatsApp válido.");
       if (
         doc &&
         doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14)
@@ -336,12 +366,21 @@ export default function Home() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
-      setCustomers((v) => (editingCustomer?v.map(c=>c.id===j.customer.id?j.customer:c):[...v,j.customer]).sort((a,b)=>a.name.localeCompare(b.name)));
+      setCustomers((v) =>
+        (editingCustomer
+          ? v.map((c) => (c.id === j.customer.id ? j.customer : c))
+          : [...v, j.customer]
+        ).sort((a, b) => a.name.localeCompare(b.name)),
+      );
       setSelectedCustomer(j.customer.name);
       setCustomerModal(false);
       setDoc("");
       setPhone("");
-      flash(editingCustomer?"Cliente atualizado com sucesso.":"Cliente cadastrado com sucesso.");
+      flash(
+        editingCustomer
+          ? "Cliente atualizado com sucesso."
+          : "Cliente cadastrado com sucesso.",
+      );
     } catch (err) {
       flash(err instanceof Error ? err.message : "Erro ao cadastrar.");
     } finally {
@@ -353,7 +392,12 @@ export default function Home() {
     setSaving(true);
     const f = new FormData(e.currentTarget);
     try {
-      if (!String(f.get("code")||"").trim() || !String(f.get("name")||"").trim() || !String(f.get("measure")||"").trim()) throw new Error("Preencha código, descrição e medida do pino.");
+      if (
+        !String(f.get("code") || "").trim() ||
+        !String(f.get("name") || "").trim() ||
+        !String(f.get("measure") || "").trim()
+      )
+        throw new Error("Preencha código, descrição e medida do pino.");
       const r = await fetch("/api/catalog", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -843,7 +887,14 @@ export default function Home() {
                     </Field>
                   </Card>
                   <Card n="2" title="Serviço e prazo">
-                    <div className="form-grid">
+                    <div className="form-grid service-grid">
+                      <Field label="Data do pedido">
+                        <input
+                          value={brDate(todayIso())}
+                          readOnly
+                          aria-readonly="true"
+                        />
+                      </Field>
                       <Field label="Origem do pedido *">
                         <select name="origin">
                           <option>WhatsApp</option>
@@ -1108,7 +1159,12 @@ export default function Home() {
                             </span>
                           </td>
                           <td>
-                            <button className="link-button" onClick={() => openCustomer(c)}>Editar</button>
+                            <button
+                              className="link-button"
+                              onClick={() => openCustomer(c)}
+                            >
+                              Editar
+                            </button>
                             <button
                               className="link-button"
                               onClick={() =>
@@ -1416,10 +1472,19 @@ export default function Home() {
       </section>
       {menu && <button className="overlay" onClick={() => setMenu(false)} />}
       {customerModal && (
-        <Modal title={editingCustomer?"Editar cliente":"Cadastrar cliente"} close={() => setCustomerModal(false)}>
+        <Modal
+          title={editingCustomer ? "Editar cliente" : "Cadastrar cliente"}
+          close={() => setCustomerModal(false)}
+        >
           <form onSubmit={saveCustomer} noValidate>
             <Field label="Nome ou razão social *">
-              <input name="name" required autoFocus value={customerName} onChange={e=>setCustomerName(e.target.value)} />
+              <input
+                name="name"
+                required
+                autoFocus
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+              />
             </Field>
             <div className="form-grid">
               <Field label="WhatsApp *">
@@ -1455,7 +1520,12 @@ export default function Home() {
               </Field>
             </div>
             <Field label="E-mail">
-              <input name="email" type="email" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} />
+              <input
+                name="email"
+                type="email"
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
+              />
             </Field>
             <div className="modal-actions">
               <button
@@ -1466,7 +1536,7 @@ export default function Home() {
                 Cancelar
               </button>
               <button className="primary-button" disabled={saving}>
-                {editingCustomer?"Salvar alterações":"Salvar cliente"}
+                {editingCustomer ? "Salvar alterações" : "Salvar cliente"}
               </button>
             </div>
           </form>
