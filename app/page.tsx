@@ -708,62 +708,84 @@ export default function Home() {
   }
   async function createPdf(order: Order) {
     const items = getOrderItems(order);
+    const customer = customers.find((item) => item.name === order.customerName);
     const pdf = new jsPDF();
     const logo = await loadImageData("/logo-pdf.png", true);
-    pdf.addImage(logo, "JPEG", 18, 8, 32, 32, undefined, "FAST");
-    pdf.setTextColor(45);
-    pdf.setFontSize(13);
-    pdf.text("ORDEM DE SERVIÇO", 56, 20);
+    pdf.setDrawColor(60);
+    pdf.setLineWidth(0.35);
+    pdf.rect(15, 10, 180, 270);
+    pdf.rect(15, 10, 38, 38);
+    pdf.rect(53, 10, 105, 38);
+    pdf.rect(158, 10, 37, 38);
+    pdf.addImage(logo, "JPEG", 17, 12, 34, 34, undefined, "FAST");
+    pdf.setTextColor(30);
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.text((companyName || "Pino de Balança").toUpperCase(), 57, 20, { maxWidth: 96 });
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.5);
+    pdf.text("PINOS DE BALANÇA | TRUCK E CARRETA", 57, 27);
+    pdf.text(`Responsável: ${responsible || "—"}`, 57, 34);
+    pdf.text(`WhatsApp: ${companyPhone || "—"}`, 57, 41);
+    pdf.setFont("helvetica", "bold");
     pdf.setFontSize(9);
-    pdf.setTextColor(105);
-    pdf.text("Fabricação de pinos de balança", 56, 27);
-    pdf.setFontSize(15);
-    pdf.setTextColor(45);
-    pdf.text(order.number, 192, 22, { align: "right" });
-    pdf.setDrawColor(55);
-    pdf.setLineWidth(0.6);
-    pdf.line(18, 46, 192, 46);
-    pdf.setTextColor(30);
-    pdf.setFontSize(11);
-    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 18, 57);
-    pdf.text(`Cliente: ${order.customerName}`, 18, 66);
-    pdf.text(`Previsão de entrega: ${brDate(order.deliveryDate)}`, 110, 57);
-    pdf.text(`Status: ${order.productionStatus}`, 110, 66);
-    pdf.setFillColor(45, 45, 45);
-    pdf.rect(18, 84, 174, 10, "F");
-    pdf.setTextColor(255);
-    pdf.text("MODELO", 22, 91);
-    pdf.text("QTD.", 115, 91);
-    pdf.text("UNITÁRIO", 140, 91);
-    pdf.text("SUBTOTAL", 188, 91, { align: "right" });
-    pdf.setTextColor(30);
-    let y = 103;
+    pdf.text("ORDEM DE SERVIÇO", 176.5, 18, { align: "center" });
+    pdf.setFontSize(13);
+    pdf.text(order.number, 176.5, 29, { align: "center" });
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.5);
+    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 176.5, 38, { align: "center" });
+    pdf.text(`Entrega: ${brDate(order.deliveryDate)}`, 176.5, 44, { align: "center" });
+
+    pdf.rect(15, 48, 180, 31);
+    pdf.setFontSize(9);
+    pdf.setFont("helvetica", "bold");
+    pdf.text(`Cliente: ${order.customerName}`, 18, 56);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`CPF/CNPJ: ${customer ? formatDocument(customer.document).replace(/^(CPF|CNPJ): /, "") : "—"}`, 18, 64);
+    pdf.text(`WhatsApp: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 105, 64);
+    pdf.text(`E-mail: ${customer?.email || "—"}`, 18, 72);
+    pdf.text(`Pagamento: ${order.paymentMethod}`, 105, 72);
+
+    const columns = [15, 39, 118, 135, 162, 195];
+    pdf.rect(15, 79, 180, 132);
+    pdf.setFillColor(235, 235, 235);
+    pdf.rect(15, 79, 180, 10, "F");
+    columns.slice(1, -1).forEach((x) => pdf.line(x, 79, x, 211));
+    pdf.line(15, 89, 195, 89);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8.5);
+    pdf.text("CÓDIGO", 18, 86);
+    pdf.text("DESCRIÇÃO DO PRODUTO", 42, 86);
+    pdf.text("QTD.", 126.5, 86, { align: "center" });
+    pdf.text("VALOR UNIT.", 148.5, 86, { align: "center" });
+    pdf.text("VALOR TOTAL", 191, 86, { align: "right" });
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    let y = 97;
     items.forEach((item) => {
       const p = products.find((x) => x.code === item.code);
-      pdf.text(`${item.code} — ${p?.measure || ""}`, 22, y);
-      pdf.text(String(item.quantity), 117, y);
-      pdf.text(money(item.unitPrice), 140, y);
-      pdf.text(money(item.unitPrice * item.quantity), 188, y, {
-        align: "right",
-      });
-      y += 10;
+      pdf.text(item.code, 18, y);
+      pdf.text(`${p?.name || "Pino de balança"} · ${p?.measure || ""}`, 42, y, { maxWidth: 72 });
+      pdf.text(String(item.quantity), 126.5, y, { align: "center" });
+      pdf.text(money(item.unitPrice), 159, y, { align: "right" });
+      pdf.text(money(item.unitPrice * item.quantity), 191, y, { align: "right" });
+      y += 11;
     });
-    y += 5;
-    pdf.text(`Total: ${money(order.total)}`, 192, y, { align: "right" });
-    pdf.setFontSize(10);
-    pdf.setTextColor(70);
-    pdf.text(
-      `Pagamento: ${order.paymentMethod} | Entrega: ${order.deliveryType}`,
-      18,
-      y + 18,
-    );
-    pdf.text(
-      order.notes ? `Observações: ${order.notes}` : "Sem observações.",
-      18,
-      y + 28,
-      { maxWidth: 174 },
-    );
-    pdf.setDrawColor(100);
+    pdf.line(15, 201, 195, 201);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("TOTAL DA ORDEM", 118, 208, { align: "right" });
+    pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 126.5, 208, { align: "center" });
+    pdf.text(money(order.total), 191, 208, { align: "right" });
+    pdf.setFont("helvetica", "normal");
+
+    pdf.rect(15, 211, 180, 28);
+    pdf.setFontSize(9);
+    pdf.text(`Status: ${order.productionStatus}`, 18, 219);
+    pdf.text(`Forma de entrega: ${order.deliveryType}`, 105, 219);
+    pdf.text(`Previsão de entrega: ${brDate(order.deliveryDate)}`, 18, 227);
+    pdf.text(order.notes ? `Observações: ${order.notes}` : "Observações: —", 18, 235, { maxWidth: 172 });
+
     pdf.line(24, 250, 88, 250);
     pdf.line(122, 250, 186, 250);
     pdf.setFontSize(9);
@@ -773,7 +795,7 @@ export default function Home() {
     pdf.text("Responsável pela empresa", 154, 256, { align: "center" });
     pdf.text(responsible || "Responsável", 154, 261, { align: "center" });
     pdf.setFontSize(8);
-    pdf.setTextColor(120);
+    pdf.setTextColor(100);
     pdf.text(orderFooter, 105, 282, { align: "center" });
     return pdf;
   }
