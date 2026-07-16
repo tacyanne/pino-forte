@@ -680,28 +680,17 @@ export default function Home() {
     });
     y += 5;
     pdf.text(`Total: ${money(order.total)}`, 192, y, { align: "right" });
-    pdf.text(`Recebido: ${money(order.received)}`, 192, y + 9, {
-      align: "right",
-    });
-    pdf.setFontSize(13);
-    pdf.setTextColor(23, 74, 82);
-    pdf.text(
-      `Saldo: ${money(Math.max(0, order.total - order.received))}`,
-      192,
-      y + 20,
-      { align: "right" },
-    );
     pdf.setFontSize(10);
     pdf.setTextColor(70);
     pdf.text(
       `Pagamento: ${order.paymentMethod} | Entrega: ${order.deliveryType}`,
       18,
-      y + 37,
+      y + 18,
     );
     pdf.text(
       order.notes ? `Observações: ${order.notes}` : "Sem observações.",
       18,
-      y + 47,
+      y + 28,
       { maxWidth: 174 },
     );
     pdf.setDrawColor(100);
