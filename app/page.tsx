@@ -268,7 +268,7 @@ export default function Home() {
   const metrics = useMemo(
     () => ({
       queue: orders.filter((o) =>
-        ["Aguardando", "Em produção"].includes(o.productionStatus),
+        ["Fila de produção", "Aguardando", "Em produção"].includes(o.productionStatus),
       ).length,
       open: orders.filter(
         (o) => !["Entregue", "Cancelada"].includes(o.productionStatus),
@@ -1261,7 +1261,7 @@ export default function Home() {
                   >
                     <option>Todos</option>
                     {[
-                      "Aguardando",
+                      "Fila de produção",
                       "Em produção",
                       "Pronta",
                       "Entregue",
@@ -1895,7 +1895,7 @@ export default function Home() {
                     })
                   }
                 >
-                  {["Aguardando", "Em produção", "Pronta", "Entregue", "Cancelada"].map((s) => (
+                  {["Fila de produção", "Em produção", "Pronta", "Entregue", "Cancelada"].map((s) => (
                     <option key={s}>{s}</option>
                   ))}
                 </select>

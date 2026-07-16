@@ -10,7 +10,15 @@ export async function GET() {
       .from(serviceOrders)
       .orderBy(desc(serviceOrders.id))
       .limit(100);
-    return Response.json({ orders: rows });
+    return Response.json({
+      orders: rows.map((order) => ({
+        ...order,
+        productionStatus:
+          order.productionStatus === "Aguardando"
+            ? "Fila de produção"
+            : order.productionStatus,
+      })),
+    });
   } catch (error) {
     return Response.json(
       {
@@ -74,6 +82,7 @@ export async function POST(request: Request) {
         deliveryDate: String(body.deliveryDate),
         deliveryType: String(body.deliveryType || "Retirada no local"),
         paymentMethod: String(body.paymentMethod || "Pix"),
+        productionStatus: "Fila de produção",
         notes: String(body.notes || ""),
       })
       .returning();
@@ -97,6 +106,7 @@ export async function PATCH(request: Request) {
     const id = Number(body.id);
     if (!id) return Response.json({ error: "OS inválida." }, { status: 400 });
     const allowedProduction = [
+      "Fila de produção",
       "Aguardando",
       "Em produção",
       "Pronta",
