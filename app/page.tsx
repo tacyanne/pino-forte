@@ -275,7 +275,7 @@ export default function Home() {
       ).length,
       production: orders.filter((o) => o.productionStatus === "Em produção")
         .length,
-      ready: orders.filter((o) => o.productionStatus === "Pronta").length,
+      delivered: orders.filter((o) => o.productionStatus === "Entregue").length,
       late: orders.filter(
         (o) =>
           o.deliveryDate < todayIso() &&
@@ -946,7 +946,7 @@ export default function Home() {
                     label="Em produção"
                     value={metrics.production}
                   />
-                  <Metric icon="✓" label="Prontas" value={metrics.ready} />
+                  <Metric icon="✓" label="Entregues" value={metrics.delivered} />
                   <Metric
                     icon="!"
                     label="Atrasadas"
