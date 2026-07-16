@@ -1735,7 +1735,7 @@ export default function Home() {
                   <div className="panel-title"><div><h2>Usuários do sistema</h2><p>Cadastre uma senha temporária e entregue-a diretamente à pessoa.</p></div></div>
                   <form className="user-create" onSubmit={createUser}>
                     <Field label="Nome"><input name="name" required placeholder="Nome da pessoa" /></Field>
-                    <Field label="E-mail"><input name="email" type="email" required defaultValue="sampaio.mendes101@gmail.com" /></Field>
+                    <Field label="E-mail"><input name="email" type="email" required autoComplete="off" placeholder="E-mail da pessoa" /></Field>
                     <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required placeholder="Maiúscula, número e caractere especial" /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}>{showTempPassword ? "◉" : "◌"}</button></div></Field>
                     <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar usuário"}</button>
                   </form>
