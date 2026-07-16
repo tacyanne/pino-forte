@@ -52,9 +52,33 @@ type Order = {
 const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const brDate = (date: string) => {
+  if (date && (date.includes("T") || date.includes(" "))) {
+    const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
+    const parsed = new Date(utcValue);
+    if (!Number.isNaN(parsed.getTime()))
+      return new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(parsed);
+  }
   const value = date?.slice(0, 10);
   const [y, m, d] = value?.split("-") || [];
   return y && m && d ? `${d}/${m}/${y}` : value || "—";
+};
+const monthInSaoPaulo = (date: string) => {
+  if (!date) return "";
+  const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
+  const parsed = new Date(utcValue);
+  if (Number.isNaN(parsed.getTime())) return date.slice(0, 7);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(parsed);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${get("year")}-${get("month")}`;
 };
 const toIsoDate = (date: string) => {
   const [d, m, y] = date.split("/");
@@ -142,6 +166,10 @@ const orderCodes = (order: Order) =>
   getOrderItems(order)
     .map((item) => item.code)
     .join(", ");
+const orderItemSummary = (order: Order) =>
+  getOrderItems(order)
+    .map((item) => `${item.code} — ${item.quantity} un.`)
+    .join(" | ");
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("dashboard");
@@ -158,6 +186,9 @@ export default function Home() {
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [productModal, setProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [reportMonth, setReportMonth] = useState("");
+  const [reportCustomer, setReportCustomer] = useState("");
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [walletPayment, setWalletPayment] = useState<{
     items: Order[];
@@ -249,6 +280,13 @@ export default function Home() {
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
+  const reportOrders = orders.filter(
+    (o) =>
+      (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
+      (!reportCustomer || o.customerName === reportCustomer),
+  );
+  const reportSales = reportOrders.reduce((sum, o) => sum + o.total, 0);
+  const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
   const walletMonths = useMemo(
     () =>
       Object.entries(
@@ -260,7 +298,7 @@ export default function Home() {
           )
           .reduce(
             (months, o) => {
-              const month = o.createdAt.slice(0, 7);
+              const month = monthInSaoPaulo(o.createdAt);
               const customers = months[month] || (months[month] = {});
               const key = o.customerName;
               const current = customers[key] || {
@@ -409,10 +447,11 @@ export default function Home() {
       )
         throw new Error("Preencha código, descrição e medida do pino.");
       const r = await fetch("/api/catalog", {
-        method: "POST",
+        method: editingProduct ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           type: "product",
+          id: editingProduct?.id,
           code: f.get("code"),
           name: f.get("name"),
           measure: f.get("measure"),
@@ -422,10 +461,14 @@ export default function Home() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
       setProducts((v) =>
-        [...v, j.product].sort((a, b) => a.code.localeCompare(b.code)),
+        (editingProduct
+          ? v.map((p) => (p.id === j.product.id ? j.product : p))
+          : [...v, j.product]
+        ).sort((a, b) => a.code.localeCompare(b.code)),
       );
       setProductModal(false);
-      flash("Pino cadastrado com sucesso.");
+      setEditingProduct(null);
+      flash(editingProduct ? "Pino atualizado com sucesso." : "Pino cadastrado com sucesso.");
     } catch (err) {
       flash(err instanceof Error ? err.message : "Erro ao cadastrar.");
     } finally {
@@ -580,37 +623,51 @@ export default function Home() {
       "_blank",
     );
   }
-  function createPdf(order: Order) {
+  function loadImageData(url: string) {
+    return new Promise<string>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        canvas.getContext("2d")?.drawImage(image, 0, 0);
+        resolve(canvas.toDataURL("image/jpeg", 0.9));
+      };
+      image.onerror = () => reject(new Error("Não foi possível carregar a logo."));
+      image.src = url;
+    });
+  }
+  async function createPdf(order: Order) {
     const items = getOrderItems(order);
     const pdf = new jsPDF();
+    const logo = await loadImageData("/logo-pdf.png");
+    pdf.addImage(logo, "JPEG", 18, 7, 45, 45, undefined, "FAST");
     pdf.setTextColor(23, 74, 82);
-    pdf.setFontSize(22);
-    pdf.text(companyName || "Pino de Balança", 18, 22);
     pdf.setFontSize(10);
     pdf.setTextColor(90);
-    pdf.text("Ordem de Serviço de fabricação", 18, 29);
+    pdf.text("Ordem de Serviço de fabricação", 70, 24);
     pdf.setFontSize(16);
     pdf.setTextColor(216, 107, 50);
-    pdf.text(order.number, 192, 22, { align: "right" });
+    pdf.text(order.number, 192, 34, { align: "right" });
     pdf.setDrawColor(23, 74, 82);
     pdf.setLineWidth(1.2);
-    pdf.line(18, 34, 192, 34);
+    pdf.line(18, 56, 192, 56);
     pdf.setTextColor(30);
     pdf.setFontSize(11);
-    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 18, 46);
-    pdf.text(`Cliente: ${order.customerName}`, 18, 55);
-    pdf.text(`Origem: ${order.origin}`, 18, 64);
-    pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 110, 46);
-    pdf.text(`Status: ${order.productionStatus}`, 110, 55);
+    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 18, 68);
+    pdf.text(`Cliente: ${order.customerName}`, 18, 77);
+    pdf.text(`Origem: ${order.origin}`, 18, 86);
+    pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 110, 68);
+    pdf.text(`Status: ${order.productionStatus}`, 110, 77);
     pdf.setFillColor(23, 74, 82);
-    pdf.rect(18, 75, 174, 10, "F");
+    pdf.rect(18, 96, 174, 10, "F");
     pdf.setTextColor(255);
-    pdf.text("MODELO", 22, 82);
-    pdf.text("QTD.", 115, 82);
-    pdf.text("UNITÁRIO", 140, 82);
-    pdf.text("SUBTOTAL", 188, 82, { align: "right" });
+    pdf.text("MODELO", 22, 103);
+    pdf.text("QTD.", 115, 103);
+    pdf.text("UNITÁRIO", 140, 103);
+    pdf.text("SUBTOTAL", 188, 103, { align: "right" });
     pdf.setTextColor(30);
-    let y = 94;
+    let y = 115;
     items.forEach((item) => {
       const p = products.find((x) => x.code === item.code);
       pdf.text(`${item.code} — ${p?.measure || ""}`, 22, y);
@@ -661,14 +718,15 @@ export default function Home() {
     pdf.text(orderFooter, 105, 282, { align: "center" });
     return pdf;
   }
-  function downloadPdf(order: Order) {
-    createPdf(order).save(`${order.number}.pdf`);
+  async function downloadPdf(order: Order) {
+    const pdf = await createPdf(order);
+    pdf.save(`${order.number}.pdf`);
   }
   async function shareOrder(order: Order) {
     const customer = customers.find((c) => c.name === order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const text = `Olá, ${customer.name}! Segue a ${order.number}. Status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
-    downloadPdf(order);
+    await downloadPdf(order);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
       `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF da OS foi baixado e está pronto para ser anexado nesta conversa.")}`,
@@ -697,7 +755,7 @@ export default function Home() {
         "Entrega",
         "Status",
       ],
-      ...orders.map((o) => [
+      ...reportOrders.map((o) => [
         o.number,
         o.customerName,
         o.productCode,
@@ -736,11 +794,7 @@ export default function Home() {
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
         <div className="brand">
-          <div className="brand-mark">PB</div>
-          <div>
-            <strong>Pino de Balança</strong>
-            <span>Gestão de serviços</span>
-          </div>
+          <img className="brand-logo" src="/logo-sistema.png" alt="Rogério Mendes — Pinos de Balança" />
         </div>
         <nav>
           {nav.map(([s, i, l]) => (
@@ -770,7 +824,7 @@ export default function Home() {
       <section className="workspace">
         <header className="mobile-header">
           <button onClick={() => setMenu(!menu)}>☰</button>
-          <strong>Pino de Balança</strong>
+          <img className="mobile-header-logo" src="/logo-sistema.png" alt="Rogério Mendes" />
           <button className="mobile-add" onClick={() => go("new-order")}>
             ＋
           </button>
@@ -797,6 +851,20 @@ export default function Home() {
                     </button>
                   }
                 />
+                <div className="filters report-filters">
+                  <label className="field">
+                    <span>Mês</span>
+                    <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Cliente</span>
+                    <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
+                      <option value="">Todos os clientes</option>
+                      {customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
+                    </select>
+                  </label>
+                  {(reportMonth || reportCustomer) && <button className="outline-button" onClick={() => { setReportMonth(""); setReportCustomer(""); }}>Limpar filtros</button>}
+                </div>
                 <section className="metrics">
                   <Metric
                     icon="▤"
@@ -1214,7 +1282,7 @@ export default function Home() {
                   action={
                     <button
                       className="primary-button"
-                      onClick={() => setProductModal(true)}
+                      onClick={() => { setEditingProduct(null); setProductModal(true); }}
                     >
                       ＋ Novo pino
                     </button>
@@ -1249,6 +1317,12 @@ export default function Home() {
                             </span>
                           </td>
                           <td>
+                            <button
+                              className="link-button"
+                              onClick={() => { setEditingProduct(p); setProductModal(true); }}
+                            >
+                              Editar
+                            </button>
                             <button
                               className="link-button"
                               onClick={() => toggle("product", p.id, !p.active)}
@@ -1405,35 +1479,32 @@ export default function Home() {
                   <Metric
                     icon="R$"
                     label="Vendas"
-                    value={money(metrics.sales)}
+                    value={money(reportSales)}
                   />
                   <Metric
                     icon="✓"
                     label="Recebido"
-                    value={money(metrics.received)}
+                    value={money(reportReceived)}
                   />
                   <Metric
                     icon="…"
                     label="Pendente"
-                    value={money(metrics.sales - metrics.received)}
+                    value={money(reportSales - reportReceived)}
                   />
                   <Metric
                     icon="▤"
                     label="OS cadastradas"
-                    value={orders.length}
+                    value={reportOrders.length}
                   />
                 </section>
                 <div className="panel report-bars">
                   {products.map((p) => {
-                    const count = orders
-                      .filter((o) => o.productCode === p.code)
-                      .reduce((s, o) => s + o.quantity, 0);
+                    const count = reportOrders
+                      .reduce((s, o) => s + getOrderItems(o).filter((item) => item.code === p.code).reduce((n, item) => n + item.quantity, 0), 0);
                     const max = Math.max(
                       1,
                       ...products.map((x) =>
-                        orders
-                          .filter((o) => o.productCode === x.code)
-                          .reduce((s, o) => s + o.quantity, 0),
+                        reportOrders.reduce((s, o) => s + getOrderItems(o).filter((item) => item.code === x.code).reduce((n, item) => n + item.quantity, 0), 0),
                       ),
                     );
                     return (
@@ -1567,25 +1638,25 @@ export default function Home() {
         </Modal>
       )}
       {productModal && (
-        <Modal title="Cadastrar pino" close={() => setProductModal(false)}>
+        <Modal title={editingProduct ? "Editar pino" : "Cadastrar pino"} close={() => { setProductModal(false); setEditingProduct(null); }}>
           <form onSubmit={saveProduct} noValidate>
             <div className="form-grid">
               <Field label="Código *">
-                <input name="code" required placeholder="Ex.: RN 250" />
+                <input name="code" required placeholder="Ex.: RN 250" defaultValue={editingProduct?.code || ""} />
               </Field>
               <Field label="Medida *">
-                <input name="measure" required placeholder="Ex.: 250 mm" />
+                <input name="measure" required placeholder="Ex.: 250 mm" defaultValue={editingProduct?.measure || ""} />
               </Field>
             </div>
             <Field label="Descrição *">
-              <input name="name" required placeholder="Pino de balança..." />
+              <input name="name" required placeholder="Pino de balança..." defaultValue={editingProduct?.name || ""} />
             </Field>
             <Field label="Preço *">
               <input
                 name="price"
                 required
                 inputMode="numeric"
-                defaultValue="R$ 0,00"
+                defaultValue={editingProduct ? money(editingProduct.price) : "R$ 0,00"}
                 onChange={(e) => {
                   e.currentTarget.value = maskCurrency(e.currentTarget.value);
                 }}
@@ -1595,12 +1666,12 @@ export default function Home() {
               <button
                 type="button"
                 className="cancel-button"
-                onClick={() => setProductModal(false)}
+                onClick={() => { setProductModal(false); setEditingProduct(null); }}
               >
                 Cancelar
               </button>
               <button className="primary-button" disabled={saving}>
-                Salvar pino
+                {editingProduct ? "Salvar alterações" : "Salvar pino"}
               </button>
             </div>
           </form>
@@ -1681,7 +1752,7 @@ export default function Home() {
             <div>
               <span>Pinos</span>
               <b>
-                {orderCodes(orderModal)} · {orderModal.quantity} un.
+                {orderItemSummary(orderModal)}
               </b>
             </div>
             <div>
@@ -1876,7 +1947,7 @@ function OrderList({
             <div className="order-main">
               <strong>{o.customerName}</strong>
               <span>
-                {o.number} · Emitida em {brDate(o.createdAt)} · {orderCodes(o)}{" "}
+                {o.number} · Emitida em {brDate(o.createdAt)} · {orderItemSummary(o)}{" "}
                 · {money(o.total)}
               </span>
             </div>

@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; code?: string; measure?: string; sku?: string };
     const id = Number(body.id);
     if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
     const db = await getDb();
@@ -64,6 +64,10 @@ export async function PATCH(request: Request) {
       const changes: Partial<typeof products.$inferInsert> = {};
       if (body.active !== undefined) changes.active = body.active;
       if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
+      if (body.code) changes.code = body.code.trim().toUpperCase();
+      if (body.name) changes.name = body.name.trim();
+      if (body.measure) changes.measure = body.measure.trim();
+      if (body.sku !== undefined) changes.sku = body.sku.trim().toUpperCase();
       const [product] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
       return Response.json({ product });
     }
