@@ -26,9 +26,15 @@ export async function POST(request: Request) {
     if (email !== "tacytpr@gmail.com") return Response.json({ error: "Use o e-mail administrador autorizado." }, { status: 400 });
     if (!name) return Response.json({ error: "Informe seu nome." }, { status: 400 });
     if (!validNewPassword(password)) return Response.json({ error: passwordRuleError }, { status: 400 });
-    const { hash, salt } = await passwordHash(password);
-    const result = await db.prepare("INSERT INTO app_users(name,email,password_hash,salt,role) VALUES(?,?,?,?, 'admin')").bind(name, email, hash, salt).run();
-    return createSession(db, Number(result.meta.last_row_id));
+    try {
+      const { hash, salt } = await passwordHash(password);
+      await db.prepare("INSERT INTO app_users(name,email,password_hash,salt,role) VALUES(?,?,?,?, 'admin')").bind(name, email, hash, salt).run();
+      const created = await db.prepare("SELECT id FROM app_users WHERE email=?").bind(email).first<{ id: number }>();
+      if (!created?.id) throw new Error("Cadastro não localizado após a gravação.");
+      return createSession(db, created.id);
+    } catch (error) {
+      return Response.json({ error: `Não foi possível criar o acesso: ${error instanceof Error ? error.message : "erro interno"}.` }, { status: 500 });
+    }
   }
 
   if (action === "login") {
