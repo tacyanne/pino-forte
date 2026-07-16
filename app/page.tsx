@@ -228,11 +228,24 @@ export default function Home() {
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
       setOrders(ord.orders || []);
-      if (config.settings) {
-        setCompanyName(config.settings.companyName);
-        setResponsible(config.settings.responsible);
-        setCompanyPhone(config.settings.companyPhone);
-        setOrderFooter(config.settings.orderFooter);
+      let settings = config.settings;
+      try {
+        const localSettings = JSON.parse(localStorage.getItem("pino-settings") || "null");
+        if (localSettings) {
+          const migrated = await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(localSettings),
+          }).then((response) => response.json());
+          settings = migrated.settings || localSettings;
+          localStorage.removeItem("pino-settings");
+        }
+      } catch {}
+      if (settings) {
+        setCompanyName(settings.companyName);
+        setResponsible(settings.responsible);
+        setCompanyPhone(settings.companyPhone);
+        setOrderFooter(settings.orderFooter);
       }
       if (!selectedCode && cat.products?.[0])
         setSelectedCode(cat.products[0].code);
@@ -675,8 +688,7 @@ export default function Home() {
     pdf.setFontSize(11);
     pdf.text(`Emissão: ${brDate(order.createdAt)}`, 18, 57);
     pdf.text(`Cliente: ${order.customerName}`, 18, 66);
-    pdf.text(`Origem: ${order.origin}`, 18, 75);
-    pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 110, 57);
+    pdf.text(`Previsão de entrega: ${brDate(order.deliveryDate)}`, 110, 57);
     pdf.text(`Status: ${order.productionStatus}`, 110, 66);
     pdf.setFillColor(45, 45, 45);
     pdf.rect(18, 84, 174, 10, "F");
