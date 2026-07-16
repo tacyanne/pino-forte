@@ -623,14 +623,18 @@ export default function Home() {
       "_blank",
     );
   }
-  function loadImageData(url: string) {
+  function loadImageData(url: string, grayscale = false) {
     return new Promise<string>((resolve, reject) => {
       const image = new Image();
       image.onload = () => {
         const canvas = document.createElement("canvas");
         canvas.width = image.naturalWidth;
         canvas.height = image.naturalHeight;
-        canvas.getContext("2d")?.drawImage(image, 0, 0);
+        const context = canvas.getContext("2d");
+        if (context) {
+          if (grayscale) context.filter = "grayscale(100%)";
+          context.drawImage(image, 0, 0);
+        }
         resolve(canvas.toDataURL("image/jpeg", 0.9));
       };
       image.onerror = () => reject(new Error("Não foi possível carregar a logo."));
@@ -640,34 +644,36 @@ export default function Home() {
   async function createPdf(order: Order) {
     const items = getOrderItems(order);
     const pdf = new jsPDF();
-    const logo = await loadImageData("/logo-pdf.png");
-    pdf.addImage(logo, "JPEG", 18, 7, 45, 45, undefined, "FAST");
-    pdf.setTextColor(23, 74, 82);
-    pdf.setFontSize(10);
-    pdf.setTextColor(90);
-    pdf.text("Ordem de Serviço de fabricação", 70, 24);
-    pdf.setFontSize(16);
-    pdf.setTextColor(216, 107, 50);
-    pdf.text(order.number, 192, 34, { align: "right" });
-    pdf.setDrawColor(23, 74, 82);
-    pdf.setLineWidth(1.2);
-    pdf.line(18, 56, 192, 56);
+    const logo = await loadImageData("/logo-pdf.png", true);
+    pdf.addImage(logo, "JPEG", 18, 8, 32, 32, undefined, "FAST");
+    pdf.setTextColor(45);
+    pdf.setFontSize(13);
+    pdf.text("ORDEM DE SERVIÇO", 56, 20);
+    pdf.setFontSize(9);
+    pdf.setTextColor(105);
+    pdf.text("Fabricação de pinos de balança", 56, 27);
+    pdf.setFontSize(15);
+    pdf.setTextColor(45);
+    pdf.text(order.number, 192, 22, { align: "right" });
+    pdf.setDrawColor(55);
+    pdf.setLineWidth(0.6);
+    pdf.line(18, 46, 192, 46);
     pdf.setTextColor(30);
     pdf.setFontSize(11);
-    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 18, 68);
-    pdf.text(`Cliente: ${order.customerName}`, 18, 77);
-    pdf.text(`Origem: ${order.origin}`, 18, 86);
-    pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 110, 68);
-    pdf.text(`Status: ${order.productionStatus}`, 110, 77);
-    pdf.setFillColor(23, 74, 82);
-    pdf.rect(18, 96, 174, 10, "F");
+    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 18, 57);
+    pdf.text(`Cliente: ${order.customerName}`, 18, 66);
+    pdf.text(`Origem: ${order.origin}`, 18, 75);
+    pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 110, 57);
+    pdf.text(`Status: ${order.productionStatus}`, 110, 66);
+    pdf.setFillColor(45, 45, 45);
+    pdf.rect(18, 84, 174, 10, "F");
     pdf.setTextColor(255);
-    pdf.text("MODELO", 22, 103);
-    pdf.text("QTD.", 115, 103);
-    pdf.text("UNITÁRIO", 140, 103);
-    pdf.text("SUBTOTAL", 188, 103, { align: "right" });
+    pdf.text("MODELO", 22, 91);
+    pdf.text("QTD.", 115, 91);
+    pdf.text("UNITÁRIO", 140, 91);
+    pdf.text("SUBTOTAL", 188, 91, { align: "right" });
     pdf.setTextColor(30);
-    let y = 115;
+    let y = 103;
     items.forEach((item) => {
       const p = products.find((x) => x.code === item.code);
       pdf.text(`${item.code} — ${p?.measure || ""}`, 22, y);
