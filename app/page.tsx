@@ -267,6 +267,9 @@ export default function Home() {
   );
   const metrics = useMemo(
     () => ({
+      queue: orders.filter((o) =>
+        ["Aguardando", "Em produção"].includes(o.productionStatus),
+      ).length,
       open: orders.filter(
         (o) => !["Entregue", "Cancelada"].includes(o.productionStatus),
       ).length,
@@ -935,8 +938,8 @@ export default function Home() {
                 <section className="metrics">
                   <Metric
                     icon="▤"
-                    label="Ordens abertas"
-                    value={metrics.open}
+                    label="Fila de produção"
+                    value={metrics.queue}
                   />
                   <Metric
                     icon="⚒"
