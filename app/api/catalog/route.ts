@@ -13,7 +13,7 @@ const initialProducts = [
 
 export async function GET() {
   try {
-    const db = getDb();
+    const db = await getDb();
     let productRows = await db.select().from(products).orderBy(asc(products.code));
     if (!productRows.length) {
       await db.insert(products).values(initialProducts.map(([code, sku, name, measure, price]) => ({ code, sku, name, measure, price })));

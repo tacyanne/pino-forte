@@ -4,7 +4,8 @@ import { serviceOrders } from "../../../db/schema";
 
 export async function GET() {
   try {
-    const rows = await getDb().select().from(serviceOrders).orderBy(desc(serviceOrders.id)).limit(100);
+    const db = await getDb();
+    const rows = await db.select().from(serviceOrders).orderBy(desc(serviceOrders.id)).limit(100);
     return Response.json({ orders: rows });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível consultar as ordens." }, { status: 500 });
@@ -21,7 +22,8 @@ export async function POST(request: Request) {
       return Response.json({ error: "Cliente, pino e previsão de entrega são obrigatórios." }, { status: 400 });
     }
     const number = `OS-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-    const [order] = await getDb().insert(serviceOrders).values({
+    const db = await getDb();
+    const [order] = await db.insert(serviceOrders).values({
       number,
       customerName: String(body.customerName),
       origin: String(body.origin || "Painel administrativo"),
