@@ -840,20 +840,6 @@ export default function Home() {
                     </button>
                   }
                 />
-                <div className="filters report-filters">
-                  <label className="field">
-                    <span>Mês</span>
-                    <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>Cliente</span>
-                    <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
-                      <option value="">Todos os clientes</option>
-                      {customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
-                    </select>
-                  </label>
-                  {(reportMonth || reportCustomer) && <button className="outline-button" onClick={() => { setReportMonth(""); setReportCustomer(""); }}>Limpar filtros</button>}
-                </div>
                 <section className="metrics">
                   <Metric
                     icon="▤"
@@ -1356,12 +1342,17 @@ export default function Home() {
                             {Object.values(customerMap).map((item) => {
                               const balance = item.total - item.received;
                               const history = item.orders.flatMap((o) => {
+                                let laterPayments: { amount: number; method: string; date: string }[] = [];
                                 try {
                                   const value = JSON.parse(o.commercialStatus);
-                                  return Array.isArray(value) ? value : [];
-                                } catch {
-                                  return [];
-                                }
+                                  laterPayments = Array.isArray(value) ? value : [];
+                                } catch {}
+                                const laterTotal = laterPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+                                const initialPayment = Math.max(0, o.received - laterTotal);
+                                return [
+                                  ...(initialPayment > 0 ? [{ amount: initialPayment, method: "Pagamento inicial", date: o.createdAt }] : []),
+                                  ...laterPayments,
+                                ];
                               }) as {
                                 amount: number;
                                 method: string;
@@ -1388,7 +1379,9 @@ export default function Home() {
                                     <strong>{money(item.total)}</strong>
                                   </div>
                                   <div className="wallet-summary">
-                                    <span>{item.orders.length} OS</span>
+                                    <span>
+                                      Ordens: <b>{item.orders.length} OS</b>
+                                    </span>
                                     <span>
                                       Pago: <b>{money(item.received)}</b>
                                     </span>
@@ -1464,6 +1457,20 @@ export default function Home() {
                     </button>
                   }
                 />
+                <div className="filters report-filters">
+                  <label className="field">
+                    <span>Mês</span>
+                    <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Cliente</span>
+                    <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
+                      <option value="">Todos os clientes</option>
+                      {customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
+                    </select>
+                  </label>
+                  {(reportMonth || reportCustomer) && <button className="outline-button" onClick={() => { setReportMonth(""); setReportCustomer(""); }}>Limpar filtros</button>}
+                </div>
                 <section className="metrics">
                   <Metric
                     icon="R$"
