@@ -60,7 +60,17 @@ const toIsoDate = (date: string) => {
   const [d, m, y] = date.split("/");
   return d && m && y ? `${y}-${m}-${d}` : "";
 };
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (type: string) =>
+    parts.find((part) => part.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+};
 const maskDate = (value: string) =>
   value
     .replace(/\D/g, "")
@@ -821,10 +831,12 @@ export default function Home() {
                     />
                   </div>
                   <div className="side-stack">
-                    <div className="panel finance">
-                      <span>Valor vendido</span>
-                      <strong>{money(metrics.sales)}</strong>
-                      <small>Todo o período</small>
+                    <div className="panel finance finance-card">
+                      <div className="finance-main">
+                        <span>Vendas registradas</span>
+                        <strong>{money(metrics.sales)}</strong>
+                        <small>Total das Ordens de Serviço</small>
+                      </div>
                       <div className="finance-line">
                         <span>
                           <b>{money(metrics.received)}</b> recebido
@@ -835,15 +847,27 @@ export default function Home() {
                         </span>
                       </div>
                     </div>
-                    <div className="panel attention">
-                      <h2>
-                        {metrics.late ? "Atenção aos prazos" : "Tudo em dia"}
-                      </h2>
-                      <p>
-                        {metrics.late
-                          ? `${metrics.late} OS atrasada(s).`
-                          : "Nenhuma OS atrasada."}
-                      </p>
+                    <div
+                      className={`panel attention deadline-card ${metrics.late ? "has-alert" : "is-ok"}`}
+                    >
+                      <div className="deadline-icon">
+                        {metrics.late ? "!" : "✓"}
+                      </div>
+                      <div>
+                        <h2>
+                          {metrics.late ? "Atenção aos prazos" : "Tudo em dia"}
+                        </h2>
+                        <p>
+                          {metrics.late
+                            ? `${metrics.late} ${metrics.late === 1 ? "ordem está atrasada" : "ordens estão atrasadas"}. Consulte a lista para priorizar a produção.`
+                            : "Nenhuma ordem está atrasada no momento."}
+                        </p>
+                        {metrics.late > 0 && (
+                          <button onClick={() => go("orders")}>
+                            Ver ordens atrasadas →
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </section>
