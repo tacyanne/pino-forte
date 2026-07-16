@@ -1,8 +1,10 @@
 import { desc, eq, max } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { serviceOrders } from "../../../db/schema";
+import { requireUser } from "../../../lib/auth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const db = await getDb();
     const rows = await db
@@ -33,6 +35,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = (await request.json()) as Record<string, unknown>;
     const items = Array.isArray(body.items)
@@ -101,6 +104,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = (await request.json()) as Record<string, string | number>;
     const id = Number(body.id);
@@ -152,7 +156,8 @@ export async function PATCH(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const db = await getDb();
     await db.delete(serviceOrders);

@@ -1,6 +1,7 @@
 import { asc, eq, like } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { customers, products } from "../../../db/schema";
+import { requireUser } from "../../../lib/auth";
 
 const initialProducts = [
   ["RN 180", "RN-180", "Pino de balança RN 180", "180 mm", 49],
@@ -11,7 +12,8 @@ const initialProducts = [
   ["RO 235", "RO-235", "Pino de balança RO 235", "235 mm", 68],
 ] as const;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const db = await getDb();
     let productRows = await db.select().from(products).orderBy(asc(products.code));
@@ -27,6 +29,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; code?: string; sku?: string; measure?: string; price?: number };
     const db = await getDb();
@@ -55,6 +58,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; code?: string; measure?: string; sku?: string };
     const id = Number(body.id);
@@ -85,6 +89,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = await request.json() as { type?: string; id?: number; name?: string };
     if (body.type !== "customer") {

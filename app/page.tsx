@@ -172,6 +172,8 @@ const orderItemSummary = (order: Order) =>
     .join(" | ");
 
 export default function Home() {
+  const [auth, setAuth] = useState<{ loading: boolean; setupRequired: boolean; user: any; users: any[] }>({ loading: true, setupRequired: false, user: null, users: [] });
+  const [authError, setAuthError] = useState("");
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [menu, setMenu] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -256,8 +258,38 @@ export default function Home() {
     }
   }
   useEffect(() => {
-    loadAll();
+    fetch("/api/auth").then((r) => r.json()).then((data) => {
+      setAuth({ loading: false, setupRequired: !!data.setupRequired, user: data.user || null, users: data.users || [] });
+      if (data.user) loadAll(); else setLoading(false);
+    }).catch(() => { setAuth((value) => ({ ...value, loading: false })); setLoading(false); });
   }, []);
+
+  async function submitAuth(event: any) {
+    event.preventDefault(); setAuthError("");
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: auth.setupRequired ? "setup" : "login", name: form.get("name"), email: form.get("email"), password: form.get("password") }) });
+    const data = await response.json();
+    if (!response.ok) return setAuthError(data.error || "Não foi possível entrar.");
+    location.reload();
+  }
+
+  async function logout() { await fetch("/api/auth", { method: "DELETE" }); location.reload(); }
+
+  async function createUser(event: any) {
+    event.preventDefault(); setAuthError("");
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create-user", name: form.get("name"), email: form.get("email"), password: form.get("password") }) });
+    const data = await response.json();
+    if (!response.ok) return setAuthError(data.error || "Não foi possível cadastrar o usuário.");
+    event.currentTarget.reset(); flash("Usuário cadastrado com sucesso.");
+    const refreshed = await fetch("/api/auth").then((r) => r.json());
+    setAuth((value) => ({ ...value, users: refreshed.users || [] }));
+  }
+  async function toggleUser(id: number, active: boolean) {
+    await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "toggle-user", id, active }) });
+    const refreshed = await fetch("/api/auth").then((r) => r.json());
+    setAuth((value) => ({ ...value, users: refreshed.users || [] }));
+  }
   const product = products.find((p) => p.code === selectedCode) || products[0];
   const total = orderItems.reduce(
     (sum, item) =>
@@ -864,6 +896,24 @@ export default function Home() {
     URL.revokeObjectURL(a.href);
   }
 
+  if (auth.loading) return <main className="auth-page"><div className="auth-card"><div className="empty">Carregando acesso...</div></div></main>;
+  if (!auth.user) return (
+    <main className="auth-page">
+      <section className="auth-card">
+        <img src="/logo-sistema.png" alt="Rogério Mendes" />
+        <h1>{auth.setupRequired ? "Criar acesso administrador" : "Entrar no sistema"}</h1>
+        <p>{auth.setupRequired ? "Cadastre sua senha para proteger clientes e ordens de serviço." : "Use seu e-mail e sua senha para continuar."}</p>
+        <form onSubmit={submitAuth}>
+          {auth.setupRequired && <Field label="Seu nome"><input name="name" required autoFocus placeholder="Nome completo" /></Field>}
+          <Field label="E-mail"><input name="email" type="email" required defaultValue={auth.setupRequired ? "tacytpr@gmail.com" : ""} readOnly={auth.setupRequired} autoFocus={!auth.setupRequired} /></Field>
+          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><input name="password" type="password" minLength={8} required placeholder="Mínimo de 8 caracteres" /></Field>
+          {authError && <p className="modal-error">{authError}</p>}
+          <button className="primary-button" type="submit">{auth.setupRequired ? "Criar acesso e entrar" : "Entrar"}</button>
+        </form>
+      </section>
+    </main>
+  );
+
   const nav: [Screen, string, string][] = [
     ["dashboard", "⌂", "Início"],
     ["orders", "▤", "Ordens de Serviço"],
@@ -898,10 +948,11 @@ export default function Home() {
           <div className="user-card">
             <div className="avatar">RM</div>
             <div>
-              <strong>Rogério Mendes</strong>
-              <span>Administrador</span>
+              <strong>{auth.user.name}</strong>
+              <span>{auth.user.role === "admin" ? "Administrador" : "Usuário"}</span>
             </div>
           </div>
+          <button className="logout-button" onClick={logout}>Sair</button>
         </div>
       </aside>
       <section className="workspace">
@@ -1652,6 +1703,17 @@ export default function Home() {
                     Salvar configurações
                   </button>
                 </div>
+                {auth.user.role === "admin" && <div className="panel user-admin">
+                  <div className="panel-title"><div><h2>Usuários do sistema</h2><p>Cadastre uma senha temporária e entregue-a diretamente à pessoa.</p></div></div>
+                  <form className="user-create" onSubmit={createUser}>
+                    <Field label="Nome"><input name="name" required placeholder="Nome da pessoa" /></Field>
+                    <Field label="E-mail"><input name="email" type="email" required defaultValue="sampaio.mendes101@gmail.com" /></Field>
+                    <Field label="Senha temporária"><input name="password" type="password" minLength={8} required placeholder="Mínimo de 8 caracteres" /></Field>
+                    <button className="primary-button">Cadastrar usuário</button>
+                  </form>
+                  {authError && <p className="modal-error user-error">{authError}</p>}
+                  <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className="link-button" onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
+                </div>}
               </div>
             )}
           </>

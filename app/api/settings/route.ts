@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appSettings } from "../../../db/schema";
+import { requireUser } from "../../../lib/auth";
 
 const defaults = {
   id: 1,
@@ -10,7 +11,8 @@ const defaults = {
   orderFooter: "Documento gerado pelo sistema Pino de Balança",
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   const db = await getDb();
   const [settings] = await db.select().from(appSettings).where(eq(appSettings.id, 1)).limit(1);
   if (settings) return Response.json({ settings });
@@ -19,6 +21,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const auth = await requireUser(request); if (auth instanceof Response) return auth;
   const body = await request.json() as Partial<typeof defaults>;
   const settings = {
     id: 1,
