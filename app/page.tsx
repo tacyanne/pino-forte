@@ -1195,7 +1195,7 @@ export default function Home() {
               <div className="page">
                 <Heading
                   eyebrow="GESTÃO"
-                  title="Ordens de Serviço"
+                  title="Ordem de Serviço"
                   subtitle="Atualize produção, pagamentos e prazos."
                   action={
                     <button
@@ -1878,9 +1878,7 @@ export default function Home() {
 }
 
 function Heading({
-  eyebrow,
   title,
-  subtitle,
   action,
 }: {
   eyebrow: string;
@@ -1891,9 +1889,7 @@ function Heading({
   return (
     <div className="page-heading">
       <div>
-        <p className="eyebrow">{eyebrow}</p>
         <h1>{title}</h1>
-        <p>{subtitle}</p>
       </div>
       {action}
     </div>
