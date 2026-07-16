@@ -721,10 +721,26 @@ export default function Home() {
     const customer = customers.find((c) => c.name === order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const text = `Olá, ${customer.name}! Segue a ${order.number}. Status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
-    await downloadPdf(order);
+    const pdf = await createPdf(order);
+    const file = new File([pdf.output("blob")], `${order.number}.pdf`, {
+      type: "application/pdf",
+    });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: order.number,
+          text,
+        });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    pdf.save(`${order.number}.pdf`);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
-      `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF da OS foi baixado e está pronto para ser anexado nesta conversa.")}`,
+      `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF foi baixado; anexe o arquivo nesta conversa.")}`,
       "_blank",
     );
   }
@@ -1819,8 +1835,8 @@ export default function Home() {
             </button>
           </div>
           <p className="send-help">
-            “Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp
-            cadastrado do cliente.
+            No celular, o PDF será compartilhado como arquivo. No computador,
+            ele será baixado e a conversa do cliente será aberta.
           </p>
         </Modal>
       )}
