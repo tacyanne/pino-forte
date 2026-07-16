@@ -503,6 +503,8 @@ export default function Home() {
         ...item,
         unitPrice: products.find((p) => p.code === item.code)?.price || 0,
       }));
+      const paymentMethod = String(f.get("paymentMethod") || "Pix");
+      const paidOnCreation = ["Pix", "Dinheiro", "Cartão"].includes(paymentMethod);
       const r = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -514,9 +516,9 @@ export default function Home() {
           quantity,
           unitPrice: product.price,
           items,
-          received,
+          received: paidOnCreation ? total : paymentMethod === "Boleto" ? 0 : received,
           deliveryType: f.get("deliveryType"),
-          paymentMethod: f.get("paymentMethod"),
+          paymentMethod,
           notes: f.get("notes"),
         }),
       });
@@ -552,6 +554,20 @@ export default function Home() {
     setOrders((v) => v.map((o) => (o.id === id ? j.order : o)));
     setOrderModal(j.order);
     flash("OS atualizada.");
+  }
+  async function settleBoleto(order: Order) {
+    if (!window.confirm(`Confirmar o recebimento de ${money(order.total)} referente ao boleto da ${order.number}?`)) return;
+    let history: { amount: number; method: string; date: string }[] = [];
+    try {
+      const value = JSON.parse(order.commercialStatus);
+      if (Array.isArray(value)) history = value;
+    } catch {}
+    history.push({ amount: order.total - order.received, method: "Boleto", date: todayIso() });
+    await updateOrder(order.id, {
+      received: order.total,
+      commercialStatus: JSON.stringify(history),
+    });
+    flash("Pagamento do boleto confirmado.");
   }
   async function settleWallet() {
     if (!walletPayment) return;
@@ -1783,6 +1799,17 @@ export default function Home() {
               </b>
             </div>
             <div>
+              <span>Forma de pagamento</span>
+              <b>
+                {orderModal.paymentMethod}
+                {orderModal.received >= orderModal.total
+                  ? " · Pago"
+                  : orderModal.received > 0
+                    ? " · Pagamento parcial"
+                    : " · Aguardando pagamento"}
+              </b>
+            </div>
+            <div>
               <span>Valor total</span>
               <b>{money(orderModal.total)}</b>
             </div>
@@ -1821,6 +1848,11 @@ export default function Home() {
               </select>
             </Field>
           </div>
+          {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
+            <button className="primary-button boleto-pay" onClick={() => settleBoleto(orderModal)}>
+              Confirmar pagamento do boleto
+            </button>
+          )}
           <div className="detail-actions two">
             <button
               className="outline-button"
