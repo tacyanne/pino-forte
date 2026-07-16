@@ -177,6 +177,7 @@ export default function Home() {
   const [authSaving, setAuthSaving] = useState(false);
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [showTempPassword, setShowTempPassword] = useState(false);
+  const [userSaving, setUserSaving] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [menu, setMenu] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -297,12 +298,20 @@ export default function Home() {
   async function createUser(event: any) {
     event.preventDefault(); setAuthError("");
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create-user", name: form.get("name"), email: form.get("email"), password: form.get("password") }) });
-    const data = await response.json();
-    if (!response.ok) return setAuthError(data.error || "Não foi possível cadastrar o usuário.");
-    event.currentTarget.reset(); flash("Usuário cadastrado com sucesso.");
-    const refreshed = await fetch("/api/auth").then((r) => r.json());
-    setAuth((value) => ({ ...value, users: refreshed.users || [] }));
+    setUserSaving(true);
+    try {
+      const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create-user", name: form.get("name"), email: form.get("email"), password: form.get("password") }) });
+      const data = await response.json();
+      const refreshed = await fetch("/api/auth").then((r) => r.json());
+      setAuth((value) => ({ ...value, users: refreshed.users || [] }));
+      if (!response.ok) {
+        if (response.status === 409) return setAuthError("Este usuário já está cadastrado e foi atualizado na lista abaixo.");
+        return setAuthError(data.error || "Não foi possível cadastrar o usuário.");
+      }
+      event.currentTarget.reset(); setShowTempPassword(false); flash("Usuário cadastrado com sucesso.");
+    } finally {
+      setUserSaving(false);
+    }
   }
   async function toggleUser(id: number, active: boolean) {
     await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "toggle-user", id, active }) });
@@ -1728,7 +1737,7 @@ export default function Home() {
                     <Field label="Nome"><input name="name" required placeholder="Nome da pessoa" /></Field>
                     <Field label="E-mail"><input name="email" type="email" required defaultValue="sampaio.mendes101@gmail.com" /></Field>
                     <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required placeholder="Maiúscula, número e caractere especial" /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}>{showTempPassword ? "◉" : "◌"}</button></div></Field>
-                    <button className="primary-button">Cadastrar usuário</button>
+                    <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar usuário"}</button>
                   </form>
                   {authError && <p className="modal-error user-error">{authError}</p>}
                   <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className="link-button" onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
