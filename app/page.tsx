@@ -220,13 +220,20 @@ export default function Home() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [cat, ord] = await Promise.all([
+      const [cat, ord, config] = await Promise.all([
         fetch("/api/catalog").then((r) => r.json()),
         fetch("/api/orders").then((r) => r.json()),
+        fetch("/api/settings").then((r) => r.json()),
       ]);
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
       setOrders(ord.orders || []);
+      if (config.settings) {
+        setCompanyName(config.settings.companyName);
+        setResponsible(config.settings.responsible);
+        setCompanyPhone(config.settings.companyPhone);
+        setOrderFooter(config.settings.orderFooter);
+      }
       if (!selectedCode && cat.products?.[0])
         setSelectedCode(cat.products[0].code);
     } finally {
@@ -235,13 +242,6 @@ export default function Home() {
   }
   useEffect(() => {
     loadAll();
-    try {
-      const saved = JSON.parse(localStorage.getItem("pino-settings") || "{}");
-      if (saved.companyName) setCompanyName(saved.companyName);
-      if (saved.responsible) setResponsible(saved.responsible);
-      if (saved.companyPhone) setCompanyPhone(saved.companyPhone);
-      if (saved.orderFooter) setOrderFooter(saved.orderFooter);
-    } catch {}
   }, []);
   const product = products.find((p) => p.code === selectedCode) || products[0];
   const total = orderItems.reduce(
@@ -349,12 +349,14 @@ export default function Home() {
     setNotice(text);
     setTimeout(() => setNotice(""), 3500);
   }
-  function saveSettings() {
-    localStorage.setItem(
-      "pino-settings",
-      JSON.stringify({ companyName, responsible, companyPhone, orderFooter }),
-    );
-    flash("Configurações salvas com sucesso.");
+  async function saveSettings() {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ companyName, responsible, companyPhone, orderFooter }),
+    });
+    if (!response.ok) return flash("Não foi possível salvar as configurações.");
+    flash("Configurações salvas e sincronizadas com sucesso.");
   }
   function updateItem(
     index: number,
@@ -632,8 +634,19 @@ export default function Home() {
         canvas.height = image.naturalHeight;
         const context = canvas.getContext("2d");
         if (context) {
-          if (grayscale) context.filter = "grayscale(100%)";
           context.drawImage(image, 0, 0);
+          if (grayscale) {
+            const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < pixels.data.length; i += 4) {
+              const luminance = pixels.data[i] * 0.299 + pixels.data[i + 1] * 0.587 + pixels.data[i + 2] * 0.114;
+              const color = luminance < 38 ? 255 : 25;
+              pixels.data[i] = color;
+              pixels.data[i + 1] = color;
+              pixels.data[i + 2] = color;
+              pixels.data[i + 3] = 255;
+            }
+            context.putImageData(pixels, 0, 0);
+          }
         }
         resolve(canvas.toDataURL("image/jpeg", 0.9));
       };
@@ -721,26 +734,10 @@ export default function Home() {
     const customer = customers.find((c) => c.name === order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const text = `Olá, ${customer.name}! Segue a ${order.number}. Status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
-    const pdf = await createPdf(order);
-    const file = new File([pdf.output("blob")], `${order.number}.pdf`, {
-      type: "application/pdf",
-    });
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: order.number,
-          text,
-        });
-        return;
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-      }
-    }
-    pdf.save(`${order.number}.pdf`);
+    await downloadPdf(order);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
-      `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF foi baixado; anexe o arquivo nesta conversa.")}`,
+      `https://wa.me/55${number}?text=${encodeURIComponent(text + " O PDF da OS foi baixado e está pronto para ser anexado nesta conversa.")}`,
       "_blank",
     );
   }
@@ -1835,8 +1832,8 @@ export default function Home() {
             </button>
           </div>
           <p className="send-help">
-            No celular, o PDF será compartilhado como arquivo. No computador,
-            ele será baixado e a conversa do cliente será aberta.
+            “Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp
+            cadastrado do cliente.
           </p>
         </Modal>
       )}

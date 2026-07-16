@@ -40,3 +40,11 @@ export const serviceOrders = sqliteTable("service_orders", {
   notes: text("notes").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const appSettings = sqliteTable("app_settings", {
+  id: integer("id").primaryKey(),
+  companyName: text("company_name").notNull().default("Pino de Balança"),
+  responsible: text("responsible").notNull().default("Rogério Mendes"),
+  companyPhone: text("company_phone").notNull().default(""),
+  orderFooter: text("order_footer").notNull().default("Documento gerado pelo sistema Pino de Balança"),
+});
