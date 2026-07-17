@@ -2225,7 +2225,6 @@ function Modal({
     <div className={page ? "review-page" : "modal-backdrop"}>
       <div className={page ? "review-shell" : "customer-modal"}>
         <div className="modal-head">
-          {page && <button className="review-back" onClick={close}>← Voltar para Ordens</button>}
           <div>
             {page && <span className="eyebrow">ORDEM DE SERVIÇO</span>}
             <h2>{title}</h2>
