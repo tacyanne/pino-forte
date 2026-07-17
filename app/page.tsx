@@ -1139,11 +1139,11 @@ export default function Home() {
                 </button>
                 <Heading
                   eyebrow="NOVA ORDEM DE SERVIÇO"
-                  title="Criar nova OS"
-                  subtitle="Preencha os dados obrigatórios."
+                  title={editingOrder ? `Editar ${editingOrder.number}` : "Nova OS"}
+                  subtitle="Preencha o pedido e revise antes de gerar o PDF."
                 />
                 <form key={editingOrder?.id || "new"} onSubmit={saveOrder} noValidate>
-                  <Card n="1" title="Cliente">
+                  <Card n="1" title="Dados do pedido">
                     <div className="form-title">
                       <span></span>
                       <button
@@ -1178,9 +1178,7 @@ export default function Home() {
                         </select>
                       </Field>
                     </div>
-                  </Card>
-                  <Card n="2" title="Serviço e prazo">
-                    <div className="form-grid service-grid">
+                    <div className="form-grid order-basics-grid">
                       <Field label="Data do pedido">
                         <input
                           value={brDate(todayIso())}
@@ -1211,7 +1209,7 @@ export default function Home() {
                       </Field>
                     </div>
                   </Card>
-                  <Card n="3" title="Pinos">
+                  <Card n="2" title="Pinos do pedido">
                     <div className="multi-items">
                       {orderItems.map((item, index) => {
                         const p = products.find((x) => x.code === item.code);
@@ -1301,7 +1299,7 @@ export default function Home() {
                       Total dos pinos <strong>{money(total)}</strong>
                     </div>
                   </Card>
-                  <Card n="4" title="Entrega e pagamento">
+                  <Card n="3" title="Pagamento e observações">
                     <div className="form-grid">
                       <Field label="Forma de entrega">
                         <select name="deliveryType" defaultValue={editingOrder?.deliveryType || "Retirada no local"}>
@@ -1345,11 +1343,11 @@ export default function Home() {
                         </span>
                       </div>
                     </div>
-                  </Card>
-                  <Card n="5" title="Observações">
-                    <Field label="Informações para fabricação">
-                      <textarea name="notes" rows={3} defaultValue={editingOrder?.notes || ""} />
-                    </Field>
+                    <div className="order-notes">
+                      <Field label="Observações para fabricação (opcional)">
+                        <textarea name="notes" rows={2} defaultValue={editingOrder?.notes || ""} placeholder="Digite somente se houver alguma orientação importante" />
+                      </Field>
+                    </div>
                   </Card>
                   <div className="form-actions">
                     <button
