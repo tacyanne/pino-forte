@@ -634,7 +634,7 @@ export default function Home() {
       setReceived(0);
       flash(`${j.order.number} criada com sucesso.`);
       if (submitAction === "pdf") downloadPdf(j.order);
-      setOrderModal(j.order);
+      setOrderModal(null);
       setScreen("orders");
     } catch (err) {
       flash(err instanceof Error ? err.message : "Erro ao salvar a OS.");
