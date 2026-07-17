@@ -623,6 +623,7 @@ export default function Home() {
           received: paidOnCreation ? total : paymentMethod === "Boleto" ? 0 : received,
           deliveryType: f.get("deliveryType"),
           paymentMethod,
+          productionStatus: f.get("productionStatus"),
           notes: f.get("notes"),
         }),
       });
@@ -632,7 +633,7 @@ export default function Home() {
       setDeliveryDate("");
       setReceived(0);
       flash(`${j.order.number} criada com sucesso.`);
-      setOrderModal(null);
+      setOrderModal(j.order);
       setScreen("orders");
     } catch (err) {
       flash(err instanceof Error ? err.message : "Erro ao salvar a OS.");
@@ -1152,20 +1153,30 @@ export default function Home() {
                         ＋ Cadastrar cliente
                       </button>
                     </div>
-                    <Field label="Cliente *">
-                      <select
-                        required
-                        value={selectedCustomer}
-                        onChange={(e) => setSelectedCustomer(e.target.value)}
-                      >
-                        <option value="">Selecione</option>
-                        {customers
-                          .filter((c) => c.active)
-                          .map((c) => (
-                            <option key={c.id}>{c.name}</option>
-                          ))}
-                      </select>
-                    </Field>
+                    <div className="form-grid">
+                      <Field label="Cliente *">
+                        <select
+                          required
+                          value={selectedCustomer}
+                          onChange={(e) => setSelectedCustomer(e.target.value)}
+                        >
+                          <option value="">Selecione</option>
+                          {customers
+                            .filter((c) => c.active)
+                            .map((c) => (
+                              <option key={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                      </Field>
+                      <Field label="Status da produção *">
+                        <select name="productionStatus" defaultValue="Fila de produção" required>
+                          <option>Fila de produção</option>
+                          <option>Em produção</option>
+                          <option>Pronta</option>
+                          <option>Entregue</option>
+                        </select>
+                      </Field>
+                    </div>
                   </Card>
                   <Card n="2" title="Serviço e prazo">
                     <div className="form-grid service-grid">
@@ -1966,7 +1977,12 @@ export default function Home() {
         </Modal>
       )}
       {orderModal && (
-        <Modal title={orderModal.number} close={() => setOrderModal(null)}>
+        <Modal
+          title="Revisão do pedido"
+          subtitle={orderModal.number}
+          page
+          close={() => setOrderModal(null)}
+        >
           <div className="order-detail">
             <div>
               <span>Cliente</span>
@@ -2209,19 +2225,28 @@ function OrderList({
 }
 function Modal({
   title,
+  subtitle,
+  page = false,
   close,
   children,
 }: {
   title: string;
+  subtitle?: string;
+  page?: boolean;
   close: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <div className="modal-backdrop">
-      <div className="customer-modal">
+    <div className={page ? "review-page" : "modal-backdrop"}>
+      <div className={page ? "review-shell" : "customer-modal"}>
         <div className="modal-head">
-          <h2>{title}</h2>
-          <button onClick={close}>×</button>
+          {page && <button className="review-back" onClick={close}>← Voltar para Ordens</button>}
+          <div>
+            {page && <span className="eyebrow">ORDEM DE SERVIÇO</span>}
+            <h2>{title}</h2>
+            {subtitle && <p className="review-number">{subtitle}</p>}
+          </div>
+          {!page && <button onClick={close}>×</button>}
         </div>
         {children}
       </div>

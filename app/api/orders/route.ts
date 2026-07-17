@@ -50,6 +50,10 @@ export async function POST(request: Request) {
       ? Math.max(0, Number(items[0].unitPrice))
       : Math.max(0, Number(body.unitPrice || 0));
     const received = Math.max(0, Number(body.received || 0));
+    const requestedStatus = String(body.productionStatus || "Fila de produção");
+    const productionStatus = ["Fila de produção", "Em produção", "Pronta", "Entregue"].includes(requestedStatus)
+      ? requestedStatus
+      : "Fila de produção";
     if (!body.customerName || !body.productCode || !body.deliveryDate) {
       return Response.json(
         { error: "Cliente, pino e previsão de entrega são obrigatórios." },
@@ -85,7 +89,7 @@ export async function POST(request: Request) {
         deliveryDate: String(body.deliveryDate),
         deliveryType: String(body.deliveryType || "Retirada no local"),
         paymentMethod: String(body.paymentMethod || "Pix"),
-        productionStatus: "Fila de produção",
+        productionStatus,
         notes: String(body.notes || ""),
       })
       .returning();
