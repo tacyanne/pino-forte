@@ -1231,13 +1231,22 @@ export default function Home() {
                             <Field label="Quantidade">
                               <input
                                 type="number"
+                                inputMode="numeric"
                                 min="1"
-                                value={item.quantity}
+                                value={item.quantity || ""}
+                                onFocus={(e) => e.currentTarget.select()}
                                 onChange={(e) =>
                                   updateItem(index, {
-                                    quantity: Math.max(1, +e.target.value),
+                                    quantity:
+                                      e.target.value === ""
+                                        ? 0
+                                        : Math.max(0, Number(e.target.value)),
                                   })
                                 }
+                                onBlur={() => {
+                                  if (item.quantity < 1)
+                                    updateItem(index, { quantity: 1 });
+                                }}
                               />
                             </Field>
                             <div className="subtotal">
