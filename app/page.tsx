@@ -221,7 +221,6 @@ export default function Home() {
   const [walletPayMethod, setWalletPayMethod] = useState("Pix");
   const [walletPayDate, setWalletPayDate] = useState("");
   const [walletPayAmount, setWalletPayAmount] = useState(0);
-  const [submitAction, setSubmitAction] = useState<"save" | "pdf">("save");
   const [docType, setDocType] = useState<"CPF" | "CNPJ">("CPF");
   const [doc, setDoc] = useState("");
   const [phone, setPhone] = useState("");
@@ -633,7 +632,6 @@ export default function Home() {
       setDeliveryDate("");
       setReceived(0);
       flash(`${j.order.number} criada com sucesso.`);
-      if (submitAction === "pdf") downloadPdf(j.order);
       setOrderModal(null);
       setScreen("orders");
     } catch (err) {
@@ -1353,9 +1351,8 @@ export default function Home() {
                       type="submit"
                       disabled={saving}
                       className="primary-button"
-                      onClick={() => setSubmitAction("pdf")}
                     >
-                      {saving ? "Salvando..." : "Salvar e gerar PDF"}
+                      {saving ? "Salvando..." : "Salvar OS"}
                     </button>
                   </div>
                 </form>
