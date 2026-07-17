@@ -140,14 +140,14 @@ const formatDocument = (value: string) => {
   if (digits.length === 14) return `CNPJ: ${maskDoc(digits, "CNPJ")}`;
   return value || "—";
 };
-const statusTone = (status: string) =>
-  status === "Entregue" || status === "Pronta"
-    ? "green"
-    : status === "Cancelada"
-      ? "red"
-      : status === "Em produção"
-        ? "blue"
-        : "amber";
+const paymentStatus = (order: Order) =>
+  order.received >= order.total
+    ? "Pago"
+    : order.received > 0
+      ? "Pagamento parcial"
+      : "Aguardando pagamento";
+const paymentTone = (order: Order) =>
+  order.received >= order.total ? "green" : order.received > 0 ? "amber" : "red";
 const getOrderItems = (order: Order) => {
   try {
     const items = JSON.parse(order.productCode);
@@ -199,8 +199,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Todos");
-  const [lateOnly, setLateOnly] = useState(false);
+  const [paymentFilter, setPaymentFilter] = useState("Todos");
   const [notice, setNotice] = useState("");
   const [customerModal, setCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -340,20 +339,9 @@ export default function Home() {
   );
   const metrics = useMemo(
     () => ({
-      queue: orders.filter((o) =>
-        ["Fila de produção", "Aguardando", "Em produção"].includes(o.productionStatus),
-      ).length,
-      open: orders.filter(
-        (o) => !["Entregue", "Cancelada"].includes(o.productionStatus),
-      ).length,
-      production: orders.filter((o) => o.productionStatus === "Em produção")
-        .length,
-      delivered: orders.filter((o) => o.productionStatus === "Entregue").length,
-      late: orders.filter(
-        (o) =>
-          o.deliveryDate < todayIso() &&
-          !["Entregue", "Cancelada"].includes(o.productionStatus),
-      ).length,
+      paid: orders.filter((o) => o.received >= o.total).length,
+      partial: orders.filter((o) => o.received > 0 && o.received < o.total).length,
+      pending: orders.filter((o) => o.received <= 0).length,
       sales: orders.reduce((s, o) => s + o.total, 0),
       received: orders.reduce((s, o) => s + o.received, 0),
     }),
@@ -361,10 +349,7 @@ export default function Home() {
   );
   const filteredOrders = orders.filter(
     (o) =>
-      (statusFilter === "Todos" || o.productionStatus === statusFilter) &&
-      (!lateOnly ||
-        (o.deliveryDate < todayIso() &&
-          !["Entregue", "Cancelada"].includes(o.productionStatus))) &&
+      (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
       `${o.number} ${o.customerName} ${o.productCode}`
         .toLowerCase()
         .includes(query.toLowerCase()),
@@ -397,8 +382,7 @@ export default function Home() {
         orders
           .filter(
             (o) =>
-              o.paymentMethod === "Carteira" &&
-              o.productionStatus !== "Cancelada",
+              o.paymentMethod === "Carteira",
           )
           .reduce(
             (months, o) => {
@@ -448,13 +432,6 @@ export default function Home() {
     setMenu(false);
     setQuery("");
     setNotice("");
-    window.scrollTo({ top: 0 });
-  }
-  function openLateOrders() {
-    setLateOnly(true);
-    setStatusFilter("Todos");
-    setQuery("");
-    setScreen("orders");
     window.scrollTo({ top: 0 });
   }
   function flash(text: string) {
@@ -619,7 +596,6 @@ export default function Home() {
           received: paidOnCreation ? total : paymentMethod === "Boleto" ? 0 : received,
           deliveryType: f.get("deliveryType"),
           paymentMethod,
-          productionStatus: f.get("productionStatus"),
           notes: f.get("notes"),
         }),
       });
@@ -763,7 +739,7 @@ export default function Home() {
     const customer = findBestCustomer(customers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const number = customer.whatsapp.replace(/\D/g, "");
-    const text = `Olá, ${customer.name}! A ${order.number} está com o status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
+    const text = `Olá, ${customer.name}! Segue a ${order.number}. Previsão de entrega: ${brDate(order.deliveryDate)}. Forma de pagamento: ${order.paymentMethod}.`;
     window.open(
       `https://wa.me/55${number}?text=${encodeURIComponent(text)}`,
       "_blank",
@@ -880,7 +856,7 @@ export default function Home() {
 
     pdf.rect(15, 211, 180, 28);
     pdf.setFontSize(9);
-    pdf.text(`Status: ${order.productionStatus}`, 18, 219);
+    pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 18, 219);
     pdf.text(`Forma de entrega: ${order.deliveryType}`, 105, 219);
     pdf.text(`Previsão de entrega: ${brDate(order.deliveryDate)}`, 18, 227);
     pdf.text(order.notes ? `Observações: ${order.notes}` : "Observações: —", 18, 235, { maxWidth: 172 });
@@ -910,7 +886,7 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
-    const text = `Olá, ${customer.name}! Segue a ${order.number}. Status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
+    const text = `Olá, ${customer.name}! Segue a ${order.number}. Previsão de entrega: ${brDate(order.deliveryDate)}. Forma de pagamento: ${order.paymentMethod}.`;
     await downloadPdf(order);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
@@ -938,7 +914,7 @@ export default function Home() {
         "Recebido",
         "Saldo",
         "Entrega",
-        "Status",
+        "Status do pagamento",
       ],
       ...reportOrders.map((o) => [
         o.number,
@@ -949,7 +925,7 @@ export default function Home() {
         o.received,
         o.total - o.received,
         brDate(o.deliveryDate),
-        o.productionStatus,
+        paymentStatus(o),
       ]),
     ];
     const csv = rows
@@ -1046,7 +1022,7 @@ export default function Home() {
                 <Heading
                   eyebrow={brDate(todayIso())}
                   title="Painel de controle"
-                  subtitle="Acompanhe produção, prazos e recebimentos."
+                  subtitle="Acompanhe vendas e recebimentos."
                   action={
                     <button
                       className="primary-button"
@@ -1058,21 +1034,20 @@ export default function Home() {
                 />
                 <section className="metrics">
                   <Metric
-                    icon="▤"
-                    label="Fila de produção"
-                    value={metrics.queue}
+                    icon="✓"
+                    label="Pagas"
+                    value={metrics.paid}
                   />
                   <Metric
-                    icon="⚒"
-                    label="Em produção"
-                    value={metrics.production}
+                    icon="◐"
+                    label="Pagamento parcial"
+                    value={metrics.partial}
                   />
-                  <Metric icon="✓" label="Entregues" value={metrics.delivered} />
                   <Metric
                     icon="!"
-                    label="Atrasadas"
-                    value={metrics.late}
-                    alert={metrics.late > 0}
+                    label="Aguardando pagamento"
+                    value={metrics.pending}
+                    alert={metrics.pending > 0}
                   />
                 </section>
                 <section className="content-grid">
@@ -1106,28 +1081,6 @@ export default function Home() {
                         </span>
                       </div>
                     </div>
-                    <div
-                      className={`panel attention deadline-card ${metrics.late ? "has-alert" : "is-ok"}`}
-                    >
-                      <div className="deadline-icon">
-                        {metrics.late ? "!" : "✓"}
-                      </div>
-                      <div>
-                        <h2>
-                          {metrics.late ? "Atenção aos prazos" : "Tudo em dia"}
-                        </h2>
-                        <p>
-                          {metrics.late
-                            ? `${metrics.late} ${metrics.late === 1 ? "ordem está atrasada" : "ordens estão atrasadas"}. Consulte a lista para priorizar a produção.`
-                            : "Nenhuma ordem está atrasada no momento."}
-                        </p>
-                        {metrics.late > 0 && (
-                          <button onClick={openLateOrders}>
-                            Ver ordens atrasadas →
-                          </button>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 </section>
               </div>
@@ -1154,7 +1107,7 @@ export default function Home() {
                         ＋ Cadastrar cliente
                       </button>
                     </div>
-                    <div className="form-grid">
+                    <div className="form-grid single-customer-grid">
                       <Field label="Cliente *">
                         <select
                           required
@@ -1167,14 +1120,6 @@ export default function Home() {
                             .map((c) => (
                               <option key={c.id}>{c.name}</option>
                             ))}
-                        </select>
-                      </Field>
-                      <Field label="Status da produção *">
-                        <select name="productionStatus" defaultValue={editingOrder?.productionStatus || "Fila de produção"} required>
-                          <option>Fila de produção</option>
-                          <option>Em produção</option>
-                          <option>Pronta</option>
-                          <option>Entregue</option>
                         </select>
                       </Field>
                     </div>
@@ -1373,7 +1318,7 @@ export default function Home() {
                 <Heading
                   eyebrow="GESTÃO"
                   title="Ordens de Serviço"
-                  subtitle="Atualize produção, pagamentos e prazos."
+                  subtitle="Consulte pedidos e acompanhe os pagamentos."
                   action={
                     <button
                       className="primary-button"
@@ -1385,27 +1330,19 @@ export default function Home() {
                 />
                 <Filters query={query} setQuery={setQuery}>
                   <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
+                    value={paymentFilter}
+                    onChange={(e) => setPaymentFilter(e.target.value)}
                   >
                     <option>Todos</option>
                     {[
-                      "Fila de produção",
-                      "Em produção",
-                      "Pronta",
-                      "Entregue",
-                      "Cancelada",
+                      "Pago",
+                      "Pagamento parcial",
+                      "Aguardando pagamento",
                     ].map((s) => (
                       <option key={s}>{s}</option>
                     ))}
                   </select>
                 </Filters>
-                {lateOnly && (
-                  <div className="active-filter">
-                    <span>Exibindo somente ordens atrasadas</span>
-                    <button onClick={() => setLateOnly(false)}>Mostrar todas</button>
-                  </div>
-                )}
                 <div className="panel">
                   <OrderList orders={filteredOrders} onOpen={setOrderModal} />
                 </div>
@@ -2016,10 +1953,6 @@ export default function Home() {
               <span>Valor total</span>
               <b>{money(orderModal.total)}</b>
             </div>
-            <div>
-              <span>Status da produção</span>
-              <b>{orderModal.productionStatus}</b>
-            </div>
             {orderModal.received > 0 && orderModal.received < orderModal.total && (
               <>
                 <div>
@@ -2196,8 +2129,8 @@ function OrderList({
                 · {money(o.total)}
               </span>
             </div>
-            <span className={`status ${statusTone(o.productionStatus)}`}>
-              {o.productionStatus}
+            <span className={`status ${paymentTone(o)}`}>
+              {paymentStatus(o)}
             </span>
             <span className="arrow">›</span>
           </button>
