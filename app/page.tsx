@@ -212,6 +212,8 @@ export default function Home() {
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
   const [orderModal, setOrderModal] = useState<Order | null>(null);
+  const [draftProductionStatus, setDraftProductionStatus] = useState("");
+  const [statusSaving, setStatusSaving] = useState(false);
   const [walletPayment, setWalletPayment] = useState<{
     items: Order[];
     customer: string;
@@ -281,6 +283,9 @@ export default function Home() {
       if (data.user) loadAll(); else setLoading(false);
     }).catch(() => { setAuth((value) => ({ ...value, loading: false })); setLoading(false); });
   }, []);
+  useEffect(() => {
+    setDraftProductionStatus(orderModal?.productionStatus || "");
+  }, [orderModal?.id, orderModal?.productionStatus]);
 
   async function submitAuth(event: any) {
     event.preventDefault(); setAuthError("");
@@ -649,11 +654,21 @@ export default function Home() {
     const j = await r.json();
     if (!r.ok) {
       flash(j.error);
-      return;
+      return false;
     }
     setOrders((v) => v.map((o) => (o.id === id ? j.order : o)));
     setOrderModal(j.order);
     flash("OS atualizada.");
+    return true;
+  }
+  async function saveProductionStatus() {
+    if (!orderModal || !draftProductionStatus || draftProductionStatus === orderModal.productionStatus) return;
+    setStatusSaving(true);
+    try {
+      await updateOrder(orderModal.id, { productionStatus: draftProductionStatus });
+    } finally {
+      setStatusSaving(false);
+    }
   }
   async function settleBoleto(order: Order) {
     if (!window.confirm(`Confirmar o recebimento de ${money(order.total)} referente ao boleto da ${order.number}?`)) return;
@@ -1997,19 +2012,23 @@ export default function Home() {
             <div className="status-only">
               <Field label="Status da produção">
                 <select
-                  value={orderModal.productionStatus}
-                  onChange={(e) =>
-                    updateOrder(orderModal.id, {
-                      productionStatus: e.target.value,
-                    })
-                  }
+                  value={draftProductionStatus}
+                  onChange={(e) => setDraftProductionStatus(e.target.value)}
                 >
                   {["Fila de produção", "Em produção", "Pronta", "Entregue", "Cancelada"].map((s) => (
                     <option key={s}>{s}</option>
                   ))}
                 </select>
               </Field>
+              {draftProductionStatus !== orderModal.productionStatus && <span className="unsaved-status">Alteração não salva</span>}
             </div>
+            <button
+              className="save-status-button"
+              onClick={saveProductionStatus}
+              disabled={statusSaving || draftProductionStatus === orderModal.productionStatus}
+            >
+              {statusSaving ? "Salvando..." : "Salvar status"}
+            </button>
             {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
               <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
                 ✓ Confirmar pagamento
@@ -2026,13 +2045,15 @@ export default function Home() {
             <button
               className="whatsapp-button"
               onClick={() => shareOrder(orderModal)}
+              disabled={draftProductionStatus !== orderModal.productionStatus}
             >
               Enviar ao cliente
             </button>
           </div>
           <p className="send-help">
-            “Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp
-            cadastrado do cliente.
+            {draftProductionStatus !== orderModal.productionStatus
+              ? "Salve a alteração de status para liberar o envio ao cliente. O PDF usa sempre o último status salvo."
+              : "“Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp cadastrado do cliente."}
           </p>
         </Modal>
       )}
