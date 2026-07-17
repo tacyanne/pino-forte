@@ -418,7 +418,6 @@ export default function Home() {
     [orders],
   );
   function go(next: Screen) {
-    setLateOnly(false);
     if (next === "new-order") {
       const first = products.find((p) => p.active)?.code || "";
       setSelectedCustomer("");
