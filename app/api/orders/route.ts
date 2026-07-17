@@ -110,7 +110,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = (await request.json()) as Record<string, string | number>;
+    const body = (await request.json()) as Record<string, unknown>;
     const id = Number(body.id);
     if (!id) return Response.json({ error: "OS inválida." }, { status: 400 });
     const allowedProduction = [
@@ -134,6 +134,26 @@ export async function PATCH(request: Request) {
     if (body.notes !== undefined) changes.notes = String(body.notes);
     if (body.commercialStatus !== undefined)
       changes.commercialStatus = String(body.commercialStatus);
+    if (body.customerName !== undefined) changes.customerName = String(body.customerName);
+    if (body.origin !== undefined) changes.origin = String(body.origin);
+    if (body.productCode !== undefined) {
+      const items = Array.isArray(body.items)
+        ? (body.items as { code: string; quantity: number; unitPrice: number }[])
+        : [];
+      if (items.length) {
+        changes.productCode = JSON.stringify(items);
+        changes.quantity = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
+        changes.unitPrice = Math.max(0, Number(items[0].unitPrice));
+        changes.total = items.reduce(
+          (sum, item) => sum + Math.max(1, Number(item.quantity)) * Math.max(0, Number(item.unitPrice)),
+          0,
+        );
+      } else {
+        changes.productCode = String(body.productCode);
+      }
+    }
+    if (body.deliveryType !== undefined) changes.deliveryType = String(body.deliveryType);
+    if (body.paymentMethod !== undefined) changes.paymentMethod = String(body.paymentMethod);
     if (!Object.keys(changes).length)
       return Response.json(
         { error: "Nenhuma alteração informada." },

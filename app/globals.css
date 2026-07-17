@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+.review-shell .order-detail{order:1!important}.review-shell .review-payment-action{order:2;margin-top:14px}.review-shell .document-actions{order:3!important;grid-template-columns:repeat(3,1fr)!important}.review-shell .send-help{order:4!important}@media(max-width:760px){.review-shell .document-actions{grid-template-columns:1fr!important}.review-payment-action .boleto-pay{width:100%}}
+
 :root { --petrol:#174a52; --petrol-dark:#103940; --orange:#d86b32; --orange-dark:#bd5522; --canvas:#f5f6f4; --ink:#223033; --muted:#69777a; --border:#dfe4e2; --white:#fff; }
 * { box-sizing: border-box; }
 html { background:var(--canvas); }

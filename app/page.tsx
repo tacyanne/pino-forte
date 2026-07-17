@@ -212,8 +212,7 @@ export default function Home() {
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
   const [orderModal, setOrderModal] = useState<Order | null>(null);
-  const [draftProductionStatus, setDraftProductionStatus] = useState("");
-  const [statusSaving, setStatusSaving] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [walletPayment, setWalletPayment] = useState<{
     items: Order[];
     customer: string;
@@ -282,10 +281,6 @@ export default function Home() {
       if (data.user) loadAll(); else setLoading(false);
     }).catch(() => { setAuth((value) => ({ ...value, loading: false })); setLoading(false); });
   }, []);
-  useEffect(() => {
-    setDraftProductionStatus(orderModal?.productionStatus || "");
-  }, [orderModal?.id, orderModal?.productionStatus]);
-
   async function submitAuth(event: any) {
     event.preventDefault(); setAuthError("");
     const form = new FormData(event.currentTarget);
@@ -610,9 +605,10 @@ export default function Home() {
       const paymentMethod = String(f.get("paymentMethod") || "Pix");
       const paidOnCreation = ["Pix", "Dinheiro", "Cartão"].includes(paymentMethod);
       const r = await fetch("/api/orders", {
-        method: "POST",
+        method: editingOrder ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          id: editingOrder?.id,
           customerName: selectedCustomer,
           origin: f.get("origin"),
           deliveryDate: toIsoDate(deliveryDate),
@@ -629,10 +625,11 @@ export default function Home() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
-      setOrders((v) => [j.order, ...v]);
+      setOrders((v) => editingOrder ? v.map((order) => order.id === j.order.id ? j.order : order) : [j.order, ...v]);
       setDeliveryDate("");
       setReceived(0);
-      flash(`${j.order.number} criada com sucesso.`);
+      flash(editingOrder ? `${j.order.number} atualizada com sucesso.` : `${j.order.number} criada com sucesso.`);
+      setEditingOrder(null);
       setOrderModal(j.order);
       setScreen("orders");
     } catch (err) {
@@ -660,14 +657,18 @@ export default function Home() {
     flash("OS atualizada.");
     return true;
   }
-  async function saveProductionStatus() {
-    if (!orderModal || !draftProductionStatus || draftProductionStatus === orderModal.productionStatus) return;
-    setStatusSaving(true);
-    try {
-      await updateOrder(orderModal.id, { productionStatus: draftProductionStatus });
-    } finally {
-      setStatusSaving(false);
-    }
+  function editOrder(order: Order) {
+    const items = getOrderItems(order).map(({ code, quantity }) => ({ code, quantity }));
+    setEditingOrder(order);
+    setSelectedCustomer(order.customerName);
+    setOrderItems(items);
+    setSelectedCode(items[0]?.code || "");
+    setQuantity(items[0]?.quantity || 1);
+    setDeliveryDate(brDate(order.deliveryDate));
+    setReceived(order.received);
+    setOrderModal(null);
+    setScreen("new-order");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function settleBoleto(order: Order) {
     if (!window.confirm(`Confirmar o recebimento de ${money(order.total)} referente ao boleto da ${order.number}?`)) return;
@@ -1141,7 +1142,7 @@ export default function Home() {
                   title="Criar nova OS"
                   subtitle="Preencha os dados obrigatórios."
                 />
-                <form onSubmit={saveOrder} noValidate>
+                <form key={editingOrder?.id || "new"} onSubmit={saveOrder} noValidate>
                   <Card n="1" title="Cliente">
                     <div className="form-title">
                       <span></span>
@@ -1169,7 +1170,7 @@ export default function Home() {
                         </select>
                       </Field>
                       <Field label="Status da produção *">
-                        <select name="productionStatus" defaultValue="Fila de produção" required>
+                        <select name="productionStatus" defaultValue={editingOrder?.productionStatus || "Fila de produção"} required>
                           <option>Fila de produção</option>
                           <option>Em produção</option>
                           <option>Pronta</option>
@@ -1188,7 +1189,7 @@ export default function Home() {
                         />
                       </Field>
                       <Field label="Origem do pedido *">
-                        <select name="origin">
+                        <select name="origin" defaultValue={editingOrder?.origin || "WhatsApp"}>
                           <option>WhatsApp</option>
                           <option>Balcão</option>
                           <option>Outros</option>
@@ -1303,13 +1304,13 @@ export default function Home() {
                   <Card n="4" title="Entrega e pagamento">
                     <div className="form-grid">
                       <Field label="Forma de entrega">
-                        <select name="deliveryType">
+                        <select name="deliveryType" defaultValue={editingOrder?.deliveryType || "Retirada no local"}>
                           <option>Retirada no local</option>
                           <option>Entrega</option>
                         </select>
                       </Field>
                       <Field label="Forma de pagamento">
-                        <select name="paymentMethod">
+                        <select name="paymentMethod" defaultValue={editingOrder?.paymentMethod || "Pix"}>
                           <option>Pix</option>
                           <option>Dinheiro</option>
                           <option>Cartão</option>
@@ -1347,14 +1348,14 @@ export default function Home() {
                   </Card>
                   <Card n="5" title="Observações">
                     <Field label="Informações para fabricação">
-                      <textarea name="notes" rows={3} />
+                      <textarea name="notes" rows={3} defaultValue={editingOrder?.notes || ""} />
                     </Field>
                   </Card>
                   <div className="form-actions">
                     <button
                       type="button"
                       className="cancel-button"
-                      onClick={() => go("dashboard")}
+                      onClick={() => { setEditingOrder(null); go("dashboard"); }}
                     >
                       Cancelar
                     </button>
@@ -1363,7 +1364,7 @@ export default function Home() {
                       disabled={saving}
                       className="primary-button"
                     >
-                      {saving ? "Salvando..." : "Salvar OS"}
+                      {saving ? "Salvando..." : editingOrder ? "Salvar alterações" : "Salvar OS"}
                     </button>
                   </div>
                 </form>
@@ -2017,6 +2018,10 @@ export default function Home() {
               <span>Valor total</span>
               <b>{money(orderModal.total)}</b>
             </div>
+            <div>
+              <span>Status da produção</span>
+              <b>{orderModal.productionStatus}</b>
+            </div>
             {orderModal.received > 0 && orderModal.received < orderModal.total && (
               <>
                 <div>
@@ -2030,34 +2035,17 @@ export default function Home() {
               </>
             )}
           </div>
-          <div className="order-management">
-            <div className="status-only">
-              <Field label="Status da produção">
-                <select
-                  value={draftProductionStatus}
-                  onChange={(e) => setDraftProductionStatus(e.target.value)}
-                >
-                  {["Fila de produção", "Em produção", "Pronta", "Entregue", "Cancelada"].map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </Field>
-              {draftProductionStatus !== orderModal.productionStatus && <span className="unsaved-status">Alteração não salva</span>}
-            </div>
-            <button
-              className="save-status-button"
-              onClick={saveProductionStatus}
-              disabled={statusSaving || draftProductionStatus === orderModal.productionStatus}
-            >
-              {statusSaving ? "Salvando..." : "Salvar status"}
-            </button>
-            {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
+          {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
+            <div className="review-payment-action">
               <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
                 ✓ Confirmar pagamento
               </button>
-            )}
-          </div>
+            </div>
+          )}
           <div className="detail-actions document-actions">
+            <button className="outline-button" onClick={() => editOrder(orderModal)}>
+              ← Voltar para editar
+            </button>
             <button
               className="outline-button"
               onClick={() => downloadPdf(orderModal)}
@@ -2067,15 +2055,12 @@ export default function Home() {
             <button
               className="whatsapp-button"
               onClick={() => shareOrder(orderModal)}
-              disabled={draftProductionStatus !== orderModal.productionStatus}
             >
               Enviar ao cliente
             </button>
           </div>
           <p className="send-help">
-            {draftProductionStatus !== orderModal.productionStatus
-              ? "Salve a alteração de status para liberar o envio ao cliente. O PDF usa sempre o último status salvo."
-              : "“Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp cadastrado do cliente."}
+            “Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp cadastrado do cliente.
           </p>
         </Modal>
       )}
