@@ -170,6 +170,20 @@ const orderItemSummary = (order: Order) =>
   getOrderItems(order)
     .map((item) => `${item.code} — ${item.quantity} un.`)
     .join(" | ");
+const normalizeCustomerName = (name: string) =>
+  name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toUpperCase();
+const findBestCustomer = (list: Customer[], name: string) => {
+  const normalized = normalizeCustomerName(name);
+  return list
+    .filter((customer) => normalizeCustomerName(customer.name) === normalized)
+    .sort((a, b) => {
+      const score = (customer: Customer) =>
+        (customer.document.replace(/\D/g, "").length >= 11 ? 4 : 0) +
+        (customer.whatsapp.replace(/\D/g, "").length >= 10 ? 2 : 0) +
+        (customer.email.includes("@") ? 1 : 0);
+      return score(b) - score(a) || b.id - a.id;
+    })[0];
+};
 
 export default function Home() {
   const [auth, setAuth] = useState<{ loading: boolean; setupRequired: boolean; user: any; users: any[] }>({ loading: true, setupRequired: false, user: null, users: [] });
@@ -731,7 +745,7 @@ export default function Home() {
     else setProducts((v) => v.map((x) => (x.id === id ? j.product : x)));
   }
   function whatsapp(order: Order) {
-    const customer = customers.find((c) => c.name === order.customerName);
+    const customer = findBestCustomer(customers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const number = customer.whatsapp.replace(/\D/g, "");
     const text = `Olá, ${customer.name}! A ${order.number} está com o status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
@@ -771,7 +785,15 @@ export default function Home() {
   }
   async function createPdf(order: Order) {
     const items = getOrderItems(order);
-    const customer = customers.find((item) => item.name === order.customerName);
+    let currentCustomers = customers;
+    try {
+      const catalog = await fetch("/api/catalog", { cache: "no-store" }).then((response) => response.json());
+      if (Array.isArray(catalog.customers)) {
+        currentCustomers = catalog.customers;
+        setCustomers(catalog.customers);
+      }
+    } catch {}
+    const customer = findBestCustomer(currentCustomers, order.customerName);
     const pdf = new jsPDF();
     const logo = await loadImageData("/logo-pdf.png", true);
     pdf.setDrawColor(60);
@@ -866,7 +888,12 @@ export default function Home() {
     pdf.save(`${order.number}.pdf`);
   }
   async function shareOrder(order: Order) {
-    const customer = customers.find((c) => c.name === order.customerName);
+    let currentCustomers = customers;
+    try {
+      const catalog = await fetch("/api/catalog", { cache: "no-store" }).then((response) => response.json());
+      if (Array.isArray(catalog.customers)) currentCustomers = catalog.customers;
+    } catch {}
+    const customer = findBestCustomer(currentCustomers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const text = `Olá, ${customer.name}! Segue a ${order.number}. Status: ${order.productionStatus}. Previsão: ${brDate(order.deliveryDate)}.`;
     await downloadPdf(order);
