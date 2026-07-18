@@ -1108,9 +1108,9 @@ export default function Home() {
         <div className="auth-content">
         <h1>Acesso ao sistema</h1>
         <form onSubmit={submitAuth} noValidate>
-          {auth.setupRequired && <Field label="Seu nome"><input name="name" required autoFocus placeholder="Nome completo" /></Field>}
+          {auth.setupRequired && <Field label="Seu nome"><input name="name" required autoFocus /></Field>}
           <Field label="E-mail"><input name="email" type="email" required defaultValue={auth.setupRequired ? "tacytpr@gmail.com" : ""} readOnly={auth.setupRequired} autoFocus={!auth.setupRequired} /></Field>
-          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><div className="password-input"><input name="password" type={showAuthPassword ? "text" : "password"} minLength={8} required placeholder={auth.setupRequired ? "Maiúscula, número e caractere especial" : "Digite sua senha"} /><button type="button" onClick={() => setShowAuthPassword((value) => !value)} aria-label={showAuthPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showAuthPassword} /></button></div></Field>
+          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><div className="password-input"><input name="password" type={showAuthPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowAuthPassword((value) => !value)} aria-label={showAuthPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showAuthPassword} /></button></div></Field>
           {authError && <p className="modal-error">{authError}</p>}
           <button className="primary-button" type="submit" disabled={authSaving}>{authSaving ? (auth.setupRequired ? "Criando acesso..." : "Entrando...") : (auth.setupRequired ? "Criar acesso e entrar" : "Entrar")}</button>
         </form>
@@ -1307,7 +1307,6 @@ export default function Home() {
                           onChange={(e) =>
                             setDeliveryDate(maskDate(e.target.value))
                           }
-                          placeholder="dd/mm/aaaa"
                         />
                       </Field>
                     </div>
@@ -1448,7 +1447,7 @@ export default function Home() {
                     </div>
                     <div className="order-notes">
                       <Field label="Observações para fabricação (opcional)">
-                        <textarea name="notes" rows={2} defaultValue={editingOrder?.notes || ""} placeholder="Digite somente se houver alguma orientação importante" />
+                        <textarea name="notes" rows={2} defaultValue={editingOrder?.notes || ""} />
                       </Field>
                     </div>
                   </Card>
@@ -1872,7 +1871,6 @@ export default function Home() {
                       onChange={(e) =>
                         setCompanyPhone(maskPhone(e.target.value))
                       }
-                      placeholder="(00) 00000-0000"
                     />
                   </Field>
                   <Field label="Rodapé da OS">
@@ -1888,9 +1886,9 @@ export default function Home() {
                 {auth.user.role === "admin" && <div className="panel user-admin">
                   <div className="panel-title"><div><h2>Usuários do sistema</h2><p>Cadastre uma senha temporária e entregue-a diretamente à pessoa.</p></div></div>
                   <form className="user-create" onSubmit={createUser}>
-                    <Field label="Nome"><input name="name" required placeholder="Nome da pessoa" /></Field>
-                    <Field label="E-mail"><input name="email" type="email" required autoComplete="off" placeholder="E-mail da pessoa" /></Field>
-                    <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required placeholder="Maiúscula, número e caractere especial" /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
+                    <Field label="Nome"><input name="name" required /></Field>
+                    <Field label="E-mail"><input name="email" type="email" required autoComplete="off" /></Field>
+                    <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
                     <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar usuário"}</button>
                   </form>
                   {authError && <p className="modal-error user-error">{authError}</p>}
@@ -1925,31 +1923,19 @@ export default function Home() {
                   required
                   value={phone}
                   onChange={(e) => setPhone(maskPhone(e.target.value))}
-                  placeholder="(00) 0000-0000 ou (00) 00000-0000"
                 />
               </Field>
-              <Field label="Documento">
-                <div className="doc-grid">
-                  <select
-                    value={docType}
-                    onChange={(e) => {
-                      setDocType(e.target.value as "CPF" | "CNPJ");
-                      setDoc("");
-                    }}
-                  >
-                    <option>CPF</option>
-                    <option>CNPJ</option>
-                  </select>
-                  <input
-                    value={doc}
-                    onChange={(e) => setDoc(maskDoc(e.target.value, docType))}
-                    placeholder={
-                      docType === "CPF"
-                        ? "000.000.000-00"
-                        : "00.000.000/0000-00"
-                    }
-                  />
-                </div>
+              <Field label="CPF ou CNPJ">
+                <input
+                  inputMode="numeric"
+                  value={doc}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 14);
+                    const type = digits.length > 11 ? "CNPJ" : "CPF";
+                    setDocType(type);
+                    setDoc(maskDoc(digits, type));
+                  }}
+                />
               </Field>
             </div>
             <Field label="E-mail">
@@ -1964,26 +1950,26 @@ export default function Home() {
               <strong>Endereço</strong>
               <div className="form-grid address-grid">
                 <Field label="CEP">
-                  <input inputMode="numeric" value={zipCode} onChange={(e) => lookupZipCode(e.target.value)} placeholder="00000-000" maxLength={9} />
+                  <input inputMode="numeric" value={zipCode} onChange={(e) => lookupZipCode(e.target.value)} maxLength={9} />
                   {zipLoading && <small className="field-help">Buscando endereço...</small>}
                 </Field>
                 <Field label="Logradouro">
-                  <input value={street} readOnly placeholder="Preenchido pelo CEP" />
+                  <input value={street} readOnly />
                 </Field>
                 <Field label="Bairro">
-                  <input value={neighborhood} readOnly placeholder="Preenchido pelo CEP" />
+                  <input value={neighborhood} readOnly />
                 </Field>
                 <Field label="Cidade">
-                  <input value={city} readOnly placeholder="Preenchido pelo CEP" />
+                  <input value={city} readOnly />
                 </Field>
                 <Field label="UF">
-                  <input value={addressState} readOnly placeholder="UF" />
+                  <input value={addressState} readOnly />
                 </Field>
                 <Field label="Número">
-                  <input value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} placeholder="Número" />
+                  <input value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} />
                 </Field>
                 <Field label="Complemento">
-                  <input value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Opcional" />
+                  <input value={complement} onChange={(e) => setComplement(e.target.value)} />
                 </Field>
               </div>
             </div>
@@ -2007,14 +1993,14 @@ export default function Home() {
           <form onSubmit={saveProduct} noValidate>
             <div className="form-grid">
               <Field label="Código *">
-                <input name="code" required placeholder="Ex.: RN 250" defaultValue={editingProduct?.code || ""} />
+                <input name="code" required defaultValue={editingProduct?.code || ""} />
               </Field>
               <Field label="Medida *">
-                <input name="measure" required placeholder="Ex.: 250 mm" defaultValue={editingProduct?.measure || ""} />
+                <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
             </div>
             <Field label="Descrição *">
-              <input name="name" required placeholder="Pino de balança..." defaultValue={editingProduct?.name || ""} />
+              <input name="name" required defaultValue={editingProduct?.name || ""} />
             </Field>
             <Field label="Preço *">
               <input
@@ -2078,7 +2064,6 @@ export default function Home() {
                 maxLength={10}
                 value={walletPayDate}
                 onChange={(e) => setWalletPayDate(maskDate(e.target.value))}
-                placeholder="dd/mm/aaaa"
               />
             </Field>
           </div>
@@ -2285,7 +2270,6 @@ function Filters({
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar..."
       />
       {children}
     </div>
