@@ -1906,8 +1906,7 @@ export default function Home() {
         <Modal
           title={editingCustomer ? "Editar cliente" : "Cadastrar cliente"}
           page
-          pageLabel="CLIENTES"
-          backLabel="Voltar para clientes"
+          pageLabel=""
           close={() => setCustomerModal(false)}
         >
           <form className="customer-page-form" onSubmit={saveCustomer} noValidate>
@@ -2350,7 +2349,7 @@ function Modal({
         <div className="modal-head">
           {page && backLabel && <button className="review-back" onClick={close}>← {backLabel}</button>}
           <div>
-            {page && <span className="eyebrow">{pageLabel}</span>}
+            {page && pageLabel && <span className="eyebrow">{pageLabel}</span>}
             <h2>{title}</h2>
             {subtitle && <p className="review-number">{subtitle}</p>}
           </div>
