@@ -1905,9 +1905,12 @@ export default function Home() {
       {customerModal && (
         <Modal
           title={editingCustomer ? "Editar cliente" : "Cadastrar cliente"}
+          page
+          pageLabel="CLIENTES"
+          backLabel="Voltar para clientes"
           close={() => setCustomerModal(false)}
         >
-          <form onSubmit={saveCustomer} noValidate>
+          <form className="customer-page-form" onSubmit={saveCustomer} noValidate>
             <Field label="Nome ou razão social *">
               <input
                 name="name"
@@ -2328,12 +2331,16 @@ function Modal({
   title,
   subtitle,
   page = false,
+  pageLabel = "ORDEM DE SERVIÇO",
+  backLabel,
   close,
   children,
 }: {
   title: string;
   subtitle?: string;
   page?: boolean;
+  pageLabel?: string;
+  backLabel?: string;
   close: () => void;
   children: React.ReactNode;
 }) {
@@ -2341,8 +2348,9 @@ function Modal({
     <div className={page ? "review-page" : "modal-backdrop"}>
       <div className={page ? "review-shell" : "customer-modal"}>
         <div className="modal-head">
+          {page && backLabel && <button className="review-back" onClick={close}>← {backLabel}</button>}
           <div>
-            {page && <span className="eyebrow">ORDEM DE SERVIÇO</span>}
+            {page && <span className="eyebrow">{pageLabel}</span>}
             <h2>{title}</h2>
             {subtitle && <p className="review-number">{subtitle}</p>}
           </div>
