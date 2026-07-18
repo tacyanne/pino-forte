@@ -254,7 +254,6 @@ export default function Home() {
   const [orderItems, setOrderItems] = useState<
     { code: string; quantity: number }[]
   >([]);
-  const [deliveryDate, setDeliveryDate] = useState("");
 
   async function loadAll() {
     setLoading(true);
@@ -632,8 +631,6 @@ export default function Home() {
     const f = new FormData(e.currentTarget);
     try {
       if (!selectedCustomer) throw new Error("Selecione um cliente.");
-      if (!isValidBrDate(deliveryDate))
-        throw new Error("Informe uma data válida no formato dd/mm/aaaa.");
       if (!orderItems.length) throw new Error("Adicione pelo menos um pino.");
       const items = orderItems.map((item) => ({
         ...item,
@@ -648,7 +645,7 @@ export default function Home() {
           id: editingOrder?.id,
           customerName: selectedCustomer,
           origin: f.get("origin"),
-          deliveryDate: toIsoDate(deliveryDate),
+          deliveryDate: editingOrder?.deliveryDate || todayIso(),
           productCode: selectedCode,
           quantity,
           unitPrice: product.price,
@@ -662,7 +659,6 @@ export default function Home() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
       setOrders((v) => editingOrder ? v.map((order) => order.id === j.order.id ? j.order : order) : [j.order, ...v]);
-      setDeliveryDate("");
       setReceived(0);
       flash(editingOrder ? `${j.order.number} atualizada com sucesso.` : `${j.order.number} criada com sucesso.`);
       setEditingOrder(null);
@@ -700,7 +696,6 @@ export default function Home() {
     setOrderItems(items);
     setSelectedCode(items[0]?.code || "");
     setQuantity(items[0]?.quantity || 1);
-    setDeliveryDate(brDate(order.deliveryDate));
     setReceived(order.received);
     setOrderModal(null);
     setScreen("new-order");
@@ -799,7 +794,7 @@ export default function Home() {
     const customer = findBestCustomer(customers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const number = customer.whatsapp.replace(/\D/g, "");
-    const text = `Olá, ${customer.name}! Segue a ${order.number}. Previsão de entrega: ${brDate(order.deliveryDate)}. Forma de pagamento: ${order.paymentMethod}.`;
+    const text = `Olá, ${customer.name}! Segue a ${order.number}. Forma de pagamento: ${order.paymentMethod}.`;
     window.open(
       `https://wa.me/55${number}?text=${encodeURIComponent(text)}`,
       "_blank",
@@ -870,7 +865,6 @@ export default function Home() {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);
     pdf.text(`Emissão: ${brDate(order.createdAt)}`, 176.5, 38, { align: "center" });
-    pdf.text(`Entrega: ${brDate(order.deliveryDate)}`, 176.5, 44, { align: "center" });
 
     pdf.rect(15, 48, 180, 31);
     pdf.setFontSize(9);
@@ -918,7 +912,6 @@ export default function Home() {
     pdf.setFontSize(9);
     pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 18, 219);
     pdf.text(`Forma de entrega: ${order.deliveryType}`, 105, 219);
-    pdf.text(`Previsão de entrega: ${brDate(order.deliveryDate)}`, 18, 227);
     pdf.text(order.notes ? `Observações: ${order.notes}` : "Observações: —", 18, 235, { maxWidth: 172 });
 
     pdf.line(24, 250, 88, 250);
@@ -970,7 +963,6 @@ export default function Home() {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7);
     pdf.text(`Emissão: ${brDate(order.createdAt)}`, 180, 26, { align: "center" });
-    pdf.text(`Entrega: ${brDate(order.deliveryDate)}`, 180, 30, { align: "center" });
 
     pdf.rect(left, 32, 200, 23);
     pdf.setFontSize(7.5);
@@ -1019,7 +1011,6 @@ export default function Home() {
     pdf.setFont("helvetica", "normal");
     pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 8, 114);
     pdf.text(`Forma de entrega: ${order.deliveryType}`, 76, 114);
-    pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 146, 114);
     pdf.text(order.notes ? `Observações: ${order.notes}` : "Observações: —", 8, 120, { maxWidth: 192 });
 
     pdf.line(18, 132, 82, 132);
@@ -1044,7 +1035,7 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
-    const text = `Olá, ${customer.name}! Segue a ${order.number}. Previsão de entrega: ${brDate(order.deliveryDate)}. Forma de pagamento: ${order.paymentMethod}.`;
+    const text = `Olá, ${customer.name}! Segue a ${order.number}. Forma de pagamento: ${order.paymentMethod}.`;
     await downloadPdf(order);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
@@ -1071,7 +1062,6 @@ export default function Home() {
         "Total",
         "Recebido",
         "Saldo",
-        "Entrega",
         "Status do pagamento",
       ],
       ...reportOrders.map((o) => [
@@ -1082,7 +1072,6 @@ export default function Home() {
         o.total,
         o.received,
         o.total - o.received,
-        brDate(o.deliveryDate),
         paymentStatus(o),
       ]),
     ];
@@ -1295,19 +1284,6 @@ export default function Home() {
                           <option>Balcão</option>
                           <option>Outros</option>
                         </select>
-                      </Field>
-                      <Field label="Previsão de entrega *">
-                        <input
-                          name="deliveryDate"
-                          required
-                          inputMode="numeric"
-                          pattern="\d{2}/\d{2}/\d{4}"
-                          maxLength={10}
-                          value={deliveryDate}
-                          onChange={(e) =>
-                            setDeliveryDate(maskDate(e.target.value))
-                          }
-                        />
                       </Field>
                     </div>
                   </Card>
@@ -2103,10 +2079,6 @@ export default function Home() {
               <b>{brDate(orderModal.createdAt)}</b>
             </div>
             <div>
-              <span>Entrega</span>
-              <b>{brDate(orderModal.deliveryDate)}</b>
-            </div>
-            <div>
               <span>Pinos</span>
               <b>
                 {orderItemSummary(orderModal)}
@@ -2292,8 +2264,8 @@ function OrderList({
         orders.map((o) => (
           <button className="order-row" key={o.id} onClick={() => onOpen(o)}>
             <div className="date-box">
-              <strong>{brDate(o.deliveryDate)}</strong>
-              <span>{o.origin}</span>
+              <strong>{brDate(o.createdAt)}</strong>
+              <span>Emissão</span>
             </div>
             <div className="order-main">
               <strong>{o.customerName}</strong>
