@@ -47,10 +47,9 @@ export async function POST(request: Request) {
     if (!name || !whatsapp) return Response.json({ error: "Nome e WhatsApp são obrigatórios." }, { status: 400 });
     if ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.number?.trim()) return Response.json({ error: "CEP e número são obrigatórios." }, { status: 400 });
     const document = body.document?.trim() || "";
-    if (document) {
-      const existing = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
-      if (existing.length) return Response.json({ error: "Este CPF/CNPJ já está cadastrado." }, { status: 409 });
-    }
+    if (!document) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
+    const existing = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
+    if (existing.length) return Response.json({ error: "Este CPF/CNPJ já está cadastrado." }, { status: 409 });
     const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "", zipCode: body.zipCode?.trim() || "", street: body.street?.trim() || "", number: body.number?.trim() || "", complement: body.complement?.trim() || "", neighborhood: body.neighborhood?.trim() || "", city: body.city?.trim() || "", state: body.state?.trim() || "" }).returning();
     return Response.json({ customer }, { status: 201 });
   } catch (error) {
@@ -76,6 +75,7 @@ export async function PATCH(request: Request) {
       const [product] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
       return Response.json({ product });
     }
+    if (body.name !== undefined && !body.document?.trim()) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
     if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.number?.trim())) return Response.json({ error: "CEP e número são obrigatórios." }, { status: 400 });
     const changes: Partial<typeof customers.$inferInsert> = {};
     if (body.active !== undefined) changes.active = body.active;

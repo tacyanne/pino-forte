@@ -542,10 +542,8 @@ export default function Home() {
       if (zipCode.replace(/\D/g, "").length !== 8)
         throw new Error("Informe um CEP válido.");
       if (!addressNumber.trim()) throw new Error("Informe o número do endereço.");
-      if (
-        doc &&
-        doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14)
-      )
+      if (!doc) throw new Error("Informe o CPF ou CNPJ.");
+      if (doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14))
         throw new Error(`${docType} incompleto.`);
       const r = await fetch("/api/catalog", {
         method: editingCustomer ? "PATCH" : "POST",
@@ -1914,8 +1912,9 @@ export default function Home() {
                   onChange={(e) => setPhone(maskPhone(e.target.value))}
                 />
               </Field>
-              <Field label="CPF ou CNPJ">
+              <Field label="CPF ou CNPJ *">
                 <input
+                  required
                   inputMode="numeric"
                   value={doc}
                   onChange={(e) => {
