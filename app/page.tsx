@@ -18,6 +18,13 @@ type Customer = {
   document: string;
   whatsapp: string;
   email: string;
+  zipCode: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
   active: boolean;
   createdAt: string;
 };
@@ -127,13 +134,16 @@ const maskDoc = (value: string, type: "CPF" | "CNPJ") => {
         .replace(/(\d{3})(\d)/, "$1/$2")
         .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
 };
-const maskPhone = (value: string) =>
-  value
-    .replace(/\D/g, "")
-    .slice(0, 11)
-    .replace(/(\d{2})(\d)/, "($1) $2")
-    .replace(/(\d{5})(\d)/, "$1-$2");
+const maskPhone = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 2) return digits ? `(${digits}` : "";
+  const area = digits.slice(0, 2);
+  const number = digits.slice(2);
+  const split = number.length <= 8 ? 4 : 5;
+  return `(${area}) ${number.slice(0, split)}${number.length > split ? `-${number.slice(split)}` : ""}`;
+};
 const formatPhone = (value: string) => maskPhone(value);
+const maskZipCode = (value: string) => value.replace(/\D/g, "").slice(0, 8).replace(/(\d{5})(\d)/, "$1-$2");
 const formatDocument = (value: string) => {
   const digits = value.replace(/\D/g, "");
   if (digits.length === 11) return `CPF: ${maskDoc(digits, "CPF")}`;
@@ -205,6 +215,14 @@ export default function Home() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [zipCode, setZipCode] = useState("");
+  const [street, setStreet] = useState("");
+  const [addressNumber, setAddressNumber] = useState("");
+  const [complement, setComplement] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [city, setCity] = useState("");
+  const [addressState, setAddressState] = useState("");
+  const [zipLoading, setZipLoading] = useState(false);
   const [productModal, setProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [reportMonth, setReportMonth] = useState("");
@@ -460,6 +478,13 @@ export default function Home() {
       setCustomerName(customer.name);
       setCustomerEmail(customer.email);
       setPhone(maskPhone(customer.whatsapp));
+      setZipCode(maskZipCode(customer.zipCode || ""));
+      setStreet(customer.street || "");
+      setAddressNumber(customer.number || "");
+      setComplement(customer.complement || "");
+      setNeighborhood(customer.neighborhood || "");
+      setCity(customer.city || "");
+      setAddressState(customer.state || "");
       const type =
         customer.document.toUpperCase().includes("CNPJ") ||
         customer.document.replace(/\D/g, "").length === 14
@@ -472,10 +497,39 @@ export default function Home() {
       setCustomerName("");
       setCustomerEmail("");
       setPhone("");
+      setZipCode("");
+      setStreet("");
+      setAddressNumber("");
+      setComplement("");
+      setNeighborhood("");
+      setCity("");
+      setAddressState("");
       setDocType("CPF");
       setDoc("");
     }
     setCustomerModal(true);
+  }
+
+  async function lookupZipCode(value: string) {
+    const masked = maskZipCode(value);
+    setZipCode(masked);
+    const digits = masked.replace(/\D/g, "");
+    if (digits.length !== 8) return;
+    setZipLoading(true);
+    try {
+      const response = await fetch(`/api/cep?cep=${digits}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "CEP não encontrado.");
+      setStreet(data.street || "");
+      setNeighborhood(data.neighborhood || "");
+      setCity(data.city || "");
+      setAddressState(data.state || "");
+    } catch (error) {
+      setStreet(""); setNeighborhood(""); setCity(""); setAddressState("");
+      flash(error instanceof Error ? error.message : "Não foi possível consultar o CEP.");
+    } finally {
+      setZipLoading(false);
+    }
   }
 
   async function saveCustomer(e: React.FormEvent<HTMLFormElement>) {
@@ -485,7 +539,7 @@ export default function Home() {
     try {
       if (!customerName.trim()) throw new Error("Informe o nome do cliente.");
       if (phone.replace(/\D/g, "").length < 10)
-        throw new Error("Informe um WhatsApp válido.");
+        throw new Error("Informe um telefone ou WhatsApp válido com DDD.");
       if (
         doc &&
         doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14)
@@ -500,6 +554,13 @@ export default function Home() {
           whatsapp: phone,
           document: doc ? `${docType}: ${doc}` : "",
           email: customerEmail,
+          zipCode,
+          street,
+          number: addressNumber,
+          complement,
+          neighborhood,
+          city,
+          state: addressState,
         }),
       });
       const j = await r.json();
@@ -773,7 +834,7 @@ export default function Home() {
       image.src = url;
     });
   }
-  async function createPdf(order: Order) {
+  async function createPdfLegacy(order: Order) {
     const items = getOrderItems(order);
     let currentCustomers = customers;
     try {
@@ -796,7 +857,7 @@ export default function Home() {
     pdf.setTextColor(30);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
-    pdf.text("PINOS DE BALANÇA | TRUCK E CARRETA", 57, 22);
+    pdf.text("PINO DE BALANÇA | TRUCK E CARRETA", 57, 22);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     pdf.text(`Responsável: ${responsible || "—"}`, 57, 32);
@@ -871,6 +932,104 @@ export default function Home() {
     pdf.setFontSize(8);
     pdf.setTextColor(100);
     pdf.text(orderFooter, 105, 275, { align: "center" });
+    return pdf;
+  }
+  async function createPdf(order: Order) {
+    const items = getOrderItems(order);
+    let currentCustomers = customers;
+    try {
+      const catalog = await fetch("/api/catalog", { cache: "no-store" }).then((response) => response.json());
+      if (Array.isArray(catalog.customers)) currentCustomers = catalog.customers;
+    } catch {}
+    const customer = findBestCustomer(currentCustomers, order.customerName);
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a5" });
+    const logo = await loadImageData("/logo-pdf.png", true);
+    const left = 5;
+    const right = 205;
+    pdf.setDrawColor(60);
+    pdf.setLineWidth(0.3);
+    pdf.rect(left, 5, 200, 138);
+
+    pdf.rect(left, 5, 28, 27);
+    pdf.rect(33, 5, 122, 27);
+    pdf.rect(155, 5, 50, 27);
+    pdf.addImage(logo, "JPEG", 7, 7, 24, 23, undefined, "FAST");
+    pdf.setTextColor(25);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10);
+    pdf.text("PINO DE BALANÇA", 38, 14);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7.5);
+    pdf.text(`Responsável: ${responsible || "—"}`, 38, 21);
+    pdf.text(`Telefone: ${companyPhone || "—"}`, 38, 27);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.text("ORDEM DE SERVIÇO", 180, 12, { align: "center" });
+    pdf.setFontSize(11);
+    pdf.text(order.number, 180, 20, { align: "center" });
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7);
+    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 180, 26, { align: "center" });
+    pdf.text(`Entrega: ${brDate(order.deliveryDate)}`, 180, 30, { align: "center" });
+
+    pdf.rect(left, 32, 200, 23);
+    pdf.setFontSize(7.5);
+    pdf.setFont("helvetica", "bold");
+    pdf.text(`Cliente: ${order.customerName}`, 8, 39);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`CPF/CNPJ: ${customer ? formatDocument(customer.document).replace(/^(CPF|CNPJ): /, "") : "—"}`, 8, 46);
+    pdf.text(`Telefone: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 106, 46);
+    const address = customer ? [customer.street, customer.number, customer.complement, customer.neighborhood, `${customer.city || ""}/${customer.state || ""}`, customer.zipCode].filter(Boolean).join(", ") : "";
+    pdf.text(`Endereço: ${address || "—"}`, 8, 52, { maxWidth: 130 });
+    pdf.text(`Pagamento: ${order.paymentMethod}`, 150, 52);
+
+    const columns = [5, 31, 119, 139, 171, 205];
+    pdf.rect(left, 55, 200, 53);
+    pdf.setFillColor(235, 235, 235);
+    pdf.rect(left, 55, 200, 8, "F");
+    columns.slice(1, -1).forEach((x) => pdf.line(x, 55, x, 108));
+    pdf.line(left, 63, right, 63);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7);
+    pdf.text("CÓDIGO", 8, 60);
+    pdf.text("DESCRIÇÃO DO PRODUTO", 34, 60);
+    pdf.text("QTD.", 129, 60, { align: "center" });
+    pdf.text("VALOR UNIT.", 155, 60, { align: "center" });
+    pdf.text("VALOR TOTAL", 201, 60, { align: "right" });
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(items.length > 5 ? 5.5 : 7);
+    let y = 69;
+    const rowHeight = Math.min(7, 29 / Math.max(items.length, 1));
+    items.forEach((item) => {
+      const product = products.find((value) => value.code === item.code);
+      pdf.text(item.code, 8, y);
+      pdf.text(`${product?.name || "Pino de balança"} (COMUM) · ${product?.measure || ""}`, 34, y, { maxWidth: 82 });
+      pdf.text(String(item.quantity), 129, y, { align: "center" });
+      pdf.text(money(item.unitPrice), 168, y, { align: "right" });
+      pdf.text(money(item.unitPrice * item.quantity), 201, y, { align: "right" });
+      y += rowHeight;
+    });
+    pdf.line(left, 100, right, 100);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("TOTAL DA ORDEM", 75, 105, { align: "center" });
+    pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 129, 105, { align: "center" });
+    pdf.text(money(order.total), 201, 105, { align: "right" });
+
+    pdf.rect(left, 108, 200, 14);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 8, 114);
+    pdf.text(`Forma de entrega: ${order.deliveryType}`, 76, 114);
+    pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 146, 114);
+    pdf.text(order.notes ? `Observações: ${order.notes}` : "Observações: —", 8, 120, { maxWidth: 192 });
+
+    pdf.line(18, 132, 82, 132);
+    pdf.line(128, 132, 192, 132);
+    pdf.setTextColor(70);
+    pdf.text("Assinatura do cliente", 50, 136, { align: "center" });
+    pdf.text("Responsável pela empresa", 160, 136, { align: "center" });
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(100);
+    pdf.text(orderFooter, 105, 141, { align: "center" });
     return pdf;
   }
   async function downloadPdf(order: Order) {
@@ -973,7 +1132,7 @@ export default function Home() {
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
         <div className="brand">
-          <img className="brand-logo" src="/logo-sistema.png" alt="Rogério Mendes — Pinos de Balança" />
+          <img className="brand-logo" src="/logo-sistema.png" alt="Rogério Mendes — Pino de Balança" />
         </div>
         <nav>
           {nav.map(([s, i, l]) => (
@@ -1759,12 +1918,12 @@ export default function Home() {
               />
             </Field>
             <div className="form-grid">
-              <Field label="WhatsApp *">
+              <Field label="Telefone ou WhatsApp *">
                 <input
                   required
                   value={phone}
                   onChange={(e) => setPhone(maskPhone(e.target.value))}
-                  placeholder="(00) 00000-0000"
+                  placeholder="(00) 0000-0000 ou (00) 00000-0000"
                 />
               </Field>
               <Field label="Documento">
@@ -1799,6 +1958,33 @@ export default function Home() {
                 onChange={(e) => setCustomerEmail(e.target.value)}
               />
             </Field>
+            <div className="address-section">
+              <strong>Endereço</strong>
+              <div className="form-grid address-grid">
+                <Field label="CEP">
+                  <input inputMode="numeric" value={zipCode} onChange={(e) => lookupZipCode(e.target.value)} placeholder="00000-000" maxLength={9} />
+                  {zipLoading && <small className="field-help">Buscando endereço...</small>}
+                </Field>
+                <Field label="Logradouro">
+                  <input value={street} readOnly placeholder="Preenchido pelo CEP" />
+                </Field>
+                <Field label="Bairro">
+                  <input value={neighborhood} readOnly placeholder="Preenchido pelo CEP" />
+                </Field>
+                <Field label="Cidade">
+                  <input value={city} readOnly placeholder="Preenchido pelo CEP" />
+                </Field>
+                <Field label="UF">
+                  <input value={addressState} readOnly placeholder="UF" />
+                </Field>
+                <Field label="Número">
+                  <input value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} placeholder="Número" />
+                </Field>
+                <Field label="Complemento">
+                  <input value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Opcional" />
+                </Field>
+              </div>
+            </div>
             <div className="modal-actions">
               <button
                 type="button"

@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; code?: string; sku?: string; measure?: string; price?: number };
+    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; code?: string; sku?: string; measure?: string; price?: number };
     const db = await getDb();
     if (body.type === "product") {
       const code = body.code?.trim().toUpperCase() || "";
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       const existing = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
       if (existing.length) return Response.json({ error: "Este CPF/CNPJ já está cadastrado." }, { status: 409 });
     }
-    const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "" }).returning();
+    const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "", zipCode: body.zipCode?.trim() || "", street: body.street?.trim() || "", number: body.number?.trim() || "", complement: body.complement?.trim() || "", neighborhood: body.neighborhood?.trim() || "", city: body.city?.trim() || "", state: body.state?.trim() || "" }).returning();
     return Response.json({ customer }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: 500 });
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; code?: string; measure?: string; sku?: string };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; code?: string; measure?: string; sku?: string };
     const id = Number(body.id);
     if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
     const db = await getDb();
@@ -81,6 +81,13 @@ export async function PATCH(request: Request) {
     if (body.whatsapp) changes.whatsapp = body.whatsapp.trim();
     if (body.email !== undefined) changes.email = body.email.trim();
     if (body.document !== undefined) changes.document = body.document.trim();
+    if (body.zipCode !== undefined) changes.zipCode = body.zipCode.trim();
+    if (body.street !== undefined) changes.street = body.street.trim();
+    if (body.number !== undefined) changes.number = body.number.trim();
+    if (body.complement !== undefined) changes.complement = body.complement.trim();
+    if (body.neighborhood !== undefined) changes.neighborhood = body.neighborhood.trim();
+    if (body.city !== undefined) changes.city = body.city.trim();
+    if (body.state !== undefined) changes.state = body.state.trim();
     const [customer] = await db.update(customers).set(changes).where(eq(customers.id, id)).returning();
     return Response.json({ customer });
   } catch (error) {

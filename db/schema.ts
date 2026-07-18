@@ -7,6 +7,13 @@ export const customers = sqliteTable("customers", {
   document: text("document").notNull().default(""),
   whatsapp: text("whatsapp").notNull(),
   email: text("email").notNull().default(""),
+  zipCode: text("zip_code").notNull().default(""),
+  street: text("street").notNull().default(""),
+  number: text("number").notNull().default(""),
+  complement: text("complement").notNull().default(""),
+  neighborhood: text("neighborhood").notNull().default(""),
+  city: text("city").notNull().default(""),
+  state: text("state").notNull().default(""),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
