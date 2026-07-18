@@ -538,7 +538,7 @@ export default function Home() {
     try {
       if (!customerName.trim()) throw new Error("Informe o nome do cliente.");
       if (phone.replace(/\D/g, "").length < 10)
-        throw new Error("Informe um telefone ou WhatsApp válido com DDD.");
+        throw new Error("Informe um WhatsApp válido com DDD.");
       if (zipCode.replace(/\D/g, "").length !== 8)
         throw new Error("Informe um CEP válido.");
       if (!addressNumber.trim()) throw new Error("Informe o número do endereço.");
@@ -1907,7 +1907,7 @@ export default function Home() {
               </Field>
             </div>
             <div className="form-grid">
-              <Field label="Telefone ou WhatsApp *">
+              <Field label="WhatsApp *">
                 <input
                   required
                   value={phone}
