@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     const name = body.name?.trim() || "";
     const whatsapp = body.whatsapp?.trim() || "";
     if (!name || !whatsapp) return Response.json({ error: "Nome e WhatsApp são obrigatórios." }, { status: 400 });
+    if ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.number?.trim()) return Response.json({ error: "CEP e número são obrigatórios." }, { status: 400 });
     const document = body.document?.trim() || "";
     if (document) {
       const existing = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
@@ -75,6 +76,7 @@ export async function PATCH(request: Request) {
       const [product] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
       return Response.json({ product });
     }
+    if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.number?.trim())) return Response.json({ error: "CEP e número são obrigatórios." }, { status: 400 });
     const changes: Partial<typeof customers.$inferInsert> = {};
     if (body.active !== undefined) changes.active = body.active;
     if (body.name) changes.name = body.name.trim();

@@ -539,6 +539,9 @@ export default function Home() {
       if (!customerName.trim()) throw new Error("Informe o nome do cliente.");
       if (phone.replace(/\D/g, "").length < 10)
         throw new Error("Informe um telefone ou WhatsApp válido com DDD.");
+      if (zipCode.replace(/\D/g, "").length !== 8)
+        throw new Error("Informe um CEP válido.");
+      if (!addressNumber.trim()) throw new Error("Informe o número do endereço.");
       if (
         doc &&
         doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14)
@@ -1925,10 +1928,9 @@ export default function Home() {
               </Field>
             </div>
             <div className="address-section">
-              <strong>Endereço</strong>
               <div className="form-grid address-grid">
-                <Field label="CEP">
-                  <input inputMode="numeric" value={zipCode} onChange={(e) => lookupZipCode(e.target.value)} maxLength={9} />
+                <Field label="CEP *">
+                  <input required inputMode="numeric" value={zipCode} onChange={(e) => lookupZipCode(e.target.value)} maxLength={9} />
                   {zipLoading && <small className="field-help">Buscando endereço...</small>}
                 </Field>
                 <Field label="Logradouro">
@@ -1943,8 +1945,8 @@ export default function Home() {
                 <Field label="UF">
                   <input value={addressState} readOnly />
                 </Field>
-                <Field label="Número">
-                  <input value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} />
+                <Field label="Número *">
+                  <input required value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} />
                 </Field>
                 <Field label="Complemento">
                   <input value={complement} onChange={(e) => setComplement(e.target.value)} />
