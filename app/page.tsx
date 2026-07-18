@@ -1908,15 +1908,25 @@ export default function Home() {
           close={() => setCustomerModal(false)}
         >
           <form className="customer-page-form" onSubmit={saveCustomer} noValidate>
-            <Field label="Nome ou razão social *">
-              <input
-                name="name"
-                required
-                autoFocus
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-              />
-            </Field>
+            <div className="form-grid customer-main-grid">
+              <Field label="Nome ou razão social *">
+                <input
+                  name="name"
+                  required
+                  autoFocus
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                />
+              </Field>
+              <Field label="E-mail">
+                <input
+                  name="email"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                />
+              </Field>
+            </div>
             <div className="form-grid">
               <Field label="Telefone ou WhatsApp *">
                 <input
@@ -1938,14 +1948,6 @@ export default function Home() {
                 />
               </Field>
             </div>
-            <Field label="E-mail">
-              <input
-                name="email"
-                type="email"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-              />
-            </Field>
             <div className="address-section">
               <strong>Endereço</strong>
               <div className="form-grid address-grid">
