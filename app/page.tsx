@@ -951,7 +951,7 @@ export default function Home() {
     pdf.setTextColor(25);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
-    pdf.text("PINO DE BALANÇA", 38, 14);
+    pdf.text("PINO DE BALANÇA | TRUCK E CARRETA", 38, 14);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.5);
     pdf.text(`Responsável: ${responsible || "—"}`, 38, 21);
