@@ -435,6 +435,12 @@ export default function Home() {
     [orders],
   );
   function go(next: Screen) {
+    setCustomerModal(false);
+    setEditingCustomer(null);
+    setProductModal(false);
+    setEditingProduct(null);
+    setOrderModal(null);
+    setWalletPayment(null);
     if (next === "new-order") {
       const first = products.find((p) => p.active)?.code || "";
       setEditingOrder(null);
