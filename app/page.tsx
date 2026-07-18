@@ -437,8 +437,8 @@ export default function Home() {
   function go(next: Screen) {
     if (next === "new-order") {
       const first = products.find((p) => p.active)?.code || "";
+      setEditingOrder(null);
       setSelectedCustomer("");
-      setDeliveryDate("");
       setQuantity(1);
       setReceived(0);
       setSelectedCode(first);
