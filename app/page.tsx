@@ -1596,7 +1596,6 @@ export default function Home() {
                         <th>Cliente</th>
                         <th>CPF/CNPJ</th>
                         <th>WhatsApp</th>
-                        <th>E-mail</th>
                         <th>Status</th>
                         <th>Ações</th>
                       </tr>
@@ -1609,7 +1608,6 @@ export default function Home() {
                           </td>
                           <td>{formatDocument(c.document).replace(/^(CPF|CNPJ):\s*/, "")}</td>
                           <td>{formatPhone(c.whatsapp)}</td>
-                          <td>{c.email || "—"}</td>
                           <td>
                             <span
                               className={`status ${c.active ? "green" : "red"}`}
