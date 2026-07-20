@@ -1288,7 +1288,7 @@ export default function Home() {
                         const p = products.find((x) => x.code === item.code);
                         return (
                           <div className="item-row" key={index}>
-                            <Field label={`Modelo ${index + 1} *`}>
+                            <Field label={`Pino ${index + 1} *`}>
                               <select
                                 required
                                 value={item.code}
@@ -1299,16 +1299,15 @@ export default function Home() {
                                 {products
                                   .filter((p) => p.active)
                                   .map((p) => (
-                                    <option key={p.id}>{p.code}</option>
+                                    <option key={p.id} value={p.code}>
+                                      {p.name}
+                                    </option>
                                   ))}
                               </select>
                             </Field>
-                            <div className="product-info">
-                              <span>Descrição</span>
-                              <strong>{p?.name}</strong>
-                              <small>
-                                {p?.measure} · {money(p?.price || 0)}
-                              </small>
+                            <div className="order-item-value">
+                              <span>Valor unitário</span>
+                              <strong>{money(p?.price || 0)}</strong>
                             </div>
                             <Field label="Quantidade *">
                               <input
@@ -1333,7 +1332,7 @@ export default function Home() {
                               />
                             </Field>
                             <div className="subtotal">
-                              <span>Subtotal</span>
+                              <span>Valor total</span>
                               <strong>
                                 {money((p?.price || 0) * item.quantity)}
                               </strong>
