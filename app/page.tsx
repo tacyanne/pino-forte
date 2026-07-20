@@ -519,6 +519,10 @@ export default function Home() {
     setEditingProduct(null);
     setOrderModal(null);
     setWalletPayment(null);
+    if (next === "orders") {
+      setQuery("");
+      setPaymentFilter("Todos");
+    }
     if (next === "new-order") {
       const first = products.find((p) => p.active)?.code || "";
       setEditingOrder(null);
