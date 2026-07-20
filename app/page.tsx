@@ -1201,9 +1201,6 @@ export default function Home() {
               {l}
             </button>
           ))}
-          <button className="nav-item new" onClick={() => go("new-order")}>
-            <span>＋</span>Nova OS
-          </button>
         </nav>
         <div className="sidebar-bottom">
           <div className="user-card">
