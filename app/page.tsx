@@ -1044,9 +1044,9 @@ export default function Home() {
     pdf.text(`Pagamento: ${order.paymentMethod}`, 150, 46);
 
     const columns = [5, 31, 119, 139, 171, 205];
-    pdf.rect(left, 55, 200, 53);
     pdf.setFillColor(235, 235, 235);
     pdf.rect(left, 55, 200, 8, "F");
+    pdf.rect(left, 55, 200, 53);
     columns.slice(1, -1).forEach((x) => pdf.line(x, 55, x, 108));
     pdf.line(left, 63, right, 63);
     pdf.setFont("helvetica", "bold");
@@ -1089,6 +1089,12 @@ export default function Home() {
     pdf.setFontSize(6.5);
     pdf.setTextColor(100);
     pdf.text(orderFooter, 105, 141, { align: "center" });
+    if (order.productionStatus === "Cancelada") {
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(32);
+      pdf.setTextColor(225, 185, 185);
+      pdf.text("CANCELADA", 105, 80, { align: "center", angle: 28 });
+    }
     return pdf;
   }
   async function downloadPdf(order: Order) {
