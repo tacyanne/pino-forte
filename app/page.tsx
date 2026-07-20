@@ -1564,7 +1564,11 @@ export default function Home() {
                       <div className="payment-summary">
                         <span>Total da OS <strong>{money(total)}</strong></span>
                         <span>Valor recebido <strong>{money(received)}</strong></span>
-                        <span className="pending">Saldo devedor <strong>{money(Math.max(0, total - received))}</strong></span>
+                        {received > total ? (
+                          <span className="credit">Crédito do cliente <strong>{money(received - total)}</strong></span>
+                        ) : (
+                          <span className="pending">Saldo devedor <strong>{money(Math.max(0, total - received))}</strong></span>
+                        )}
                       </div>
                     </div>
                     <div className="order-notes">
@@ -2323,7 +2327,11 @@ export default function Home() {
               <div className="payment-summary">
                 <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
                 <span>Valor recebido <strong>{money(orderModal.received)}</strong></span>
-                <span className="pending">Saldo devedor <strong>{money(Math.max(0, orderModal.total - orderModal.received))}</strong></span>
+                {orderModal.received > orderModal.total ? (
+                  <span className="credit">Crédito do cliente <strong>{money(orderModal.received - orderModal.total)}</strong></span>
+                ) : (
+                  <span className="pending">Saldo devedor <strong>{money(Math.max(0, orderModal.total - orderModal.received))}</strong></span>
+                )}
               </div>
             </div>
             <ReviewField
