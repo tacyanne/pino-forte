@@ -105,3 +105,16 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .settings-title-action .settings-submit-button{width:210px;flex:0 0 210px}
 .user-create-page{max-width:900px}
 @media(max-width:760px){.settings-title-action{align-items:stretch;flex-direction:column}.settings-title-action .settings-submit-button{width:100%;flex:auto}}
+
+/* Abertura de OS simples, seguindo o cadastro de cliente */
+.order-simple-form{max-width:980px;gap:0}
+.order-simple-form .form-card{display:block;background:transparent;border:0;border-radius:0;box-shadow:none;padding:0!important;margin:0!important}
+.order-simple-form .form-card+.form-card{border-top:1px solid var(--border);padding-top:18px!important;margin-top:18px!important}
+.order-simple-form .section-number{display:none}
+.order-simple-form .form-title{margin-bottom:14px!important}
+.order-simple-form .form-title h2{font-size:16px;margin:0}
+.order-simple-form .form-content>.form-grid+.form-grid{border-top:0;margin-top:14px;padding-top:0}
+.order-simple-form .item-row{border:1px solid #e1e7e5;background:#f8faf9}
+.order-simple-form .form-actions{position:static;background:transparent;border:0;border-top:1px solid var(--border);border-radius:0;box-shadow:none;margin-top:18px;padding:16px 0 0}
+.order-simple-form .form-actions .primary-button,.order-simple-form .form-actions .cancel-button{min-width:150px}
+@media(max-width:760px){.order-simple-form{padding:16px 14px}.order-simple-form .form-card+.form-card{padding-top:16px!important;margin-top:16px!important}.order-simple-form .form-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.order-simple-form .form-actions .primary-button,.order-simple-form .form-actions .cancel-button{display:inline-flex;width:100%;min-width:0;grid-column:auto;grid-row:auto}}
