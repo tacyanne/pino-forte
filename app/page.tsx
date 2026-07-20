@@ -1091,9 +1091,15 @@ export default function Home() {
     pdf.text(orderFooter, 105, 141, { align: "center" });
     if (order.productionStatus === "Cancelada") {
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(32);
-      pdf.setTextColor(225, 185, 185);
-      pdf.text("CANCELADA", 105, 80, { align: "center", angle: 28 });
+      pdf.setFontSize(44);
+      pdf.setTextColor(255, 255, 255);
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.45);
+      pdf.text("CANCELADA", 105, 82, {
+        align: "center",
+        angle: 28,
+        renderingMode: "fillThenStroke",
+      });
     }
     return pdf;
   }
