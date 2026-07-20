@@ -1044,6 +1044,22 @@ export default function Home() {
     pdf.setLineWidth(0.3);
     pdf.rect(left, 5, 200, 138);
 
+    if (order.productionStatus === "Cancelada") {
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(48);
+      pdf.setTextColor(248, 248, 248);
+      pdf.setDrawColor(185, 185, 185);
+      pdf.setLineWidth(0.25);
+      pdf.text("CANCELADA", 105, 82, {
+        align: "center",
+        angle: 28,
+        renderingMode: "fillThenStroke",
+      });
+      pdf.setTextColor(25);
+      pdf.setDrawColor(60);
+      pdf.setLineWidth(0.3);
+    }
+
     pdf.rect(left, 5, 28, 27);
     pdf.rect(33, 5, 122, 27);
     pdf.rect(155, 5, 50, 27);
@@ -1131,18 +1147,6 @@ export default function Home() {
     pdf.setFontSize(6.5);
     pdf.setTextColor(100);
     pdf.text(orderFooter, 105, 141, { align: "center" });
-    if (order.productionStatus === "Cancelada") {
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(44);
-      pdf.setTextColor(255, 255, 255);
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.45);
-      pdf.text("CANCELADA", 105, 82, {
-        align: "center",
-        angle: 28,
-        renderingMode: "fillThenStroke",
-      });
-    }
     return pdf;
   }
   async function downloadPdf(order: Order) {
