@@ -1371,12 +1371,9 @@ export default function Home() {
                     >
                       ＋ Adicionar outro pino
                     </button>
-                    <div className="items-total">
-                      Total dos pinos <strong>{money(total)}</strong>
-                    </div>
                   </Card>
                   <Card n="3" title="Pagamento e observações">
-                    <div className="form-grid">
+                    <div className="form-grid order-payment-grid">
                       <Field label="Forma de entrega *">
                         <select name="deliveryType" required defaultValue={editingOrder?.deliveryType || "Retirada no local"}>
                           <option>Retirada no local</option>
@@ -1391,10 +1388,6 @@ export default function Home() {
                           <option>Boleto</option>
                           <option>Carteira</option>
                         </select>
-                        <small className="field-help">
-                          Carteira: as OS do cliente ficam acumuladas para
-                          pagamento no mês seguinte.
-                        </small>
                       </Field>
                       <Field label="Valor recebido">
                         <input
@@ -1408,15 +1401,9 @@ export default function Home() {
                         />
                       </Field>
                       <div className="payment-summary">
-                        <span>
-                          Total <strong>{money(total)}</strong>
-                        </span>
-                        <span>
-                          Saldo{" "}
-                          <strong>
-                            {money(Math.max(0, total - received))}
-                          </strong>
-                        </span>
+                        <span>Total da OS <strong>{money(total)}</strong></span>
+                        <span>Valor recebido <strong>{money(received)}</strong></span>
+                        <span className="pending">Saldo devedor <strong>{money(Math.max(0, total - received))}</strong></span>
                       </div>
                     </div>
                     <div className="order-notes">
