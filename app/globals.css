@@ -59,7 +59,7 @@ nav { display:grid; gap:7px; }
 .settings-actions{grid-column:1/-1;display:flex;justify-content:flex-end;padding-top:2px}
 .settings-actions .primary-button{min-width:190px}
 .user-admin{max-width:900px;margin-top:16px}
-.settings-section-title{padding-bottom:2px}
+.settings-section-title{padding-bottom:2px}.settings-card>.settings-section-title{grid-column:1/-1}
 .settings-section-title h2{margin:0;font-size:18px}
 .user-admin .user-create{padding:0;grid-template-columns:minmax(150px,1fr) minmax(220px,1.3fr) minmax(190px,1fr) auto}
 .user-admin .user-list{padding:2px 0 0}

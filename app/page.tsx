@@ -1835,6 +1835,7 @@ export default function Home() {
                   subtitle=""
                 />
                 <div className="customer-page-form settings-card">
+                  <div className="settings-section-title"><h2>Dados da empresa</h2></div>
                   <Field label="Nome da empresa">
                     <input
                       value={companyName}
