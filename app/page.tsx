@@ -1830,11 +1830,11 @@ export default function Home() {
             {screen === "settings" && (
               <div className="page">
                 <Heading
-                  eyebrow="SISTEMA"
+                  eyebrow=""
                   title="Configurações"
-                  subtitle="Preferências usadas nos documentos e mensagens."
+                  subtitle=""
                 />
-                <div className="form-card settings-card">
+                <div className="customer-page-form settings-card">
                   <Field label="Nome da empresa">
                     <input
                       value={companyName}
@@ -1862,12 +1862,14 @@ export default function Home() {
                       onChange={(e) => setOrderFooter(e.target.value)}
                     />
                   </Field>
-                  <button className="primary-button" onClick={saveSettings}>
-                    Salvar configurações
-                  </button>
+                  <div className="settings-actions">
+                    <button className="primary-button" onClick={saveSettings}>
+                      Salvar configurações
+                    </button>
+                  </div>
                 </div>
-                {auth.user.role === "admin" && <div className="panel user-admin">
-                  <div className="panel-title"><div><h2>Usuários do sistema</h2><p>Cadastre uma senha temporária e entregue-a diretamente à pessoa.</p></div></div>
+                {auth.user.role === "admin" && <div className="customer-page-form user-admin">
+                  <div className="settings-section-title"><h2>Acesso ao sistema</h2></div>
                   <form className="user-create" onSubmit={createUser}>
                     <Field label="Nome"><input name="name" required /></Field>
                     <Field label="E-mail"><input name="email" type="email" required autoComplete="off" /></Field>
