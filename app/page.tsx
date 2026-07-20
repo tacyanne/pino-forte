@@ -1597,7 +1597,7 @@ export default function Home() {
                           <td className="table-actions">
                             <b>{c.name}</b>
                           </td>
-                          <td>{formatDocument(c.document)}</td>
+                          <td>{formatDocument(c.document).replace(/^(CPF|CNPJ):\s*/, "")}</td>
                           <td>{formatPhone(c.whatsapp)}</td>
                           <td>{c.email || "—"}</td>
                           <td>
