@@ -2095,53 +2095,42 @@ export default function Home() {
       )}
       {orderModal && (
         <Modal
-          title="Revisão do pedido"
+          title="Visualizar Ordem de Serviço"
           subtitle={orderModal.number}
           page
+          pageLabel=""
           close={() => setOrderModal(null)}
         >
-          <div className="order-detail">
-            <div>
-              <span>Cliente</span>
-              <b>{orderModal.customerName}</b>
+          <div className="order-view-form">
+            <div className="form-grid order-customer-date-grid">
+              <ReviewField label="Cliente" value={orderModal.customerName} />
+              <ReviewField label="Data do pedido" value={brDate(orderModal.createdAt)} />
             </div>
-            <div>
-              <span>Emissão</span>
-              <b>{brDate(orderModal.createdAt)}</b>
+            <div className="review-items">
+              {getOrderItems(orderModal).map((item, index) => {
+                const selectedProduct = products.find((product) => product.code === item.code);
+                const unitPrice = item.unitPrice || selectedProduct?.price || 0;
+                return (
+                  <div className="review-item-row" key={`${item.code}-${index}`}>
+                    <ReviewField label={`Pino ${index + 1}`} value={selectedProduct?.name || item.code} />
+                    <ReviewField label="Valor unitário" value={money(unitPrice)} />
+                    <ReviewField label="Quantidade" value={String(item.quantity)} />
+                    <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />
+                  </div>
+                );
+              })}
             </div>
-            <div>
-              <span>Pinos</span>
-              <b>
-                {orderItemSummary(orderModal)}
-              </b>
+            <div className="form-grid order-payment-grid review-payment-grid">
+              <ReviewField label="Forma de entrega" value={orderModal.deliveryType} />
+              <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${paymentStatus(orderModal)}`} />
+              <ReviewField label="Valor recebido" value={money(orderModal.received)} />
+              <div className="payment-summary">
+                <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
+                <span>Valor recebido <strong>{money(orderModal.received)}</strong></span>
+                <span className="pending">Saldo devedor <strong>{money(Math.max(0, orderModal.total - orderModal.received))}</strong></span>
+              </div>
             </div>
-            <div>
-              <span>Forma de pagamento</span>
-              <b>
-                {orderModal.paymentMethod}
-                {orderModal.received >= orderModal.total
-                  ? " · Pago"
-                  : orderModal.received > 0
-                    ? " · Pagamento parcial"
-                    : " · Aguardando pagamento"}
-              </b>
-            </div>
-            <div>
-              <span>Valor total</span>
-              <b>{money(orderModal.total)}</b>
-            </div>
-            {orderModal.received > 0 && orderModal.received < orderModal.total && (
-              <>
-                <div>
-                  <span>Valor recebido</span>
-                  <b>{money(orderModal.received)}</b>
-                </div>
-                <div>
-                  <span>Saldo devedor</span>
-                  <b>{money(orderModal.total - orderModal.received)}</b>
-                </div>
-              </>
-            )}
+            <ReviewField label="Observações adicionais" value={orderModal.notes || "—"} multiline />
           </div>
           {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
             <div className="review-payment-action">
@@ -2151,8 +2140,11 @@ export default function Home() {
             </div>
           )}
           <div className="detail-actions document-actions">
+            <button className="outline-button" onClick={() => setOrderModal(null)}>
+              Voltar
+            </button>
             <button className="outline-button" onClick={() => editOrder(orderModal)}>
-              ← Voltar para editar
+              Editar
             </button>
             <button
               className="outline-button"
@@ -2167,9 +2159,6 @@ export default function Home() {
               Enviar ao cliente
             </button>
           </div>
-          <p className="send-help">
-            “Enviar ao cliente” baixa o PDF e abre diretamente o WhatsApp cadastrado do cliente.
-          </p>
         </Modal>
       )}
     </main>
@@ -2250,6 +2239,14 @@ function Field({
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+function ReviewField({ label, value, multiline = false }: { label: string; value: string; multiline?: boolean }) {
+  return (
+    <div className={`review-field${multiline ? " multiline" : ""}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 function EyeIcon({ open }: { open: boolean }) {
