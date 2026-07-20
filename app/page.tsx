@@ -1962,7 +1962,7 @@ export default function Home() {
                 </Field>
               </div>
             </div>
-            <div className="form-actions">
+            <div className="form-actions registration-actions">
               <button
                 type="button"
                 className="cancel-button"
@@ -2002,7 +2002,7 @@ export default function Home() {
                 }}
               />
             </Field>
-            <div className="form-actions">
+            <div className="form-actions registration-actions">
               <button
                 type="button"
                 className="cancel-button"
