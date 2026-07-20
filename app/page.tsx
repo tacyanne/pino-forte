@@ -1804,7 +1804,7 @@ export default function Home() {
                       value={walletMonthFilter}
                       onChange={(event) => setWalletMonthFilter(event.target.value)}
                     >
-                      <option value="">Todos os meses</option>
+                      <option value="">Todos</option>
                       {walletMonths.map(([month]) => (
                         <option value={month} key={month}>{monthLabel(month)}</option>
                       ))}
@@ -1820,18 +1820,6 @@ export default function Home() {
                       <option>Pago</option>
                     </select>
                   </Field>
-                  {(walletQuery || walletMonthFilter || walletStatusFilter) && (
-                    <button
-                      className="outline-button"
-                      onClick={() => {
-                        setWalletQuery("");
-                        setWalletMonthFilter("");
-                        setWalletStatusFilter("");
-                      }}
-                    >
-                      Limpar filtros
-                    </button>
-                  )}
                 </div>
                 <section className="metrics report-metrics wallet-metrics">
                   <Metric icon="R$" label="Total em Carteira" value={money(walletTotals.total)} />
