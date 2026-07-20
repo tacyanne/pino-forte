@@ -1093,8 +1093,6 @@ export default function Home() {
     pdf.text(`Pagamento: ${order.paymentMethod}`, 150, 46);
 
     const columns = [5, 31, 119, 139, 171, 205];
-    pdf.setFillColor(235, 235, 235);
-    pdf.rect(left, 55, 200, 8, "F");
     pdf.rect(left, 55, 200, 53);
     columns.slice(1, -1).forEach((x) => pdf.line(x, 55, x, 108));
     pdf.line(left, 63, right, 63);
