@@ -101,3 +101,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 /* Mesma dimensão para as ações da tela de configurações */
 .settings-submit-button{width:210px;min-width:210px;min-height:46px}
 @media(max-width:760px){.settings-submit-button{width:100%;min-width:0}}
+.settings-title-action{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.settings-title-action .settings-submit-button{width:210px;flex:0 0 210px}
+.user-create-page{max-width:900px}
+@media(max-width:760px){.settings-title-action{align-items:stretch;flex-direction:column}.settings-title-action .settings-submit-button{width:100%;flex:auto}}

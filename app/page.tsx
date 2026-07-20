@@ -225,6 +225,7 @@ export default function Home() {
   const [zipLoading, setZipLoading] = useState(false);
   const [productModal, setProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [userPage, setUserPage] = useState(false);
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
@@ -337,7 +338,7 @@ export default function Home() {
         if (response.status === 409) return setAuthError("Este usuário já está cadastrado e foi atualizado na lista abaixo.");
         return setAuthError(data.error || "Não foi possível cadastrar o usuário.");
       }
-      event.currentTarget.reset(); setShowTempPassword(false); flash("Usuário cadastrado com sucesso.");
+      event.currentTarget.reset(); setShowTempPassword(false); setUserPage(false); flash("Usuário cadastrado com sucesso.");
     } finally {
       setUserSaving(false);
     }
@@ -439,6 +440,7 @@ export default function Home() {
     setEditingCustomer(null);
     setProductModal(false);
     setEditingProduct(null);
+    setUserPage(false);
     setOrderModal(null);
     setWalletPayment(null);
     if (next === "new-order") {
@@ -1252,7 +1254,7 @@ export default function Home() {
                 </button>
                 <Heading
                   eyebrow="NOVA ORDEM DE SERVIÇO"
-                  title={editingOrder ? `Editar ${editingOrder.number}` : "Nova OS"}
+                  title={editingOrder ? `Editar ${editingOrder.number}` : "Cadastrar Ordem de Serviço"}
                   subtitle="Preencha o pedido e revise antes de gerar o PDF."
                 />
                 <form key={editingOrder?.id || "new"} onSubmit={saveOrder} noValidate>
@@ -1884,14 +1886,7 @@ export default function Home() {
                   </div>
                 </div>
                 {auth.user.role === "admin" && <div className="customer-page-form user-admin">
-                  <div className="settings-section-title"><h2>Acesso ao sistema</h2></div>
-                  <form className="user-create" onSubmit={createUser}>
-                    <Field label="Nome *"><input name="name" required /></Field>
-                    <Field label="E-mail *"><input name="email" type="email" required autoComplete="off" /></Field>
-                    <Field label="Senha temporária *"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
-                    <button className="primary-button settings-submit-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar"}</button>
-                  </form>
-                  {authError && <p className="modal-error user-error">{authError}</p>}
+                  <div className="settings-section-title settings-title-action"><h2>Acesso ao sistema</h2><button className="primary-button settings-submit-button" onClick={() => { setAuthError(""); setUserPage(true); }}>Cadastrar</button></div>
                   <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className={`link-button ${user.active ? "danger-action" : "success-action"}`} onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
                 </div>}
               </div>
@@ -1991,8 +1986,8 @@ export default function Home() {
         </Modal>
       )}
       {productModal && (
-        <Modal title={editingProduct ? "Editar pino" : "Cadastrar pino"} close={() => { setProductModal(false); setEditingProduct(null); }}>
-          <form onSubmit={saveProduct} noValidate>
+        <Modal title={editingProduct ? "Editar pino" : "Cadastrar pino"} page pageLabel="" close={() => { setProductModal(false); setEditingProduct(null); }}>
+          <form className="customer-page-form" onSubmit={saveProduct} noValidate>
             <div className="form-grid">
               <Field label="Código *">
                 <input name="code" required defaultValue={editingProduct?.code || ""} />
@@ -2026,6 +2021,22 @@ export default function Home() {
               <button className="primary-button" disabled={saving}>
                 {editingProduct ? "Salvar alterações" : "Salvar pino"}
               </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {userPage && (
+        <Modal title="Cadastrar usuário" page pageLabel="" close={() => setUserPage(false)}>
+          <form className="customer-page-form user-create-page" onSubmit={createUser} noValidate>
+            <div className="form-grid">
+              <Field label="Nome *"><input name="name" required /></Field>
+              <Field label="E-mail *"><input name="email" type="email" required autoComplete="off" /></Field>
+            </div>
+            <Field label="Senha temporária *"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
+            {authError && <p className="modal-error user-error">{authError}</p>}
+            <div className="modal-actions">
+              <button type="button" className="cancel-button" onClick={() => setUserPage(false)}>Cancelar</button>
+              <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar usuário"}</button>
             </div>
           </form>
         </Modal>
