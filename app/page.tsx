@@ -1603,7 +1603,7 @@ export default function Home() {
               <div className="page">
                 <Heading
                   eyebrow="CATÁLOGO"
-                  title="Pinos e preços"
+                  title="Pinos"
                   subtitle="Mantenha os modelos disponíveis e seus valores."
                   action={
                     <button
