@@ -2175,14 +2175,14 @@ export default function Home() {
             <button className="outline-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
-            <button className="outline-button" onClick={() => editOrder(orderModal)}>
-              Editar
-            </button>
             <button
               className="outline-button"
               onClick={() => downloadPdf(orderModal)}
             >
               Baixar PDF
+            </button>
+            <button className="primary-button" onClick={() => editOrder(orderModal)}>
+              Editar
             </button>
             <button
               className="whatsapp-button"
