@@ -1612,9 +1612,13 @@ export default function Home() {
                               onClick={() => cancelOrder(order)}
                             ><ActionIcon type="cancel" /></button>
                             <button className="icon-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
-                            {order.productionStatus !== "Cancelada" && (
-                              <button className="icon-action edit" title="Editar" aria-label="Editar OS" onClick={() => editOrder(order, "orders")}><ActionIcon type="edit" /></button>
-                            )}
+                            <button
+                              className="icon-action edit"
+                              title={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : "Editar"}
+                              aria-label={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : "Editar OS"}
+                              disabled={order.productionStatus === "Cancelada"}
+                              onClick={() => editOrder(order, "orders")}
+                            ><ActionIcon type="edit" /></button>
                           </td>
                         </tr>
                       ))}
@@ -2274,11 +2278,16 @@ export default function Home() {
             >
               Baixar PDF
             </button>
+            <button
+              className="primary-button"
+              disabled={orderModal.productionStatus === "Cancelada"}
+              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : "Editar"}
+              onClick={() => editOrder(orderModal)}
+            >
+              Editar
+            </button>
             {orderModal.productionStatus !== "Cancelada" && (
               <>
-                <button className="primary-button" onClick={() => editOrder(orderModal)}>
-                  Editar
-                </button>
                 <button
                   className="whatsapp-button"
                   onClick={() => shareOrder(orderModal)}
