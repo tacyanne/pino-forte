@@ -408,6 +408,11 @@ export default function Home() {
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
+  const filteredProducts = products.filter((product) =>
+    `${product.code} ${product.name} ${product.measure}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
   const reportOrders = orders.filter(
     (o) => {
       const paymentStatus =
@@ -1283,9 +1288,10 @@ export default function Home() {
               <div className="page order-page">
                 <Heading
                   eyebrow="NOVA ORDEM DE SERVIÇO"
-                  title={editingOrder ? `Editar ${editingOrder.number}` : "Cadastrar Ordem de Serviço"}
+                  title={editingOrder ? "Editar Ordem de Serviço" : "Cadastrar Ordem de Serviço"}
                   subtitle="Preencha o pedido e revise antes de gerar o PDF."
                 />
+                {editingOrder && <p className="edit-order-number">{editingOrder.number}</p>}
                 <form className="customer-page-form order-simple-form" key={editingOrder?.id || "new"} onSubmit={saveOrder} noValidate>
                   <Card n="1" title="Dados do pedido">
                     <div className="form-grid order-customer-date-grid">
@@ -1608,6 +1614,11 @@ export default function Home() {
                     </button>
                   }
                 />
+                <Filters
+                  query={query}
+                  setQuery={setQuery}
+                  queryLabel="Buscar pino"
+                />
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -1621,7 +1632,7 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {products.map((p) => (
+                      {filteredProducts.map((p) => (
                         <tr key={p.id}>
                           <td>
                             <b>{p.code}</b>
