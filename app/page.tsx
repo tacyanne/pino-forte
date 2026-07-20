@@ -1188,7 +1188,7 @@ export default function Home() {
                       className="primary-button"
                       onClick={() => go("new-order")}
                     >
-                      ＋ Criar nova OS
+                      ＋ Nova OS
                     </button>
                   }
                 />
