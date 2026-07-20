@@ -1579,7 +1579,7 @@ export default function Home() {
                   }
                 />
                 <Filters query={query} setQuery={setQuery} />
-                <div className="table-wrap standardized-table">
+                <div className="table-wrap standardized-table customer-table">
                   <table>
                     <thead>
                       <tr>
