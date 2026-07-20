@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     const name = body.name?.trim() || "";
     const whatsapp = body.whatsapp?.trim() || "";
     if (!name || !whatsapp) return Response.json({ error: "Nome e WhatsApp são obrigatórios." }, { status: 400 });
-    if ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.number?.trim()) return Response.json({ error: "CEP e número são obrigatórios." }, { status: 400 });
+    if ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.street?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !body.state?.trim() || !body.number?.trim()) return Response.json({ error: "Preencha o endereço obrigatório usando um CEP válido." }, { status: 400 });
     const document = body.document?.trim() || "";
     if (!document) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
     const existing = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
@@ -76,7 +76,7 @@ export async function PATCH(request: Request) {
       return Response.json({ product });
     }
     if (body.name !== undefined && !body.document?.trim()) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
-    if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.number?.trim())) return Response.json({ error: "CEP e número são obrigatórios." }, { status: 400 });
+    if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.street?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !body.state?.trim() || !body.number?.trim())) return Response.json({ error: "Preencha o endereço obrigatório usando um CEP válido." }, { status: 400 });
     const changes: Partial<typeof customers.$inferInsert> = {};
     if (body.active !== undefined) changes.active = body.active;
     if (body.name) changes.name = body.name.trim();

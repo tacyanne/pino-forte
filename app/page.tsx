@@ -461,6 +461,10 @@ export default function Home() {
     setTimeout(() => setNotice(""), 3500);
   }
   async function saveSettings() {
+    if (!companyName.trim() || !responsible.trim() || !orderFooter.trim())
+      return flash("Preencha todos os campos obrigatórios.");
+    if (companyPhone.replace(/\D/g, "").length < 10)
+      return flash("Informe um WhatsApp da empresa válido com DDD.");
     const response = await fetch("/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -547,6 +551,8 @@ export default function Home() {
         throw new Error("Informe um WhatsApp válido com DDD.");
       if (zipCode.replace(/\D/g, "").length !== 8)
         throw new Error("Informe um CEP válido.");
+      if (!street || !neighborhood || !city || !addressState)
+        throw new Error("Consulte um CEP válido para preencher o endereço.");
       if (!addressNumber.trim()) throw new Error("Informe o número do endereço.");
       if (!doc) throw new Error("Informe o CPF ou CNPJ.");
       if (doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14))
@@ -1104,9 +1110,9 @@ export default function Home() {
         <div className="auth-content">
         <h1>Acesso ao sistema</h1>
         <form onSubmit={submitAuth} noValidate>
-          {auth.setupRequired && <Field label="Seu nome"><input name="name" required autoFocus /></Field>}
-          <Field label="E-mail"><input name="email" type="email" required defaultValue={auth.setupRequired ? "tacytpr@gmail.com" : ""} readOnly={auth.setupRequired} autoFocus={!auth.setupRequired} /></Field>
-          <Field label={auth.setupRequired ? "Crie uma senha" : "Senha"}><div className="password-input"><input name="password" type={showAuthPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowAuthPassword((value) => !value)} aria-label={showAuthPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showAuthPassword} /></button></div></Field>
+          {auth.setupRequired && <Field label="Seu nome *"><input name="name" required autoFocus /></Field>}
+          <Field label="E-mail *"><input name="email" type="email" required defaultValue={auth.setupRequired ? "tacytpr@gmail.com" : ""} readOnly={auth.setupRequired} autoFocus={!auth.setupRequired} /></Field>
+          <Field label={auth.setupRequired ? "Crie uma senha *" : "Senha *"}><div className="password-input"><input name="password" type={showAuthPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowAuthPassword((value) => !value)} aria-label={showAuthPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showAuthPassword} /></button></div></Field>
           {authError && <p className="modal-error">{authError}</p>}
           <button className="primary-button" type="submit" disabled={authSaving}>{authSaving ? (auth.setupRequired ? "Criando acesso..." : "Entrando...") : (auth.setupRequired ? "Criar acesso e entrar" : "Entrar")}</button>
         </form>
@@ -1300,8 +1306,9 @@ export default function Home() {
                         const p = products.find((x) => x.code === item.code);
                         return (
                           <div className="item-row" key={index}>
-                            <Field label={`Modelo ${index + 1}`}>
+                            <Field label={`Modelo ${index + 1} *`}>
                               <select
+                                required
                                 value={item.code}
                                 onChange={(e) =>
                                   updateItem(index, { code: e.target.value })
@@ -1321,8 +1328,9 @@ export default function Home() {
                                 {p?.measure} · {money(p?.price || 0)}
                               </small>
                             </div>
-                            <Field label="Quantidade">
+                            <Field label="Quantidade *">
                               <input
+                                required
                                 type="number"
                                 inputMode="numeric"
                                 min="1"
@@ -1386,14 +1394,14 @@ export default function Home() {
                   </Card>
                   <Card n="3" title="Pagamento e observações">
                     <div className="form-grid">
-                      <Field label="Forma de entrega">
-                        <select name="deliveryType" defaultValue={editingOrder?.deliveryType || "Retirada no local"}>
+                      <Field label="Forma de entrega *">
+                        <select name="deliveryType" required defaultValue={editingOrder?.deliveryType || "Retirada no local"}>
                           <option>Retirada no local</option>
                           <option>Entrega</option>
                         </select>
                       </Field>
-                      <Field label="Forma de pagamento">
-                        <select name="paymentMethod" defaultValue={editingOrder?.paymentMethod || "Pix"}>
+                      <Field label="Forma de pagamento *">
+                        <select name="paymentMethod" required defaultValue={editingOrder?.paymentMethod || "Pix"}>
                           <option>Pix</option>
                           <option>Dinheiro</option>
                           <option>Cartão</option>
@@ -1836,20 +1844,23 @@ export default function Home() {
                 />
                 <div className="customer-page-form settings-card">
                   <div className="settings-section-title"><h2>Dados da empresa</h2></div>
-                  <Field label="Nome da empresa">
+                  <Field label="Nome da empresa *">
                     <input
+                      required
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                     />
                   </Field>
-                  <Field label="Responsável">
+                  <Field label="Responsável *">
                     <input
+                      required
                       value={responsible}
                       onChange={(e) => setResponsible(e.target.value)}
                     />
                   </Field>
-                  <Field label="WhatsApp da empresa">
+                  <Field label="WhatsApp da empresa *">
                     <input
+                      required
                       inputMode="tel"
                       value={companyPhone}
                       onChange={(e) =>
@@ -1857,25 +1868,26 @@ export default function Home() {
                       }
                     />
                   </Field>
-                  <Field label="Rodapé da OS">
+                  <Field label="Rodapé da OS *">
                     <input
+                      required
                       value={orderFooter}
                       onChange={(e) => setOrderFooter(e.target.value)}
                     />
                   </Field>
                   <div className="settings-actions">
                     <button className="primary-button" onClick={saveSettings}>
-                      Salvar configurações
+                      Salvar
                     </button>
                   </div>
                 </div>
                 {auth.user.role === "admin" && <div className="customer-page-form user-admin">
                   <div className="settings-section-title"><h2>Acesso ao sistema</h2></div>
                   <form className="user-create" onSubmit={createUser}>
-                    <Field label="Nome"><input name="name" required /></Field>
-                    <Field label="E-mail"><input name="email" type="email" required autoComplete="off" /></Field>
-                    <Field label="Senha temporária"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
-                    <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar usuário"}</button>
+                    <Field label="Nome *"><input name="name" required /></Field>
+                    <Field label="E-mail *"><input name="email" type="email" required autoComplete="off" /></Field>
+                    <Field label="Senha temporária *"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
+                    <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar"}</button>
                   </form>
                   {authError && <p className="modal-error user-error">{authError}</p>}
                   <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className="link-button" onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
@@ -1941,17 +1953,17 @@ export default function Home() {
                   <input required inputMode="numeric" value={zipCode} onChange={(e) => lookupZipCode(e.target.value)} maxLength={9} />
                   {zipLoading && <small className="field-help">Buscando endereço...</small>}
                 </Field>
-                <Field label="Logradouro">
-                  <input value={street} readOnly />
+                <Field label="Logradouro *">
+                  <input value={street} readOnly required />
                 </Field>
-                <Field label="Bairro">
-                  <input value={neighborhood} readOnly />
+                <Field label="Bairro *">
+                  <input value={neighborhood} readOnly required />
                 </Field>
-                <Field label="Cidade">
-                  <input value={city} readOnly />
+                <Field label="Cidade *">
+                  <input value={city} readOnly required />
                 </Field>
-                <Field label="UF">
-                  <input value={addressState} readOnly />
+                <Field label="UF *">
+                  <input value={addressState} readOnly required />
                 </Field>
                 <Field label="Número *">
                   <input required value={addressNumber} onChange={(e) => setAddressNumber(e.target.value)} />
