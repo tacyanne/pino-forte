@@ -228,6 +228,7 @@ export default function Home() {
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
+  const [dashboardMonth, setDashboardMonth] = useState(todayIso().slice(0, 7));
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [walletPayment, setWalletPayment] = useState<{
@@ -364,6 +365,17 @@ export default function Home() {
     }),
     [orders],
   );
+  const dashboardFinance = useMemo(() => {
+    const monthOrders = orders.filter(
+      (order) => monthInSaoPaulo(order.createdAt) === dashboardMonth,
+    );
+    const sales = monthOrders.reduce((sum, order) => sum + order.total, 0);
+    const received = monthOrders.reduce(
+      (sum, order) => sum + order.received,
+      0,
+    );
+    return { sales, received, pending: Math.max(0, sales - received) };
+  }, [orders, dashboardMonth]);
   const filteredOrders = orders.filter(
     (o) =>
       (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
@@ -1228,17 +1240,25 @@ export default function Home() {
                   </div>
                   <div className="side-stack">
                     <div className="panel finance finance-card">
+                      <label className="finance-month-filter">
+                        <span>Mês de referência</span>
+                        <input
+                          type="month"
+                          value={dashboardMonth}
+                          onChange={(event) => setDashboardMonth(event.target.value)}
+                        />
+                      </label>
                       <div className="finance-main">
                         <span>Vendas registradas</span>
-                        <strong>{money(metrics.sales)}</strong>
-                        <small>Total das Ordens de Serviço</small>
+                        <strong>{money(dashboardFinance.sales)}</strong>
+                        <small>Total das Ordens de Serviço no mês</small>
                       </div>
                       <div className="finance-line">
                         <span>
-                          <b>{money(metrics.received)}</b> recebido
+                          <b>{money(dashboardFinance.received)}</b> recebido
                         </span>
                         <span>
-                          <b>{money(metrics.sales - metrics.received)}</b>{" "}
+                          <b>{money(dashboardFinance.pending)}</b>{" "}
                           pendente
                         </span>
                       </div>
