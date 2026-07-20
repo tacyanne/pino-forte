@@ -107,7 +107,7 @@ const paymentObservationFor = (order: Order) => {
     .join("\n");
 };
 const completeOrderNotes = (order: Order, separator = "\n") =>
-  [order.notes, paymentObservationFor(order)].filter(Boolean).join(separator) || "—";
+  [order.notes, paymentObservationFor(order)].filter(Boolean).join(separator);
 const monthInSaoPaulo = (date: string) => {
   if (!date) return "";
   const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -2252,7 +2252,7 @@ export default function Home() {
               </div>
             </div>
             <ReviewField
-              label="Observações"
+              label="Observações adicionais"
               value={completeOrderNotes(orderModal, "\n")}
               multiline
             />
