@@ -102,6 +102,15 @@ const todayIso = () => {
     parts.find((part) => part.type === type)?.value || "";
   return `${get("year")}-${get("month")}-${get("day")}`;
 };
+const monthLabel = (month: string) => {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return month;
+  const label = new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, monthNumber - 1, 1));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+};
 const maskDate = (value: string) =>
   value
     .replace(/\D/g, "")
@@ -355,16 +364,6 @@ export default function Home() {
       (products.find((p) => p.code === item.code)?.price || 0) * item.quantity,
     0,
   );
-  const metrics = useMemo(
-    () => ({
-      paid: orders.filter((o) => o.received >= o.total).length,
-      partial: orders.filter((o) => o.received > 0 && o.received < o.total).length,
-      pending: orders.filter((o) => o.received <= 0).length,
-      sales: orders.reduce((s, o) => s + o.total, 0),
-      received: orders.reduce((s, o) => s + o.received, 0),
-    }),
-    [orders],
-  );
   const dashboardFinance = useMemo(() => {
     const monthOrders = orders.filter(
       (order) => monthInSaoPaulo(order.createdAt) === dashboardMonth,
@@ -375,6 +374,27 @@ export default function Home() {
       0,
     );
     return { sales, received, pending: Math.max(0, sales - received) };
+  }, [orders, dashboardMonth]);
+  const dashboardHistory = useMemo(() => {
+    const grouped = orders.reduce(
+      (months, order) => {
+        const month = monthInSaoPaulo(order.createdAt);
+        if (month === dashboardMonth) return months;
+        const summary = months[month] || { sales: 0, received: 0 };
+        summary.sales += order.total;
+        summary.received += order.received;
+        months[month] = summary;
+        return months;
+      },
+      {} as Record<string, { sales: number; received: number }>,
+    );
+    return Object.entries(grouped)
+      .sort(([monthA], [monthB]) => monthB.localeCompare(monthA))
+      .map(([month, summary]) => ({
+        month,
+        ...summary,
+        pending: Math.max(0, summary.sales - summary.received),
+      }));
   }, [orders, dashboardMonth]);
   const filteredOrders = orders.filter(
     (o) =>
@@ -1208,20 +1228,20 @@ export default function Home() {
                 />
                 <section className="metrics">
                   <Metric
-                    icon="✓"
-                    label="Pagas"
-                    value={metrics.paid}
+                    icon="R$"
+                    label="Vendas do mês"
+                    value={money(dashboardFinance.sales)}
                   />
                   <Metric
-                    icon="◐"
-                    label="Pagamento parcial"
-                    value={metrics.partial}
+                    icon="✓"
+                    label="Recebido"
+                    value={money(dashboardFinance.received)}
                   />
                   <Metric
                     icon="!"
-                    label="Aguardando pagamento"
-                    value={metrics.pending}
-                    alert={metrics.pending > 0}
+                    label="Pendente"
+                    value={money(dashboardFinance.pending)}
+                    alert={dashboardFinance.pending > 0}
                   />
                 </section>
                 <section className="content-grid">
@@ -1239,28 +1259,20 @@ export default function Home() {
                     />
                   </div>
                   <div className="side-stack">
-                    <div className="panel finance finance-card">
-                      <label className="finance-month-filter">
-                        <span>Mês de referência</span>
-                        <input
-                          type="month"
-                          value={dashboardMonth}
-                          onChange={(event) => setDashboardMonth(event.target.value)}
-                        />
-                      </label>
-                      <div className="finance-main">
-                        <span>Vendas registradas</span>
-                        <strong>{money(dashboardFinance.sales)}</strong>
-                        <small>Total das Ordens de Serviço no mês</small>
+                    <div className="panel finance-history-card">
+                      <div className="finance-history-title">
+                        <h2>Histórico mensal</h2>
+                        <span>Meses anteriores</span>
                       </div>
-                      <div className="finance-line">
-                        <span>
-                          <b>{money(dashboardFinance.received)}</b> recebido
-                        </span>
-                        <span>
-                          <b>{money(dashboardFinance.pending)}</b>{" "}
-                          pendente
-                        </span>
+                      <div className="finance-history-list">
+                        {dashboardHistory.length ? dashboardHistory.map((summary) => (
+                          <div className="finance-history-row" key={summary.month}>
+                            <strong>{monthLabel(summary.month)}</strong>
+                            <div><span>Vendas</span><b>{money(summary.sales)}</b></div>
+                            <div><span>Recebido</span><b>{money(summary.received)}</b></div>
+                            <div className="pending"><span>Pendente</span><b>{money(summary.pending)}</b></div>
+                          </div>
+                        )) : <p className="finance-history-empty">Ainda não há dados de meses anteriores.</p>}
                       </div>
                     </div>
                   </div>
