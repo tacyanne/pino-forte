@@ -2461,7 +2461,7 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 function ActionIcon({ type }: { type: "cancel" | "view" | "edit" }) {
   if (type === "cancel") return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/></svg>;
-  if (type === "view") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>;
+  if (type === "view") return <span className="view-icon" aria-hidden="true"><i /></span>;
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"/><path d="m13.8 7.4 2.8 2.8"/></svg>;
 }
 function Filters({
