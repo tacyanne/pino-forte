@@ -75,6 +75,7 @@ const brDate = (date: string) => {
   return y && m && d ? `${d}/${m}/${y}` : value || "—";
 };
 const paymentObservationFor = (order: Order) => {
+  if (order.paymentMethod !== "Carteira") return "";
   let registeredPayments: { amount: number; method: string; date: string }[] = [];
   try {
     const parsed = JSON.parse(order.commercialStatus);
@@ -98,26 +99,14 @@ const paymentObservationFor = (order: Order) => {
     ...registeredPayments,
   ].filter((payment) => Number(payment.amount || 0) > 0);
   if (!paymentHistory.length) return "";
-  if (order.paymentMethod === "Carteira") {
-    return `Baixas da carteira: ${paymentHistory
-      .map(
-        (payment) =>
-          `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
-      )
-      .join("; ")}`;
-  }
-  if (paymentHistory.length === 1) {
-    const payment = paymentHistory[0];
-    return `Pagamento: ${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`;
-  }
-  return `Pagamentos: ${paymentHistory
+  return paymentHistory
     .map(
       (payment) =>
-        `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
+        `Pago ${money(Number(payment.amount))} em ${brDate(payment.date)} via ${payment.method.replace("Pagamento inicial · ", "")}`,
     )
-    .join("; ")}`;
+    .join("\n");
 };
-const completeOrderNotes = (order: Order, separator = " | ") =>
+const completeOrderNotes = (order: Order, separator = "\n") =>
   [order.notes, paymentObservationFor(order)].filter(Boolean).join(separator) || "—";
 const monthInSaoPaulo = (date: string) => {
   if (!date) return "";
@@ -2263,7 +2252,7 @@ export default function Home() {
               </div>
             </div>
             <ReviewField
-              label="Observações adicionais"
+              label="Observações"
               value={completeOrderNotes(orderModal, "\n")}
               multiline
             />
