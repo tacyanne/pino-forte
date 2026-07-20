@@ -244,6 +244,7 @@ export default function Home() {
   const [dashboardMonth, setDashboardMonth] = useState(todayIso().slice(0, 7));
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editOrderReturnTo, setEditOrderReturnTo] = useState<"orders" | "review">("review");
   const [walletPayment, setWalletPayment] = useState<{
     items: Order[];
     customer: string;
@@ -754,9 +755,10 @@ export default function Home() {
       flash(`${order.number} cancelada.`);
     }
   }
-  function editOrder(order: Order) {
+  function editOrder(order: Order, returnTo: "orders" | "review" = "review") {
     const items = getOrderItems(order).map(({ code, quantity }) => ({ code, quantity }));
     setEditingOrder(order);
+    setEditOrderReturnTo(returnTo);
     setSelectedCustomer(order.customerName);
     setOrderItems(items);
     setSelectedCode(items[0]?.code || "");
@@ -1491,7 +1493,8 @@ export default function Home() {
                           const order = editingOrder;
                           setEditingOrder(null);
                           setScreen("orders");
-                          setOrderModal(order);
+                          if (editOrderReturnTo === "review") setOrderModal(order);
+                          else setOrderModal(null);
                         } else {
                           go("dashboard");
                         }
@@ -1561,7 +1564,7 @@ export default function Home() {
                               onClick={() => cancelOrder(order)}
                             ><ActionIcon type="cancel" /></button>
                             <button className="icon-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
-                            <button className="icon-action edit" title="Editar" aria-label="Editar OS" onClick={() => editOrder(order)}><ActionIcon type="edit" /></button>
+                            <button className="icon-action edit" title="Editar" aria-label="Editar OS" onClick={() => editOrder(order, "orders")}><ActionIcon type="edit" /></button>
                           </td>
                         </tr>
                       ))}
