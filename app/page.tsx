@@ -1360,6 +1360,8 @@ export default function Home() {
                               <button
                                 type="button"
                                 className="remove-item"
+                                aria-label={`Excluir modelo ${index + 1}`}
+                                title="Excluir pino"
                                 onClick={() =>
                                   setOrderItems((items) =>
                                     items.filter((_, i) => i !== index),
@@ -1548,7 +1550,7 @@ export default function Home() {
                               Editar
                             </button>
                             <button
-                              className="link-button"
+                              className={`link-button ${c.active ? "danger-action" : "success-action"}`}
                               onClick={() =>
                                 toggle("customer", c.id, !c.active)
                               }
@@ -1614,7 +1616,7 @@ export default function Home() {
                               Editar
                             </button>
                             <button
-                              className="link-button"
+                              className={`link-button ${p.active ? "danger-action" : "success-action"}`}
                               onClick={() => toggle("product", p.id, !p.active)}
                             >
                               {p.active ? "Inativar" : "Ativar"}
@@ -1890,7 +1892,7 @@ export default function Home() {
                     <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar"}</button>
                   </form>
                   {authError && <p className="modal-error user-error">{authError}</p>}
-                  <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className="link-button" onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
+                  <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className={`link-button ${user.active ? "danger-action" : "success-action"}`} onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
                 </div>}
               </div>
             )}

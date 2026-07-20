@@ -66,3 +66,24 @@ nav { display:grid; gap:7px; }
 .user-admin .user-error{margin:0}
 @media(max-width:900px){.user-admin .user-create{grid-template-columns:1fr 1fr}.user-admin .user-create .primary-button{width:100%}}
 @media(max-width:760px){.settings-card{grid-template-columns:1fr}.settings-actions{grid-column:auto}.settings-actions .primary-button{width:100%}.user-admin .user-create{grid-template-columns:1fr}}
+
+/* Sistema único de botões */
+button{font-family:inherit;cursor:pointer;transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease}
+button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!important;opacity:.65}
+.primary-button{min-height:46px;padding:0 20px;border-radius:10px;font-size:14px;box-shadow:0 5px 14px #d86b3228}
+.secondary-button,.outline-button,.save-button,.back-button{min-height:46px;padding:0 18px;border:1px solid #b7c9c6;border-radius:10px;background:#fff;color:var(--petrol);font-size:13px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.cancel-button{min-height:46px;padding:0 18px;border:1px solid #e4a29f;border-radius:10px;background:#fff4f3;color:#b33f3a;font-size:13px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.cancel-button:hover{background:#fbe4e2;border-color:#cf625d;color:#9f302c}
+.link-button{min-height:34px;padding:0 12px;border:1px solid #c8d3d1;border-radius:8px;background:#fff;color:var(--petrol);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.link-button:hover{background:#eef4f3;border-color:#91aaa6}
+.link-button.danger-action{border-color:#e5aaa7;background:#fff4f3;color:#b33f3a}
+.link-button.danger-action:hover{border-color:#cf625d;background:#fbe4e2;color:#9f302c}
+.link-button.success-action{border-color:#9fcbb8;background:#f0f8f4;color:#277357}
+.link-button.success-action:hover{border-color:#65a889;background:#e1f1e9;color:#1f6048}
+.remove-item{background:#fff0ef;border:1px solid #e5aaa7;color:#b33f3a}
+.remove-item:hover{background:#f9deda;border-color:#cf625d}
+.whatsapp-button{min-height:46px;border-radius:10px;background:#218a55;color:#fff;font-size:13px}
+.boleto-pay{min-height:46px;border-radius:10px}
+.logout-button{border-color:#814743;color:#ffaaa4;background:#351918}
+.logout-button:hover{border-color:#db6a63;color:#fff;background:#5b2421}
+@media(max-width:760px){.customer-page-form .modal-actions .cancel-button{display:inline-flex}.form-actions .cancel-button{display:inline-flex}.modal-actions{gap:10px}.modal-actions .cancel-button,.modal-actions .primary-button{width:100%}}
