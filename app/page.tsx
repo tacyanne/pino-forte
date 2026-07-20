@@ -170,7 +170,7 @@ const paymentStatus = (order: Order) =>
 const paymentTone = (order: Order) =>
   order.productionStatus === "Cancelada"
     ? "red"
-    : order.received >= order.total ? "green" : order.received > 0 ? "amber" : "red";
+    : order.received >= order.total ? "green" : order.received > 0 ? "blue" : "amber";
 const getOrderItems = (order: Order) => {
   try {
     const items = JSON.parse(order.productCode);
@@ -1177,7 +1177,7 @@ export default function Home() {
 
   const nav: [Screen, string, string][] = [
     ["dashboard", "⌂", "Início"],
-    ["orders", "▤", "Ordens de Serviço"],
+    ["orders", "▤", "OS"],
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Pinos"],
     ["wallet", "▣", "Carteira"],
