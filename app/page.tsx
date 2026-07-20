@@ -428,6 +428,7 @@ export default function Home() {
             ? "Pagamento parcial"
             : "Aguardando pagamento";
       return (
+        o.productionStatus !== "Cancelada" &&
         (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
         (!reportCustomer || o.customerName === reportCustomer) &&
         (!reportPaymentStatus || paymentStatus === reportPaymentStatus)
@@ -1278,7 +1279,6 @@ export default function Home() {
                     <div className="panel finance-history-card">
                       <div className="finance-history-title">
                         <h2>Histórico mensal</h2>
-                        <span>Meses anteriores</span>
                       </div>
                       <div className="finance-history-list">
                         {dashboardHistory.length ? dashboardHistory.map((summary) => (
