@@ -2063,28 +2063,28 @@ export default function Home() {
       {productModal && (
         <Modal title={editingProduct ? "Editar pino" : "Cadastrar pino"} page pageLabel="" close={() => { setProductModal(false); setEditingProduct(null); }}>
           <form className="customer-page-form" onSubmit={saveProduct} noValidate>
-            <div className="form-grid">
+            <div className="form-grid product-single-row">
               <Field label="Código *">
                 <input name="code" required defaultValue={editingProduct?.code || ""} />
+              </Field>
+              <Field label="Descrição *">
+                <input name="name" required defaultValue={editingProduct?.name || ""} />
               </Field>
               <Field label="Medida *">
                 <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
+              <Field label="Preço *">
+                <input
+                  name="price"
+                  required
+                  inputMode="numeric"
+                  defaultValue={editingProduct ? money(editingProduct.price) : "R$ 0,00"}
+                  onChange={(e) => {
+                    e.currentTarget.value = maskCurrency(e.currentTarget.value);
+                  }}
+                />
+              </Field>
             </div>
-            <Field label="Descrição *">
-              <input name="name" required defaultValue={editingProduct?.name || ""} />
-            </Field>
-            <Field label="Preço *">
-              <input
-                name="price"
-                required
-                inputMode="numeric"
-                defaultValue={editingProduct ? money(editingProduct.price) : "R$ 0,00"}
-                onChange={(e) => {
-                  e.currentTarget.value = maskCurrency(e.currentTarget.value);
-                }}
-              />
-            </Field>
             <div className="form-actions registration-actions">
               <button
                 type="button"
