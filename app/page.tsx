@@ -74,6 +74,17 @@ const brDate = (date: string) => {
   const [y, m, d] = value?.split("-") || [];
   return y && m && d ? `${d}/${m}/${y}` : value || "—";
 };
+const dateTimestamp = (date: string) => {
+  if (!date) return 0;
+  const brMatch = date.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  const normalized = brMatch
+    ? `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}T12:00:00`
+    : date.includes("T")
+      ? date
+      : `${date.replace(" ", "T")}Z`;
+  const timestamp = new Date(normalized).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
 const paymentObservationFor = (order: Order) => {
   if (order.paymentMethod !== "Carteira") return "";
   let registeredPayments: { amount: number; method: string; date: string }[] = [];
@@ -97,7 +108,9 @@ const paymentObservationFor = (order: Order) => {
         ]
       : []),
     ...registeredPayments,
-  ].filter((payment) => Number(payment.amount || 0) > 0);
+  ]
+    .filter((payment) => Number(payment.amount || 0) > 0)
+    .sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date));
   if (!paymentHistory.length) return "";
   return paymentHistory
     .map(
@@ -1862,7 +1875,7 @@ export default function Home() {
                                   ...(initialPayment > 0 ? [{ amount: initialPayment, method: "Pagamento inicial", date: o.createdAt }] : []),
                                   ...laterPayments,
                                 ];
-                              }) as {
+                              }).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date)) as {
                                 amount: number;
                                 method: string;
                                 date: string;
