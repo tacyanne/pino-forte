@@ -74,6 +74,45 @@ const brDate = (date: string) => {
   const [y, m, d] = value?.split("-") || [];
   return y && m && d ? `${d}/${m}/${y}` : value || "—";
 };
+const paymentObservationFor = (order: Order) => {
+  let registeredPayments: { amount: number; method: string; date: string }[] = [];
+  try {
+    const parsed = JSON.parse(order.commercialStatus);
+    if (Array.isArray(parsed)) registeredPayments = parsed;
+  } catch {}
+  const registeredTotal = registeredPayments.reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
+    0,
+  );
+  const initialPayment = Math.max(0, order.received - registeredTotal);
+  const paymentHistory = [
+    ...(initialPayment > 0
+      ? [{ amount: initialPayment, method: order.paymentMethod, date: order.createdAt }]
+      : []),
+    ...registeredPayments,
+  ].filter((payment) => Number(payment.amount || 0) > 0);
+  if (!paymentHistory.length) return "";
+  if (order.paymentMethod === "Carteira") {
+    return `Baixas da carteira: ${paymentHistory
+      .map(
+        (payment) =>
+          `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
+      )
+      .join("; ")}`;
+  }
+  if (paymentHistory.length === 1) {
+    const payment = paymentHistory[0];
+    return `Pagamento: ${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`;
+  }
+  return `Pagamentos: ${paymentHistory
+    .map(
+      (payment) =>
+        `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
+    )
+    .join("; ")}`;
+};
+const completeOrderNotes = (order: Order, separator = " | ") =>
+  [order.notes, paymentObservationFor(order)].filter(Boolean).join(separator) || "—";
 const monthInSaoPaulo = (date: string) => {
   if (!date) return "";
   const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -1003,39 +1042,6 @@ export default function Home() {
       if (Array.isArray(catalog.customers)) currentCustomers = catalog.customers;
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
-    let registeredPayments: { amount: number; method: string; date: string }[] = [];
-    try {
-      const parsed = JSON.parse(order.commercialStatus);
-      if (Array.isArray(parsed)) registeredPayments = parsed;
-    } catch {}
-    const registeredTotal = registeredPayments.reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
-      0,
-    );
-    const initialPayment = Math.max(0, order.received - registeredTotal);
-    const paymentHistory = [
-      ...(initialPayment > 0
-        ? [{ amount: initialPayment, method: order.paymentMethod, date: order.createdAt }]
-        : []),
-      ...registeredPayments,
-    ].filter((payment) => Number(payment.amount || 0) > 0);
-    const paymentObservation = paymentHistory.length
-      ? order.paymentMethod === "Carteira"
-        ? `Baixas da carteira: ${paymentHistory
-            .map(
-              (payment) =>
-                `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
-            )
-            .join("; ")}`
-        : paymentHistory.length === 1
-          ? `Pagamento realizado em ${brDate(paymentHistory[0].date)}`
-          : `Pagamentos: ${paymentHistory
-              .map(
-                (payment) =>
-                  `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
-              )
-              .join("; ")}`
-      : "";
     const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a5" });
     const logo = await loadImageData("/logo-pdf.png", true);
     const left = 5;
@@ -1126,12 +1132,7 @@ export default function Home() {
     pdf.setFont("helvetica", "normal");
     pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 8, 114);
     pdf.text(`Forma de entrega: ${order.deliveryType}`, 76, 114);
-    const observationText = [
-      order.notes ? `Observações: ${order.notes}` : "Observações: —",
-      paymentObservation,
-    ]
-      .filter(Boolean)
-      .join(" | ");
+    const observationText = `Observações: ${completeOrderNotes(order)}`;
     pdf.setFontSize(6.2);
     pdf.text(pdf.splitTextToSize(observationText, 192), 8, 119, {
       lineHeightFactor: 1.05,
@@ -2255,7 +2256,11 @@ export default function Home() {
                 <span className="pending">Saldo devedor <strong>{money(Math.max(0, orderModal.total - orderModal.received))}</strong></span>
               </div>
             </div>
-            <ReviewField label="Observações adicionais" value={orderModal.notes || "—"} multiline />
+            <ReviewField
+              label="Observações adicionais"
+              value={completeOrderNotes(orderModal, "\n")}
+              multiline
+            />
           </div>
           {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
             <div className="review-payment-action">
