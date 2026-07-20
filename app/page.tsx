@@ -1600,7 +1600,7 @@ export default function Home() {
                     <tbody>
                       {filteredCustomers.map((c) => (
                         <tr key={c.id}>
-                          <td className="table-actions">
+                          <td className="customer-name-cell">
                             <b>{c.name}</b>
                           </td>
                           <td>{formatDocument(c.document).replace(/^(CPF|CNPJ):\s*/, "")}</td>
