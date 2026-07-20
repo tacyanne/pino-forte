@@ -1895,35 +1895,32 @@ export default function Home() {
                                       {balance ? "Em aberto" : "Pago"}
                                     </span>
                                   </div>
-                                  <div className="wallet-total">
-                                    <span>Total acumulado</span>
-                                    <strong>{money(item.total)}</strong>
-                                  </div>
-                                  <div className="wallet-summary">
-                                    <span>
-                                      Ordens: <b>{item.orders.length} OS</b>
-                                    </span>
-                                    <span>
-                                      Pago: <b>{money(item.received)}</b>
-                                    </span>
-                                    <span>
-                                      Saldo: <b>{money(balance)}</b>
-                                    </span>
+                                  <div className="wallet-summary wallet-summary-clean">
+                                    <span>Total <b>{money(item.total)}</b></span>
+                                    <span>Recebido <b>{money(item.received)}</b></span>
+                                    <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
                                   <div className="wallet-orders">
+                                    <div className="wallet-orders-head">
+                                      <span>OS</span>
+                                      <span>Emissão</span>
+                                      <span>Valor</span>
+                                      <span>Ação</span>
+                                    </div>
                                     {item.orders.map((o) => (
-                                      <button
-                                        key={o.id}
-                                        onClick={() => setOrderModal(o)}
-                                      >
-                                        <span>
-                                          {o.number}
-                                          <small>
-                                            Emitida em {brDate(o.createdAt)}
-                                          </small>
-                                        </span>
-                                        <b>{money(o.total)}</b>
-                                      </button>
+                                      <div className="wallet-order-row" key={o.id}>
+                                        <b>{o.number}</b>
+                                        <span>{brDate(o.createdAt)}</span>
+                                        <strong>{money(o.total)}</strong>
+                                        <button
+                                          className="icon-action"
+                                          title="Visualizar OS"
+                                          aria-label={`Visualizar ${o.number}`}
+                                          onClick={() => setOrderModal(o)}
+                                        >
+                                          <ActionIcon type="view" />
+                                        </button>
+                                      </div>
                                     ))}
                                   </div>
                                   {history.length > 0 && (
@@ -1940,20 +1937,22 @@ export default function Home() {
                                     </div>
                                   )}
                                   {balance > 0 && (
-                                    <button
-                                      className="primary-button wallet-pay"
-                                      disabled={saving}
-                                      onClick={() => {
-                                        setWalletPayment({
-                                          items: item.orders,
-                                          customer: item.customer,
-                                        });
-                                        setWalletPayDate(brDate(todayIso()));
-                                        setWalletPayAmount(0);
-                                      }}
-                                    >
-                                      ＋ Registrar pagamento
-                                    </button>
+                                    <div className="wallet-card-actions">
+                                      <button
+                                        className="primary-button wallet-pay"
+                                        disabled={saving}
+                                        onClick={() => {
+                                          setWalletPayment({
+                                            items: item.orders,
+                                            customer: item.customer,
+                                          });
+                                          setWalletPayDate(brDate(todayIso()));
+                                          setWalletPayAmount(0);
+                                        }}
+                                      >
+                                        Registrar pagamento
+                                      </button>
+                                    </div>
                                   )}
                                 </section>
                               );
