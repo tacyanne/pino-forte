@@ -1547,14 +1547,21 @@ export default function Home() {
                     <tbody>
                       {filteredOrders.map((order) => (
                         <tr key={order.id}>
-                          <td><button className="link-button order-number-link" onClick={() => setOrderModal(order)}>{order.number}</button></td>
+                          <td><b>{order.number}</b></td>
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
                           <td>{money(order.total)}</td>
                           <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
                           <td className="table-actions">
-                            <button className="link-button" onClick={() => editOrder(order)}>Editar</button>
-                            {order.productionStatus !== "Cancelada" && <button className="link-button danger-action" onClick={() => cancelOrder(order)}>Cancelar</button>}
+                            <button
+                              className="icon-action danger"
+                              title={order.productionStatus === "Cancelada" ? "OS já cancelada" : "Cancelar"}
+                              aria-label={order.productionStatus === "Cancelada" ? "OS já cancelada" : "Cancelar OS"}
+                              disabled={order.productionStatus === "Cancelada"}
+                              onClick={() => cancelOrder(order)}
+                            ><ActionIcon type="cancel" /></button>
+                            <button className="icon-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
+                            <button className="icon-action edit" title="Editar" aria-label="Editar OS" onClick={() => editOrder(order)}><ActionIcon type="edit" /></button>
                           </td>
                         </tr>
                       ))}
@@ -2320,6 +2327,11 @@ function EyeIcon({ open }: { open: boolean }) {
       {!open && <path d="M4 4 20 20" />}
     </svg>
   );
+}
+function ActionIcon({ type }: { type: "cancel" | "view" | "edit" }) {
+  if (type === "cancel") return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/></svg>;
+  if (type === "view") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z"/><path d="m13.8 7.4 2.8 2.8"/></svg>;
 }
 function Filters({
   query,
