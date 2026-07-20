@@ -1037,7 +1037,7 @@ export default function Home() {
       if (Array.isArray(catalog.customers)) currentCustomers = catalog.customers;
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
-    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a5" });
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const logo = await loadImageData("/logo-pdf.png", true);
     const left = 5;
     const right = 205;
