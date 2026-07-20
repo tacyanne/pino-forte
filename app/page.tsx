@@ -1003,6 +1003,39 @@ export default function Home() {
       if (Array.isArray(catalog.customers)) currentCustomers = catalog.customers;
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
+    let registeredPayments: { amount: number; method: string; date: string }[] = [];
+    try {
+      const parsed = JSON.parse(order.commercialStatus);
+      if (Array.isArray(parsed)) registeredPayments = parsed;
+    } catch {}
+    const registeredTotal = registeredPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0,
+    );
+    const initialPayment = Math.max(0, order.received - registeredTotal);
+    const paymentHistory = [
+      ...(initialPayment > 0
+        ? [{ amount: initialPayment, method: order.paymentMethod, date: order.createdAt }]
+        : []),
+      ...registeredPayments,
+    ].filter((payment) => Number(payment.amount || 0) > 0);
+    const paymentObservation = paymentHistory.length
+      ? order.paymentMethod === "Carteira"
+        ? `Baixas da carteira: ${paymentHistory
+            .map(
+              (payment) =>
+                `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
+            )
+            .join("; ")}`
+        : paymentHistory.length === 1
+          ? `Pagamento realizado em ${brDate(paymentHistory[0].date)}`
+          : `Pagamentos: ${paymentHistory
+              .map(
+                (payment) =>
+                  `${brDate(payment.date)} · ${payment.method} · ${money(Number(payment.amount))}`,
+              )
+              .join("; ")}`
+      : "";
     const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a5" });
     const logo = await loadImageData("/logo-pdf.png", true);
     const left = 5;
@@ -1075,17 +1108,26 @@ export default function Home() {
     pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 129, 105, { align: "center" });
     pdf.text(money(order.total), 201, 105, { align: "right" });
 
-    pdf.rect(left, 108, 200, 14);
+    pdf.rect(left, 108, 200, 18);
     pdf.setFont("helvetica", "normal");
     pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 8, 114);
     pdf.text(`Forma de entrega: ${order.deliveryType}`, 76, 114);
-    pdf.text(order.notes ? `Observações: ${order.notes}` : "Observações: —", 8, 120, { maxWidth: 192 });
+    const observationText = [
+      order.notes ? `Observações: ${order.notes}` : "Observações: —",
+      paymentObservation,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    pdf.setFontSize(6.2);
+    pdf.text(pdf.splitTextToSize(observationText, 192), 8, 119, {
+      lineHeightFactor: 1.05,
+    });
 
-    pdf.line(18, 132, 82, 132);
-    pdf.line(128, 132, 192, 132);
+    pdf.line(18, 133, 82, 133);
+    pdf.line(128, 133, 192, 133);
     pdf.setTextColor(70);
-    pdf.text("Assinatura do cliente", 50, 136, { align: "center" });
-    pdf.text("Responsável pela empresa", 160, 136, { align: "center" });
+    pdf.text("Assinatura do cliente", 50, 137, { align: "center" });
+    pdf.text("Responsável pela empresa", 160, 137, { align: "center" });
     pdf.setFontSize(6.5);
     pdf.setTextColor(100);
     pdf.text(orderFooter, 105, 141, { align: "center" });
