@@ -97,3 +97,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .filter-status{min-width:260px}
 .filter-status select{width:100%;min-height:46px}
 @media(max-width:760px){.filter-field,.filter-status{width:100%;min-width:0}}
+
+/* Mesma dimensão para as ações da tela de configurações */
+.settings-submit-button{width:210px;min-width:210px;min-height:46px}
+@media(max-width:760px){.settings-submit-button{width:100%;min-width:0}}

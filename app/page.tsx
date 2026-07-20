@@ -1878,7 +1878,7 @@ export default function Home() {
                     />
                   </Field>
                   <div className="settings-actions">
-                    <button className="primary-button" onClick={saveSettings}>
+                    <button className="primary-button settings-submit-button" onClick={saveSettings}>
                       Salvar
                     </button>
                   </div>
@@ -1889,7 +1889,7 @@ export default function Home() {
                     <Field label="Nome *"><input name="name" required /></Field>
                     <Field label="E-mail *"><input name="email" type="email" required autoComplete="off" /></Field>
                     <Field label="Senha temporária *"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
-                    <button className="primary-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar"}</button>
+                    <button className="primary-button settings-submit-button" disabled={userSaving}>{userSaving ? "Cadastrando..." : "Cadastrar"}</button>
                   </form>
                   {authError && <p className="modal-error user-error">{authError}</p>}
                   <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className={`link-button ${user.active ? "danger-action" : "success-action"}`} onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
