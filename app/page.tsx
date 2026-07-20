@@ -1478,7 +1478,7 @@ export default function Home() {
                     </button>
                   }
                 />
-                <Filters query={query} setQuery={setQuery}>
+                <Filters query={query} setQuery={setQuery} queryLabel="Buscar cliente ou OS">
                   <select
                     value={paymentFilter}
                     onChange={(e) => setPaymentFilter(e.target.value)}
@@ -2257,19 +2257,29 @@ function EyeIcon({ open }: { open: boolean }) {
 function Filters({
   query,
   setQuery,
+  queryLabel = "Buscar cliente",
   children,
 }: {
   query: string;
   setQuery: (v: string) => void;
+  queryLabel?: string;
   children?: React.ReactNode;
 }) {
   return (
     <div className="filters">
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      {children}
+      <label className="filter-field filter-query">
+        <span>{queryLabel}</span>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </label>
+      {children && (
+        <label className="filter-field filter-status">
+          <span>Status do pagamento</span>
+          {children}
+        </label>
+      )}
     </div>
   );
 }

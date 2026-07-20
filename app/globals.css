@@ -87,3 +87,13 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .logout-button{border-color:#814743;color:#ffaaa4;background:#351918}
 .logout-button:hover{border-color:#db6a63;color:#fff;background:#5b2421}
 @media(max-width:760px){.customer-page-form .modal-actions .cancel-button{display:inline-flex}.form-actions .cancel-button{display:inline-flex}.modal-actions{gap:10px}.modal-actions .cancel-button,.modal-actions .primary-button{width:100%}}
+
+/* Filtros identificados e alinhados */
+.filters{align-items:end}
+.filter-field{display:grid;gap:7px}
+.filter-field>span{font-size:11px;color:#526164;font-weight:750}
+.filter-query{flex:1}
+.filter-query input{width:100%}
+.filter-status{min-width:260px}
+.filter-status select{width:100%;min-height:46px}
+@media(max-width:760px){.filter-field,.filter-status{width:100%;min-width:0}}
