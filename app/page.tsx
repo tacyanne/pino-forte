@@ -1297,7 +1297,16 @@ export default function Home() {
                                 }
                               >
                                 {products
-                                  .filter((p) => p.active)
+                                  .filter(
+                                    (p) =>
+                                      p.active &&
+                                      (p.code === item.code ||
+                                        !orderItems.some(
+                                          (selected, selectedIndex) =>
+                                            selectedIndex !== index &&
+                                            selected.code === p.code,
+                                        )),
+                                  )
                                   .map((p) => (
                                     <option key={p.id} value={p.code}>
                                       {p.name}
@@ -1359,11 +1368,21 @@ export default function Home() {
                     <button
                       type="button"
                       className="outline-button"
+                      disabled={
+                        products.filter((p) => p.active).every((p) =>
+                          orderItems.some((item) => item.code === p.code),
+                        )
+                      }
                       onClick={() =>
                         setOrderItems((items) => [
                           ...items,
                           {
-                            code: products.find((p) => p.active)?.code || "",
+                            code:
+                              products.find(
+                                (p) =>
+                                  p.active &&
+                                  !items.some((item) => item.code === p.code),
+                              )?.code || "",
                             quantity: 1,
                           },
                         ])
