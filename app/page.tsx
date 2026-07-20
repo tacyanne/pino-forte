@@ -1874,7 +1874,6 @@ export default function Home() {
                                 >
                                   <div className="wallet-head">
                                     <div>
-                                      <span>CLIENTE</span>
                                       <h2>{item.customer}</h2>
                                     </div>
                                     <span
