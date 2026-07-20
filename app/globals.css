@@ -118,6 +118,6 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .order-simple-form .form-title h2{font-size:16px;margin:0}
 .order-simple-form .form-content>.form-grid+.form-grid{border-top:0;margin-top:14px;padding-top:0}
 .order-simple-form .item-row{border:0;background:#f5f8f7;padding:16px!important}
-.order-simple-form .form-actions{position:static;background:transparent;border:0;border-top:1px solid var(--border);border-radius:0;box-shadow:none;margin-top:18px;padding:16px 0 0}
+.order-simple-form .form-actions{position:static;background:transparent;border:0;border-radius:0;box-shadow:none;margin-top:18px;padding:16px 0 0}
 .order-simple-form .form-actions .primary-button,.order-simple-form .form-actions .cancel-button{min-width:150px}
 @media(max-width:760px){.order-simple-form{padding:16px 14px}.order-simple-form .form-card+.form-card{padding-top:16px!important;margin-top:16px!important}.order-simple-form .form-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.order-simple-form .form-actions .primary-button,.order-simple-form .form-actions .cancel-button{display:inline-flex;width:100%;min-width:0;grid-column:auto;grid-row:auto}}
