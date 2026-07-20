@@ -160,13 +160,17 @@ const formatDocument = (value: string) => {
   return value || "—";
 };
 const paymentStatus = (order: Order) =>
-  order.received >= order.total
+  order.productionStatus === "Cancelada"
+    ? "Cancelada"
+    : order.received >= order.total
     ? "Pago"
     : order.received > 0
       ? "Pagamento parcial"
       : "Aguardando pagamento";
 const paymentTone = (order: Order) =>
-  order.received >= order.total ? "green" : order.received > 0 ? "amber" : "red";
+  order.productionStatus === "Cancelada"
+    ? "red"
+    : order.received >= order.total ? "green" : order.received > 0 ? "amber" : "red";
 const getOrderItems = (order: Order) => {
   try {
     const items = JSON.parse(order.productCode);
@@ -366,7 +370,7 @@ export default function Home() {
   );
   const dashboardFinance = useMemo(() => {
     const monthOrders = orders.filter(
-      (order) => monthInSaoPaulo(order.createdAt) === dashboardMonth,
+      (order) => order.productionStatus !== "Cancelada" && monthInSaoPaulo(order.createdAt) === dashboardMonth,
     );
     const sales = monthOrders.reduce((sum, order) => sum + order.total, 0);
     const received = monthOrders.reduce(
@@ -378,6 +382,7 @@ export default function Home() {
   const dashboardHistory = useMemo(() => {
     const grouped = orders.reduce(
       (months, order) => {
+        if (order.productionStatus === "Cancelada") return months;
         const month = monthInSaoPaulo(order.createdAt);
         if (month === dashboardMonth) return months;
         const summary = months[month] || { sales: 0, received: 0 };
@@ -740,6 +745,14 @@ export default function Home() {
     setOrderModal(j.order);
     flash("OS atualizada.");
     return true;
+  }
+  async function cancelOrder(order: Order) {
+    if (!window.confirm(`Cancelar a ${order.number}?`)) return;
+    const updated = await updateOrder(order.id, { productionStatus: "Cancelada" });
+    if (updated) {
+      setOrderModal(null);
+      flash(`${order.number} cancelada.`);
+    }
   }
   function editOrder(order: Order) {
     const items = getOrderItems(order).map(({ code, quantity }) => ({ code, quantity }));
@@ -1522,13 +1535,31 @@ export default function Home() {
                       "Pago",
                       "Pagamento parcial",
                       "Aguardando pagamento",
+                      "Cancelada",
                     ].map((s) => (
                       <option key={s}>{s}</option>
                     ))}
                   </select>
                 </Filters>
-                <div className="panel">
-                  <OrderList orders={filteredOrders} onOpen={setOrderModal} />
+                <div className="table-wrap standardized-table orders-table">
+                  <table>
+                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Status</th><th>Ações</th></tr></thead>
+                    <tbody>
+                      {filteredOrders.map((order) => (
+                        <tr key={order.id}>
+                          <td><button className="link-button order-number-link" onClick={() => setOrderModal(order)}>{order.number}</button></td>
+                          <td><b>{order.customerName}</b></td>
+                          <td>{brDate(order.createdAt)}</td>
+                          <td>{money(order.total)}</td>
+                          <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
+                          <td className="table-actions">
+                            <button className="link-button" onClick={() => editOrder(order)}>Editar</button>
+                            {order.productionStatus !== "Cancelada" && <button className="link-button danger-action" onClick={() => cancelOrder(order)}>Cancelar</button>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -1548,7 +1579,7 @@ export default function Home() {
                   }
                 />
                 <Filters query={query} setQuery={setQuery} />
-                <div className="table-wrap">
+                <div className="table-wrap standardized-table">
                   <table>
                     <thead>
                       <tr>
@@ -1557,13 +1588,13 @@ export default function Home() {
                         <th>WhatsApp</th>
                         <th>E-mail</th>
                         <th>Status</th>
-                        <th></th>
+                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredCustomers.map((c) => (
                         <tr key={c.id}>
-                          <td>
+                          <td className="table-actions">
                             <b>{c.name}</b>
                           </td>
                           <td>{formatDocument(c.document)}</td>
@@ -1619,7 +1650,7 @@ export default function Home() {
                   setQuery={setQuery}
                   queryLabel="Buscar pino"
                 />
-                <div className="table-wrap">
+                <div className="table-wrap standardized-table">
                   <table>
                     <thead>
                       <tr>
@@ -1628,13 +1659,13 @@ export default function Home() {
                         <th>Medida</th>
                         <th>Preço</th>
                         <th>Status</th>
-                        <th></th>
+                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProducts.map((p) => (
                         <tr key={p.id}>
-                          <td>
+                          <td className="table-actions">
                             <b>{p.code}</b>
                           </td>
                           <td>{p.name}</td>
