@@ -1041,7 +1041,7 @@ export default function Home() {
     pdf.text(`Telefone: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 106, 46);
     const address = customer ? [customer.street, customer.number, customer.complement, customer.neighborhood, `${customer.city || ""}/${customer.state || ""}`, customer.zipCode].filter(Boolean).join(", ") : "";
     pdf.text(`Endereço: ${address || "—"}`, 8, 52, { maxWidth: 130 });
-    pdf.text(`Pagamento: ${order.paymentMethod}`, 150, 52);
+    pdf.text(`Pagamento: ${order.paymentMethod}`, 150, 46);
 
     const columns = [5, 31, 119, 139, 171, 205];
     pdf.rect(left, 55, 200, 53);
