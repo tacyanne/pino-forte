@@ -275,6 +275,9 @@ export default function Home() {
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
+  const [walletQuery, setWalletQuery] = useState("");
+  const [walletMonthFilter, setWalletMonthFilter] = useState("");
+  const [walletStatusFilter, setWalletStatusFilter] = useState("");
   const [dashboardMonth, setDashboardMonth] = useState(todayIso().slice(0, 7));
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -511,6 +514,27 @@ export default function Home() {
           ),
       ).sort(([a], [b]) => b.localeCompare(a)),
     [orders],
+  );
+  const walletRows = walletMonths
+    .flatMap(([month, customerMap]) =>
+      Object.values(customerMap).map((item) => ({ month, ...item })),
+    )
+    .filter((item) => {
+      const balance = item.total - item.received;
+      const status = balance > 0 ? "Em aberto" : "Pago";
+      return (
+        (!walletMonthFilter || item.month === walletMonthFilter) &&
+        (!walletStatusFilter || status === walletStatusFilter) &&
+        item.customer.toLowerCase().includes(walletQuery.toLowerCase())
+      );
+    });
+  const walletTotals = walletRows.reduce(
+    (summary, item) => ({
+      total: summary.total + item.total,
+      received: summary.received + item.received,
+      pending: summary.pending + Math.max(0, item.total - item.received),
+    }),
+    { total: 0, received: 0, pending: 0 },
   );
   function go(next: Screen) {
     setCustomerModal(false);
@@ -1767,18 +1791,62 @@ export default function Home() {
             )}
             {screen === "wallet" && (
               <div className="page">
-                <Heading
-                  eyebrow="PAGAMENTO MENSAL"
-                  title="Carteira de clientes"
-                  subtitle="Pagamentos parciais e saldos organizados por mês."
-                />
-                {!walletMonths.length ? (
+                <Heading title="Carteira" />
+                <div className="filters report-filters wallet-filters">
+                  <Field label="Buscar cliente">
+                    <input
+                      value={walletQuery}
+                      onChange={(event) => setWalletQuery(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Mês">
+                    <select
+                      value={walletMonthFilter}
+                      onChange={(event) => setWalletMonthFilter(event.target.value)}
+                    >
+                      <option value="">Todos os meses</option>
+                      {walletMonths.map(([month]) => (
+                        <option value={month} key={month}>{monthLabel(month)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Status">
+                    <select
+                      value={walletStatusFilter}
+                      onChange={(event) => setWalletStatusFilter(event.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      <option>Em aberto</option>
+                      <option>Pago</option>
+                    </select>
+                  </Field>
+                  {(walletQuery || walletMonthFilter || walletStatusFilter) && (
+                    <button
+                      className="outline-button"
+                      onClick={() => {
+                        setWalletQuery("");
+                        setWalletMonthFilter("");
+                        setWalletStatusFilter("");
+                      }}
+                    >
+                      Limpar filtros
+                    </button>
+                  )}
+                </div>
+                <section className="metrics report-metrics wallet-metrics">
+                  <Metric icon="R$" label="Total em Carteira" value={money(walletTotals.total)} />
+                  <Metric icon="✓" label="Recebido" value={money(walletTotals.received)} />
+                  <Metric icon="!" label="Pendente" value={money(walletTotals.pending)} alert={walletTotals.pending > 0} />
+                </section>
+                {!walletRows.length ? (
                   <div className="panel empty">
-                    Nenhum cliente possui compras na Carteira.
+                    Nenhum registro encontrado na Carteira.
                   </div>
                 ) : (
                   <div className="month-stack">
                     {walletMonths.map(([month, customerMap]) => {
+                      const visibleCustomers = walletRows.filter((item) => item.month === month);
+                      if (!visibleCustomers.length) return null;
                       const [year, monthNumber] = month.split("-");
                       const label = new Date(
                         +year,
@@ -1792,7 +1860,7 @@ export default function Home() {
                         <section className="month-frame" key={month}>
                           <h2>{label}</h2>
                           <div className="wallet-grid">
-                            {Object.values(customerMap).map((item) => {
+                            {visibleCustomers.map((item) => {
                               const balance = item.total - item.received;
                               const history = item.orders.flatMap((o) => {
                                 let laterPayments: { amount: number; method: string; date: string }[] = [];
@@ -2272,7 +2340,7 @@ export default function Home() {
               </button>
             </div>
           )}
-          <div className={`detail-actions document-actions ${orderModal.productionStatus === "Cancelada" ? "cancelled-order-actions" : ""}`}>
+          <div className={`detail-actions document-actions ${orderModal.productionStatus !== "Cancelada" ? "three" : ""}`}>
             <button className="outline-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
@@ -2281,14 +2349,6 @@ export default function Home() {
               onClick={() => downloadPdf(orderModal)}
             >
               Baixar PDF
-            </button>
-            <button
-              className="primary-button"
-              disabled={orderModal.productionStatus === "Cancelada"}
-              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : "Editar"}
-              onClick={() => editOrder(orderModal)}
-            >
-              Editar
             </button>
             {orderModal.productionStatus !== "Cancelada" && (
               <>
