@@ -1266,7 +1266,6 @@ export default function Home() {
                     <div className="panel-title">
                       <div>
                         <h2>Ordens recentes</h2>
-                        <p>Últimos serviços cadastrados</p>
                       </div>
                       <button onClick={() => go("orders")}>Ver todas</button>
                     </div>
@@ -1561,7 +1560,9 @@ export default function Home() {
                               onClick={() => cancelOrder(order)}
                             ><ActionIcon type="cancel" /></button>
                             <button className="icon-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
-                            <button className="icon-action edit" title="Editar" aria-label="Editar OS" onClick={() => editOrder(order, "orders")}><ActionIcon type="edit" /></button>
+                            {order.productionStatus !== "Cancelada" && (
+                              <button className="icon-action edit" title="Editar" aria-label="Editar OS" onClick={() => editOrder(order, "orders")}><ActionIcon type="edit" /></button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -2207,7 +2208,7 @@ export default function Home() {
               </button>
             </div>
           )}
-          <div className="detail-actions document-actions">
+          <div className={`detail-actions document-actions ${orderModal.productionStatus === "Cancelada" ? "cancelled-order-actions" : ""}`}>
             <button className="outline-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
@@ -2217,15 +2218,19 @@ export default function Home() {
             >
               Baixar PDF
             </button>
-            <button className="primary-button" onClick={() => editOrder(orderModal)}>
-              Editar
-            </button>
-            <button
-              className="whatsapp-button"
-              onClick={() => shareOrder(orderModal)}
-            >
-              Enviar ao cliente
-            </button>
+            {orderModal.productionStatus !== "Cancelada" && (
+              <>
+                <button className="primary-button" onClick={() => editOrder(orderModal)}>
+                  Editar
+                </button>
+                <button
+                  className="whatsapp-button"
+                  onClick={() => shareOrder(orderModal)}
+                >
+                  Enviar ao cliente
+                </button>
+              </>
+            )}
           </div>
         </Modal>
       )}
