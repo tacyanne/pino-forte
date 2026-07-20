@@ -1467,7 +1467,16 @@ export default function Home() {
                     <button
                       type="button"
                       className="cancel-button"
-                      onClick={() => { setEditingOrder(null); go("dashboard"); }}
+                      onClick={() => {
+                        if (editingOrder) {
+                          const order = editingOrder;
+                          setEditingOrder(null);
+                          setScreen("orders");
+                          setOrderModal(order);
+                        } else {
+                          go("dashboard");
+                        }
+                      }}
                     >
                       Cancelar
                     </button>
