@@ -1407,7 +1407,7 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="order-notes">
-                      <Field label="Observações para fabricação (opcional)">
+                      <Field label="Observações adicionais">
                         <textarea name="notes" rows={2} defaultValue={editingOrder?.notes || ""} />
                       </Field>
                     </div>
