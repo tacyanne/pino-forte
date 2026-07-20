@@ -650,6 +650,8 @@ export default function Home() {
         unitPrice: products.find((p) => p.code === item.code)?.price || 0,
       }));
       const paymentMethod = String(f.get("paymentMethod") || "Pix");
+      const orderDate = String(f.get("orderDate") || "");
+      if (!isValidBrDate(orderDate)) throw new Error("Informe uma data do pedido válida.");
       const paidOnCreation = ["Pix", "Dinheiro", "Cartão"].includes(paymentMethod);
       const r = await fetch("/api/orders", {
         method: editingOrder ? "PATCH" : "POST",
@@ -657,7 +659,7 @@ export default function Home() {
         body: JSON.stringify({
           id: editingOrder?.id,
           customerName: selectedCustomer,
-          origin: f.get("origin"),
+          createdAt: toIsoDate(orderDate),
           deliveryDate: editingOrder?.deliveryDate || todayIso(),
           productCode: selectedCode,
           quantity,
@@ -1061,7 +1063,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #174a52;padding-bottom:18px}h1{color:#174a52;margin:0}.n{color:#d86b32;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#174a52;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino de Balança</h1><span>Ordem de Serviço de fabricação</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Origem</b><br>${order.origin}</div><div><b>Previsão</b><br>${brDate(order.deliveryDate)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #174a52;padding-bottom:18px}h1{color:#174a52;margin:0}.n{color:#d86b32;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#174a52;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino de Balança</h1><span>Ordem de Serviço de fabricação</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -1254,17 +1256,7 @@ export default function Home() {
                 />
                 <form className="customer-page-form order-simple-form" key={editingOrder?.id || "new"} onSubmit={saveOrder} noValidate>
                   <Card n="1" title="Dados do pedido">
-                    <div className="form-title">
-                      <span></span>
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => openCustomer()}
-                      >
-                        ＋ Cadastrar cliente
-                      </button>
-                    </div>
-                    <div className="form-grid single-customer-grid">
+                    <div className="form-grid order-customer-date-grid">
                       <Field label="Cliente *">
                         <select
                           required
@@ -1279,21 +1271,14 @@ export default function Home() {
                             ))}
                         </select>
                       </Field>
-                    </div>
-                    <div className="form-grid order-basics-grid">
-                      <Field label="Data do pedido">
+                      <Field label="Data do pedido *">
                         <input
-                          value={brDate(todayIso())}
-                          readOnly
-                          aria-readonly="true"
+                          name="orderDate"
+                          required
+                          inputMode="numeric"
+                          defaultValue={brDate(editingOrder?.createdAt || todayIso())}
+                          onInput={(e) => { e.currentTarget.value = maskDate(e.currentTarget.value); }}
                         />
-                      </Field>
-                      <Field label="Origem do pedido *">
-                        <select name="origin" defaultValue={editingOrder?.origin || "WhatsApp"}>
-                          <option>WhatsApp</option>
-                          <option>Balcão</option>
-                          <option>Outros</option>
-                        </select>
                       </Field>
                     </div>
                   </Card>

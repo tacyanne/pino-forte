@@ -71,6 +71,7 @@ export async function POST(request: Request) {
         number,
         customerName: String(body.customerName),
         origin: String(body.origin || "WhatsApp"),
+        createdAt: body.createdAt ? String(body.createdAt) : undefined,
         productCode: items.length
           ? JSON.stringify(items)
           : String(body.productCode),
@@ -135,6 +136,7 @@ export async function PATCH(request: Request) {
     if (body.commercialStatus !== undefined)
       changes.commercialStatus = String(body.commercialStatus);
     if (body.customerName !== undefined) changes.customerName = String(body.customerName);
+    if (body.createdAt !== undefined) changes.createdAt = String(body.createdAt);
     if (body.origin !== undefined) changes.origin = String(body.origin);
     if (body.productCode !== undefined) {
       const items = Array.isArray(body.items)
