@@ -87,7 +87,13 @@ const paymentObservationFor = (order: Order) => {
   const initialPayment = Math.max(0, order.received - registeredTotal);
   const paymentHistory = [
     ...(initialPayment > 0
-      ? [{ amount: initialPayment, method: order.paymentMethod, date: order.createdAt }]
+      ? [
+          {
+            amount: initialPayment,
+            method: `Pagamento inicial · ${order.paymentMethod}`,
+            date: order.createdAt,
+          },
+        ]
       : []),
     ...registeredPayments,
   ].filter((payment) => Number(payment.amount || 0) > 0);
