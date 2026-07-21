@@ -1656,7 +1656,7 @@ export default function Home() {
                               disabled={order.productionStatus === "Cancelada"}
                               onClick={() => cancelOrder(order)}
                             ><ActionIcon type="cancel" /></button>
-                            <button className="icon-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
+                            <button className="icon-action view-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
                             <button
                               className="icon-action edit"
                               title={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : "Editar"}
@@ -1917,7 +1917,7 @@ export default function Home() {
                                         <span>{brDate(o.createdAt)}</span>
                                         <strong>{money(o.total)}</strong>
                                         <button
-                                          className="icon-action"
+                                          className="icon-action view-action"
                                           title="Visualizar OS"
                                           aria-label={`Visualizar ${o.number}`}
                                           onClick={() => setOrderModal(o)}
