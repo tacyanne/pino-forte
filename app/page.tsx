@@ -2080,8 +2080,8 @@ export default function Home() {
                                     <span>Recebido <b>{money(item.received)}</b></span>
                                     <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
-                                  <strong className="wallet-section-title">HISTÓRICO DE EMISSÃO</strong>
                                   <div className="wallet-orders">
+                                    <strong className="wallet-section-title">HISTÓRICO DE EMISSÃO</strong>
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
                                       <span>Data de emissão</span>
