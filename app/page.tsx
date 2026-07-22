@@ -1337,7 +1337,7 @@ export default function Home() {
                     </button>
                   }
                 />
-                <section className="metrics">
+                <section className="metrics report-metrics">
                   <Metric
                     icon="R$"
                     label="Vendas do mês"
@@ -1714,7 +1714,7 @@ export default function Home() {
                               {c.active ? "Ativo" : "Inativo"}
                             </span>
                           </td>
-                          <td>
+                          <td className="table-actions">
                             <button
                               className="link-button"
                               onClick={() => openCustomer(c)}
