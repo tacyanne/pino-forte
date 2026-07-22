@@ -2195,8 +2195,15 @@ export default function Home() {
                   }
                 />
                 <div className="filters report-filters report-filters-standard">
-                  <Field label="Buscar cliente">
-                    <input value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)} />
+                  <Field label="Cliente">
+                    <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
+                      <option value="">Todos</option>
+                      {[...customers]
+                        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+                        .map((customer) => (
+                          <option key={customer.id} value={customer.name}>{customer.name}</option>
+                        ))}
+                    </select>
                   </Field>
                   <Field label="Mês">
                     <select value={reportMonth} onChange={(e) => setReportMonth(e.target.value)}>
@@ -2550,6 +2557,14 @@ export default function Home() {
                 ) : (
                   <span className="pending">Saldo devedor <strong>{money(Math.max(0, orderModal.total - orderModal.received))}</strong></span>
                 )}
+                {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
+                  <div className="boleto-payment-card">
+                    <span><b>Boleto aguardando pagamento</b><small>Confirme somente após identificar o recebimento.</small></span>
+                    <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
+                      ✓ Confirmar pagamento
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <ReviewField
@@ -2558,13 +2573,6 @@ export default function Home() {
               multiline
             />
           </div>
-          {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
-            <div className="review-payment-action">
-              <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
-                ✓ Confirmar pagamento
-              </button>
-            </div>
-          )}
           <div className={`detail-actions document-actions ${orderModal.productionStatus !== "Cancelada" ? "three" : ""}`}>
             <button className="outline-button" onClick={() => setOrderModal(null)}>
               Voltar
