@@ -2361,6 +2361,12 @@ export default function Home() {
             {orderModal.productionStatus !== "Cancelada" && (
               <>
                 <button
+                  className="primary-button"
+                  onClick={() => editOrder(orderModal, "review")}
+                >
+                  Editar
+                </button>
+                <button
                   className="whatsapp-button"
                   onClick={() => shareOrder(orderModal)}
                 >
