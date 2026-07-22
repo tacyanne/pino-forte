@@ -1498,6 +1498,7 @@ export default function Home() {
                     label="Pendente"
                     value={money(dashboardFinance.pending)}
                     alert={dashboardFinance.pending > 0}
+                    tone="red"
                   />
                 </section>
                 <section className="content-grid">
@@ -2015,7 +2016,7 @@ export default function Home() {
                 <section className="metrics report-metrics wallet-metrics">
                   <Metric icon="R$" label="Total em Carteira" value={money(walletTotals.total)} />
                   <Metric icon="✓" label="Recebido" value={money(walletTotals.received)} />
-                  <Metric icon="!" label="Pendente" value={money(walletTotals.pending)} alert={walletTotals.pending > 0} />
+                  <Metric icon="!" label="Pendente" value={money(walletTotals.pending)} alert={walletTotals.pending > 0} tone="red" />
                 </section>
                 {!walletRows.length ? (
                   <div className="panel empty">
@@ -2079,10 +2080,11 @@ export default function Home() {
                                     <span>Recebido <b>{money(item.received)}</b></span>
                                     <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
+                                  <strong className="wallet-section-title">HISTÓRICO DE EMISSÃO</strong>
                                   <div className="wallet-orders">
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
-                                      <span>Emissão</span>
+                                      <span>Data de emissão</span>
                                       <span>Valor</span>
                                       <span>Ação</span>
                                     </div>
@@ -2104,12 +2106,18 @@ export default function Home() {
                                   </div>
                                   {history.length > 0 && (
                                     <div className="payment-history">
-                                      <strong>Histórico de pagamentos</strong>
+                                      <strong className="wallet-section-title">HISTÓRICO DE PAGAMENTOS</strong>
+                                      <div className="payment-history-head">
+                                        <span>OS</span>
+                                        <span>Data de pagamento</span>
+                                        <span>Forma de pagamento</span>
+                                        <span>Valor pago</span>
+                                      </div>
                                       {history.map((p, i) => (
-                                        <div key={i}>
-                                          <span>
-                                            {p.orderNumber} · {brDate(p.date)} · {p.method}
-                                          </span>
+                                        <div className="payment-history-row" key={i}>
+                                          <span>{p.orderNumber}</span>
+                                          <span>{brDate(p.date)}</span>
+                                          <span>{p.method}</span>
                                           <b>{money(p.amount)}</b>
                                         </div>
                                       ))}
@@ -2210,6 +2218,7 @@ export default function Home() {
                     label="Pendente"
                     value={money(reportSales - reportReceived)}
                     alert={reportSales - reportReceived > 0}
+                    tone="red"
                   />
                 </section>
                 <div className="panel report-bars">
@@ -2594,15 +2603,17 @@ function Metric({
   label,
   value,
   alert,
+  tone,
 }: {
   icon: string;
   label: string;
   value: string | number;
   alert?: boolean;
+  tone?: "blue" | "red";
 }) {
   return (
     <div className={`metric ${alert ? "alert" : ""}`}>
-      <div className={`metric-icon ${alert ? "red" : "blue"}`}>{icon}</div>
+      <div className={`metric-icon ${tone || (alert ? "red" : "blue")}`}>{icon}</div>
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
