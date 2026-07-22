@@ -1215,7 +1215,79 @@ export default function Home() {
       "_blank",
     );
   }
-  async function shareWallet(orders: Order[], customerName: string) {
+  function createWalletPdf(orders: Order[], customerName: string, month: string) {
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+    const total = orders.reduce((sum, order) => sum + order.total, 0);
+    const received = orders.reduce((sum, order) => sum + order.received, 0);
+    const [year, monthNumber] = month.split("-");
+    const period = new Date(+year, +monthNumber - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const history = orders.flatMap((order) => {
+      let payments: { amount: number; method: string; date: string }[] = [];
+      try {
+        const parsed = JSON.parse(order.commercialStatus);
+        if (Array.isArray(parsed)) payments = parsed;
+      } catch {}
+      const registered = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+      const initial = Math.max(0, order.received - registered);
+      return [
+        ...(initial > 0 ? [{ amount: initial, method: "Pagamento inicial", date: order.createdAt, orderNumber: order.number }] : []),
+        ...payments.map((payment) => ({ ...payment, orderNumber: order.number })),
+      ];
+    }).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date));
+
+    pdf.setTextColor(23, 74, 82);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(20);
+    pdf.text(companyName || "Pino de Balança", 15, 18);
+    pdf.setFontSize(13);
+    pdf.text("COMPROVANTE DA CARTEIRA", 15, 28);
+    pdf.setDrawColor(216, 107, 50);
+    pdf.setLineWidth(1.2);
+    pdf.line(15, 32, 195, 32);
+    pdf.setFontSize(9);
+    pdf.setTextColor(45);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`Cliente: ${customerName}`, 15, 42);
+    pdf.text(`Período: ${period}`, 15, 49);
+    pdf.text("Status: Pago", 150, 42);
+    pdf.text(`Total: ${money(total)}`, 15, 60);
+    pdf.text(`Recebido: ${money(received)}`, 75, 60);
+    pdf.text(`Saldo: ${money(Math.max(0, total - received))}`, 145, 60);
+    let y = 72;
+    pdf.setFont("helvetica", "bold");
+    pdf.text("OS", 15, y);
+    pdf.text("Emissão", 75, y);
+    pdf.text("Forma de pagamento", 115, y);
+    pdf.text("Valor", 195, y, { align: "right" });
+    pdf.line(15, y + 3, 195, y + 3);
+    pdf.setFont("helvetica", "normal");
+    orders.slice().sort((a, b) => dateTimestamp(a.createdAt) - dateTimestamp(b.createdAt)).forEach((order) => {
+      y += 8;
+      pdf.text(order.number, 15, y);
+      pdf.text(brDate(order.createdAt), 75, y);
+      pdf.text(order.paymentMethod, 115, y);
+      pdf.text(money(order.total), 195, y, { align: "right" });
+    });
+    y += 14;
+    pdf.setFont("helvetica", "bold");
+    pdf.text("HISTÓRICO DE PAGAMENTOS", 15, y);
+    pdf.line(15, y + 3, 195, y + 3);
+    pdf.setFont("helvetica", "normal");
+    history.forEach((payment) => {
+      y += 8;
+      if (y > 275) { pdf.addPage(); y = 18; }
+      pdf.text(`${brDate(payment.date)} · ${payment.method} · ${payment.orderNumber}`, 15, y);
+      pdf.text(money(Number(payment.amount)), 195, y, { align: "right" });
+    });
+    pdf.setFontSize(7);
+    pdf.setTextColor(100);
+    pdf.text(orderFooter, 105, 290, { align: "center" });
+    return pdf;
+  }
+  function downloadWalletPdf(orders: Order[], customerName: string, month: string) {
+    createWalletPdf(orders, customerName, month).save(`Carteira-${customerName.replace(/[^a-z0-9]+/gi, "-")}-${month}.pdf`);
+  }
+  async function shareWallet(orders: Order[], customerName: string, month: string) {
     let currentCustomers = customers;
     try {
       const catalog = await fetch("/api/catalog", { cache: "no-store" }).then((response) => response.json());
@@ -1223,10 +1295,8 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
-    const paidOrders = orders.filter((order) => order.received >= order.total);
-    for (const order of paidOrders) await downloadPdf(order);
-    const orderNumbers = paidOrders.map((order) => order.number).join(", ");
-    const text = `Olá, ${customer.name}! Seguem as ordens de serviço pagas da Carteira: ${orderNumbers}.`;
+    downloadWalletPdf(orders, customerName, month);
+    const text = `Olá, ${customer.name}! Segue o comprovante da Carteira paga.`;
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
       `https://wa.me/55${number}?text=${encodeURIComponent(text)}`,
@@ -1991,8 +2061,14 @@ export default function Home() {
                                   ) : (
                                     <div className="wallet-card-actions">
                                       <button
+                                        className="outline-button wallet-pay"
+                                        onClick={() => downloadWalletPdf(item.orders, item.customer, item.month)}
+                                      >
+                                        Baixar PDF
+                                      </button>
+                                      <button
                                         className="whatsapp-button wallet-pay"
-                                        onClick={() => shareWallet(item.orders, item.customer)}
+                                        onClick={() => shareWallet(item.orders, item.customer, item.month)}
                                       >
                                         Enviar ao cliente
                                       </button>
