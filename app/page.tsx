@@ -1668,7 +1668,7 @@ export default function Home() {
                 </Filters>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
-                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Status</th><th>Ações</th></tr></thead>
+                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th><th>Ações</th></tr></thead>
                     <tbody>
                       {filteredOrders.map((order) => (
                         <tr key={order.id}>
@@ -1676,6 +1676,7 @@ export default function Home() {
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
                           <td>{money(order.total)}</td>
+                          <td>{order.paymentMethod}</td>
                           <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
                           <td className="table-actions">
                             <button
