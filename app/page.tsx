@@ -1280,17 +1280,24 @@ export default function Home() {
     pdf.text(`Total: ${money(total)}`, 150, 49);
     let y = 64;
     pdf.setFont("helvetica", "bold");
+    pdf.text("HISTÓRICO DE EMISSÃO", 8, y);
+    pdf.line(8, y + 3, 202, y + 3);
+    y += 10;
+    pdf.setFont("helvetica", "bold");
     pdf.text("OS", 8, y);
-    pdf.text("Emissão", 105, y, { align: "center" });
+    pdf.text("Data de emissão", 105, y, { align: "center" });
     pdf.text("Valor", 201, y, { align: "right" });
-    pdf.line(15, y + 3, 195, y + 3);
+    const issueTableTop = y - 6;
+    pdf.line(8, y + 3, 202, y + 3);
     pdf.setFont("helvetica", "normal");
     orders.slice().sort((a, b) => dateTimestamp(a.createdAt) - dateTimestamp(b.createdAt)).forEach((order) => {
       y += 8;
       pdf.text(order.number, 8, y);
       pdf.text(brDate(order.createdAt), 105, y, { align: "center" });
       pdf.text(money(order.total), 201, y, { align: "right" });
+      pdf.line(8, y + 3, 202, y + 3);
     });
+    [8, 70, 145, 202].forEach((x) => pdf.line(x, issueTableTop, x, y + 3));
     y += 14;
     pdf.setFont("helvetica", "bold");
     pdf.text("HISTÓRICO DE PAGAMENTOS", 15, y);
@@ -1300,6 +1307,7 @@ export default function Home() {
     pdf.text("Data de pagamento", 75, y);
     pdf.text("Forma de pagamento", 120, y);
     pdf.text("Valor pago", 195, y, { align: "right" });
+    const paymentTableTop = y - 6;
     pdf.line(15, y + 3, 195, y + 3);
     pdf.setFont("helvetica", "normal");
     history.forEach((payment) => {
@@ -1309,10 +1317,9 @@ export default function Home() {
       pdf.text(brDate(payment.date), 75, y);
       pdf.text(payment.method, 120, y);
       pdf.text(money(Number(payment.amount)), 195, y, { align: "right" });
+      pdf.line(15, y + 3, 195, y + 3);
     });
-    pdf.setFontSize(7);
-    pdf.setTextColor(100);
-    pdf.text(orderFooter, 105, 290, { align: "center" });
+    [15, 65, 110, 165, 195].forEach((x) => pdf.line(x, paymentTableTop, x, y + 3));
     return pdf;
   }
   async function downloadWalletPdf(orders: Order[], customerName: string, month: string) {
