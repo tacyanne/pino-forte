@@ -1498,6 +1498,7 @@ export default function Home() {
                     label="Pendente"
                     value={money(dashboardFinance.pending)}
                     alert={dashboardFinance.pending > 0}
+                    tone="red"
                   />
                 </section>
                 <section className="content-grid">
@@ -2015,7 +2016,7 @@ export default function Home() {
                 <section className="metrics report-metrics wallet-metrics">
                   <Metric icon="R$" label="Total em Carteira" value={money(walletTotals.total)} />
                   <Metric icon="✓" label="Recebido" value={money(walletTotals.received)} />
-                  <Metric icon="!" label="Pendente" value={money(walletTotals.pending)} alert={walletTotals.pending > 0} />
+                  <Metric icon="!" label="Pendente" value={money(walletTotals.pending)} alert={walletTotals.pending > 0} tone="red" />
                 </section>
                 {!walletRows.length ? (
                   <div className="panel empty">
@@ -2217,6 +2218,7 @@ export default function Home() {
                     label="Pendente"
                     value={money(reportSales - reportReceived)}
                     alert={reportSales - reportReceived > 0}
+                    tone="red"
                   />
                 </section>
                 <div className="panel report-bars">
@@ -2601,15 +2603,17 @@ function Metric({
   label,
   value,
   alert,
+  tone,
 }: {
   icon: string;
   label: string;
   value: string | number;
   alert?: boolean;
+  tone?: "blue" | "red";
 }) {
   return (
     <div className={`metric ${alert ? "alert" : ""}`}>
-      <div className={`metric-icon ${alert ? "red" : "blue"}`}>{icon}</div>
+      <div className={`metric-icon ${tone || (alert ? "red" : "blue")}`}>{icon}</div>
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
