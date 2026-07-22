@@ -2016,9 +2016,10 @@ export default function Home() {
                     value={money(reportReceived)}
                   />
                   <Metric
-                    icon="…"
+                    icon="!"
                     label="Pendente"
                     value={money(reportSales - reportReceived)}
+                    alert={reportSales - reportReceived > 0}
                   />
                 </section>
                 <div className="panel report-bars">
