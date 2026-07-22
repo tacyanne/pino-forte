@@ -871,9 +871,14 @@ export default function Home() {
     setSaving(true);
     let remaining = walletPayAmount;
     try {
-      for (const order of walletPayment.items.filter(
-        (o) => o.received < o.total,
-      )) {
+      const oldestOpenOrders = walletPayment.items
+        .filter((o) => o.received < o.total)
+        .sort((a, b) => {
+          const dateDifference = dateTimestamp(a.createdAt) - dateTimestamp(b.createdAt);
+          if (dateDifference !== 0) return dateDifference;
+          return a.number.localeCompare(b.number, "pt-BR", { numeric: true });
+        });
+      for (const order of oldestOpenOrders) {
         if (remaining <= 0) break;
         const portion = Math.min(remaining, order.total - order.received);
         let history: { amount: number; method: string; date: string }[] = [];
@@ -1168,9 +1173,15 @@ export default function Home() {
     pdf.setFont("helvetica", "normal");
     pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 8, 114);
     pdf.text(`Forma de entrega: ${order.deliveryType}`, 76, 114);
-    const observationText = `Observações: ${completeOrderNotes(order)}`;
+    const observationLines = [
+      "Observações:",
+      ...completeOrderNotes(order, "\n")
+        .split("\n")
+        .filter(Boolean)
+        .flatMap((line) => pdf.splitTextToSize(line, 192)),
+    ];
     pdf.setFontSize(6.2);
-    pdf.text(pdf.splitTextToSize(observationText, 192), 8, 119, {
+    pdf.text(observationLines, 8, 119, {
       lineHeightFactor: 1.05,
     });
 
