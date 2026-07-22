@@ -490,13 +490,16 @@ export default function Home() {
       return (
         o.productionStatus !== "Cancelada" &&
         (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
-        (!reportCustomer || o.customerName === reportCustomer) &&
+        (!reportCustomer || o.customerName.toLowerCase().includes(reportCustomer.toLowerCase())) &&
         (!reportPaymentStatus || paymentStatus === reportPaymentStatus)
       );
     },
   );
   const reportSales = reportOrders.reduce((sum, o) => sum + o.total, 0);
   const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
+  const reportMonths = Array.from(
+    new Set(orders.filter((o) => o.productionStatus !== "Cancelada").map((o) => monthInSaoPaulo(o.createdAt))),
+  ).filter(Boolean).sort((a, b) => b.localeCompare(a));
   const walletMonths = useMemo(
     () =>
       Object.entries(
@@ -2190,27 +2193,24 @@ export default function Home() {
                     </button>
                   }
                 />
-                <div className="filters report-filters">
-                  <label className="field">
-                    <span>Mês</span>
-                    <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>Cliente</span>
-                    <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
-                      <option value="">Todos os clientes</option>
-                      {customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
+                <div className="filters report-filters report-filters-standard">
+                  <Field label="Buscar cliente">
+                    <input value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)} />
+                  </Field>
+                  <Field label="Mês">
+                    <select value={reportMonth} onChange={(e) => setReportMonth(e.target.value)}>
+                      <option value="">Todos</option>
+                      {reportMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
                     </select>
-                  </label>
-                  <label className="field">
-                    <span>Status do pagamento</span>
+                  </Field>
+                  <Field label="Status">
                     <select value={reportPaymentStatus} onChange={(e) => setReportPaymentStatus(e.target.value)}>
-                      <option value="">Todos os status</option>
+                      <option value="">Todos</option>
                       <option>Pago</option>
                       <option>Pagamento parcial</option>
                       <option>Aguardando pagamento</option>
                     </select>
-                  </label>
+                  </Field>
                   <button
                     type="button"
                     className="outline-button filter-clear"
