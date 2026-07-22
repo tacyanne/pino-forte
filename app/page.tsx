@@ -1232,7 +1232,8 @@ export default function Home() {
     const total = orders.reduce((sum, order) => sum + order.total, 0);
     const logo = await loadImageData("/logo-pdf.png", true);
     const [year, monthNumber] = month.split("-");
-    const period = new Date(+year, +monthNumber - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const periodMonth = new Date(+year, +monthNumber - 1, 1).toLocaleDateString("pt-BR", { month: "long" });
+    const period = `${periodMonth.charAt(0).toUpperCase()}${periodMonth.slice(1)}/${year}`;
     const history = orders.flatMap((order) => {
       let payments: { amount: number; method: string; date: string }[] = [];
       try {
@@ -1247,79 +1248,85 @@ export default function Home() {
       ];
     }).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date));
 
-    const left = 5;
-    const right = 205;
-    pdf.setDrawColor(60);
-    pdf.setLineWidth(0.3);
-    pdf.rect(left, 5, 200, 285);
-    pdf.rect(left, 5, 28, 27);
-    pdf.rect(33, 5, 122, 27);
-    pdf.rect(155, 5, 50, 27);
-    pdf.addImage(logo, "JPEG", 7, 7, 24, 23, undefined, "FAST");
+    const left = 15;
+    const right = 195;
+    pdf.addImage(logo, "JPEG", left, 10, 24, 23, undefined, "FAST");
     pdf.setTextColor(25);
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(10);
-    pdf.text("PINO DE BALANÇA | TRUCK E CARRETA", 38, 14);
+    pdf.setFontSize(11);
+    pdf.text("PINO DE BALANÇA | TRUCK E CARRETA", 44, 17);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7.5);
-    pdf.text(`Responsável: ${responsible || "—"}`, 38, 21);
-    pdf.text(`Telefone: ${companyPhone || "—"}`, 38, 27);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(7.2);
-    pdf.text("COMPROVANTE DE QUITAÇÃO", 180, 12, { align: "center" });
-    pdf.text("DA CARTEIRA", 180, 18, { align: "center" });
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
-    pdf.text(`Período: ${period}`, 180, 26, { align: "center" });
-    pdf.rect(left, 32, 200, 23);
     pdf.setFontSize(8);
+    pdf.text(`Responsável: ${responsible || "—"}`, 44, 24);
+    pdf.text(`Telefone: ${companyPhone || "—"}`, 44, 30);
     pdf.setFont("helvetica", "bold");
-    pdf.text(`Cliente: ${customerName}`, 8, 41);
+    pdf.setFontSize(11);
+    pdf.text("COMPROVANTE DE QUITAÇÃO", right, 17, { align: "right" });
+    pdf.text("DA CARTEIRA", right, 24, { align: "right" });
+    pdf.setDrawColor(216, 107, 50);
+    pdf.setLineWidth(1);
+    pdf.line(left, 37, right, 37);
+
+    pdf.setFillColor(245, 248, 247);
+    pdf.roundedRect(left, 43, 180, 24, 2, 2, "F");
+    pdf.setFontSize(8);
+    pdf.setTextColor(82, 97, 100);
     pdf.setFont("helvetica", "normal");
-    pdf.text(`Status: Pago`, 8, 49);
-    pdf.text(`Total: ${money(total)}`, 150, 49);
-    let y = 64;
+    pdf.text("CLIENTE", 20, 50);
+    pdf.text("PERÍODO", 105, 50);
+    pdf.text("STATUS", 150, 50);
+    pdf.text("TOTAL", 190, 50, { align: "right" });
     pdf.setFont("helvetica", "bold");
-    pdf.text("HISTÓRICO DE EMISSÃO", 8, y);
-    pdf.line(8, y + 3, 202, y + 3);
-    y += 10;
-    pdf.setFont("helvetica", "bold");
-    pdf.text("OS", 8, y);
-    pdf.text("Data de emissão", 105, y, { align: "center" });
-    pdf.text("Valor", 201, y, { align: "right" });
-    const issueTableTop = y - 6;
-    pdf.line(8, y + 3, 202, y + 3);
+    pdf.setTextColor(25);
+    pdf.text(customerName, 20, 59, { maxWidth: 76 });
+    pdf.text(period, 105, 59);
+    pdf.text("Pago", 150, 59);
+    pdf.text(money(total), 190, 59, { align: "right" });
+
+    let y = 79;
+    const drawSectionTitle = (title: string) => {
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+      pdf.setTextColor(23, 74, 82);
+      pdf.text(title, left, y);
+      y += 7;
+    };
+    const drawHeader = (labels: Array<{ text: string; x: number; align?: "left" | "center" | "right" }>) => {
+      pdf.setFillColor(238, 243, 242);
+      pdf.rect(left, y - 5, 180, 9, "F");
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(82, 97, 100);
+      labels.forEach((label) => pdf.text(label.text, label.x, y, { align: label.align || "left" }));
+      y += 7;
+    };
+    drawSectionTitle("HISTÓRICO DE EMISSÃO");
+    drawHeader([{ text: "OS", x: 18 }, { text: "DATA DE EMISSÃO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
     pdf.setFont("helvetica", "normal");
+    pdf.setTextColor(25);
     orders.slice().sort((a, b) => dateTimestamp(a.createdAt) - dateTimestamp(b.createdAt)).forEach((order) => {
-      y += 8;
-      pdf.text(order.number, 8, y);
+      pdf.text(order.number, 18, y);
       pdf.text(brDate(order.createdAt), 105, y, { align: "center" });
-      pdf.text(money(order.total), 201, y, { align: "right" });
-      pdf.line(8, y + 3, 202, y + 3);
-    });
-    [8, 70, 145, 202].forEach((x) => pdf.line(x, issueTableTop, x, y + 3));
-    y += 14;
-    pdf.setFont("helvetica", "bold");
-    pdf.text("HISTÓRICO DE PAGAMENTOS", 15, y);
-    pdf.line(15, y + 3, 195, y + 3);
-    y += 9;
-    pdf.text("OS", 15, y);
-    pdf.text("Data de pagamento", 75, y);
-    pdf.text("Forma de pagamento", 120, y);
-    pdf.text("Valor pago", 195, y, { align: "right" });
-    const paymentTableTop = y - 6;
-    pdf.line(15, y + 3, 195, y + 3);
-    pdf.setFont("helvetica", "normal");
-    history.forEach((payment) => {
+      pdf.text(money(order.total), 192, y, { align: "right" });
+      pdf.setDrawColor(224, 230, 228);
+      pdf.setLineWidth(0.2);
+      pdf.line(left, y + 3, right, y + 3);
       y += 8;
-      if (y > 275) { pdf.addPage(); y = 18; }
-      pdf.text(payment.orderNumber, 15, y);
-      pdf.text(brDate(payment.date), 75, y);
-      pdf.text(payment.method, 120, y);
-      pdf.text(money(Number(payment.amount)), 195, y, { align: "right" });
-      pdf.line(15, y + 3, 195, y + 3);
     });
-    [15, 65, 110, 165, 195].forEach((x) => pdf.line(x, paymentTableTop, x, y + 3));
+    y += 8;
+    drawSectionTitle("HISTÓRICO DE PAGAMENTOS");
+    drawHeader([{ text: "OS", x: 18 }, { text: "DATA DE PAGAMENTO", x: 78 }, { text: "FORMA DE PAGAMENTO", x: 125 }, { text: "VALOR PAGO", x: 192, align: "right" }]);
+    pdf.setFont("helvetica", "normal");
+    pdf.setTextColor(25);
+    history.forEach((payment) => {
+      pdf.text(payment.orderNumber, 18, y);
+      pdf.text(brDate(payment.date), 78, y);
+      pdf.text(payment.method, 125, y);
+      pdf.text(money(Number(payment.amount)), 192, y, { align: "right" });
+      pdf.setDrawColor(224, 230, 228);
+      pdf.line(left, y + 3, right, y + 3);
+      y += 8;
+    });
     return pdf;
   }
   async function downloadWalletPdf(orders: Order[], customerName: string, month: string) {
@@ -2020,14 +2027,14 @@ export default function Home() {
                       const visibleCustomers = walletRows.filter((item) => item.month === month);
                       if (!visibleCustomers.length) return null;
                       const [year, monthNumber] = month.split("-");
-                      const label = new Date(
+                      const monthName = new Date(
                         +year,
                         +monthNumber - 1,
                         1,
                       ).toLocaleDateString("pt-BR", {
                         month: "long",
-                        year: "numeric",
                       });
+                      const label = `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)}/${year}`;
                       return (
                         <section className="month-frame" key={month}>
                           <h2>{label}</h2>
