@@ -1215,6 +1215,24 @@ export default function Home() {
       "_blank",
     );
   }
+  async function shareWallet(orders: Order[], customerName: string) {
+    let currentCustomers = customers;
+    try {
+      const catalog = await fetch("/api/catalog", { cache: "no-store" }).then((response) => response.json());
+      if (Array.isArray(catalog.customers)) currentCustomers = catalog.customers;
+    } catch {}
+    const customer = findBestCustomer(currentCustomers, customerName);
+    if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
+    const paidOrders = orders.filter((order) => order.received >= order.total);
+    for (const order of paidOrders) await downloadPdf(order);
+    const orderNumbers = paidOrders.map((order) => order.number).join(", ");
+    const text = `Olá, ${customer.name}! Seguem as ordens de serviço pagas da Carteira: ${orderNumbers}.`;
+    const number = customer.whatsapp.replace(/\D/g, "");
+    window.open(
+      `https://wa.me/55${number}?text=${encodeURIComponent(text)}`,
+      "_blank",
+    );
+  }
   function printOrder(order: Order) {
     const p = products.find((x) => x.code === order.productCode);
     const w = window.open("", "_blank");
@@ -1650,7 +1668,7 @@ export default function Home() {
                 </Filters>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
-                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Status</th><th>Ações</th></tr></thead>
+                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th><th>Ações</th></tr></thead>
                     <tbody>
                       {filteredOrders.map((order) => (
                         <tr key={order.id}>
@@ -1658,6 +1676,7 @@ export default function Home() {
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
                           <td>{money(order.total)}</td>
+                          <td>{order.paymentMethod}</td>
                           <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
                           <td className="table-actions">
                             <button
@@ -1887,13 +1906,14 @@ export default function Home() {
                                 const laterTotal = laterPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
                                 const initialPayment = Math.max(0, o.received - laterTotal);
                                 return [
-                                  ...(initialPayment > 0 ? [{ amount: initialPayment, method: "Pagamento inicial", date: o.createdAt }] : []),
-                                  ...laterPayments,
+                                  ...(initialPayment > 0 ? [{ amount: initialPayment, method: "Pagamento inicial", date: o.createdAt, orderNumber: o.number }] : []),
+                                  ...laterPayments.map((payment) => ({ ...payment, orderNumber: o.number })),
                                 ];
                               }).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date)) as {
                                 amount: number;
                                 method: string;
                                 date: string;
+                                orderNumber: string;
                               }[];
                               return (
                                 <section
@@ -1944,14 +1964,14 @@ export default function Home() {
                                       {history.map((p, i) => (
                                         <div key={i}>
                                           <span>
-                                            {brDate(p.date)} · {p.method}
+                                            {brDate(p.date)} · {p.method} · {p.orderNumber}
                                           </span>
                                           <b>{money(p.amount)}</b>
                                         </div>
                                       ))}
                                     </div>
                                   )}
-                                  {balance > 0 && (
+                                  {balance > 0 ? (
                                     <div className="wallet-card-actions">
                                       <button
                                         className="primary-button wallet-pay"
@@ -1966,6 +1986,15 @@ export default function Home() {
                                         }}
                                       >
                                         Registrar pagamento
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="wallet-card-actions">
+                                      <button
+                                        className="whatsapp-button wallet-pay"
+                                        onClick={() => shareWallet(item.orders, item.customer)}
+                                      >
+                                        Enviar ao cliente
                                       </button>
                                     </div>
                                   )}
