@@ -2100,21 +2100,22 @@ export default function Home() {
                                       <span>OS</span>
                                       <span>Data de emissão</span>
                                       <span>Valor</span>
-                                      <span>Ação</span>
                                     </div>
                                     {item.orders.map((o) => (
-                                      <div className="wallet-order-row" key={o.id}>
+                                      <div
+                                        className="wallet-order-row"
+                                        key={o.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label={`Visualizar ${o.number}`}
+                                        onClick={() => setOrderModal(o)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter" || event.key === " ") setOrderModal(o);
+                                        }}
+                                      >
                                         <b>{o.number}</b>
                                         <span>{brDate(o.createdAt)}</span>
                                         <strong>{money(o.total)}</strong>
-                                        <button
-                                          className="icon-action view-action"
-                                          title="Visualizar OS"
-                                          aria-label={`Visualizar ${o.number}`}
-                                          onClick={() => setOrderModal(o)}
-                                        >
-                                          <ActionIcon type="view" />
-                                        </button>
                                       </div>
                                     ))}
                                   </div>
