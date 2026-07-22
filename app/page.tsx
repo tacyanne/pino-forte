@@ -490,13 +490,16 @@ export default function Home() {
       return (
         o.productionStatus !== "Cancelada" &&
         (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
-        (!reportCustomer || o.customerName === reportCustomer) &&
+        (!reportCustomer || o.customerName.toLowerCase().includes(reportCustomer.toLowerCase())) &&
         (!reportPaymentStatus || paymentStatus === reportPaymentStatus)
       );
     },
   );
   const reportSales = reportOrders.reduce((sum, o) => sum + o.total, 0);
   const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
+  const reportMonths = Array.from(
+    new Set(orders.filter((o) => o.productionStatus !== "Cancelada").map((o) => monthInSaoPaulo(o.createdAt))),
+  ).filter(Boolean).sort((a, b) => b.localeCompare(a));
   const walletMonths = useMemo(
     () =>
       Object.entries(
@@ -2097,21 +2100,22 @@ export default function Home() {
                                       <span>OS</span>
                                       <span>Data de emissão</span>
                                       <span>Valor</span>
-                                      <span>Ação</span>
                                     </div>
                                     {item.orders.map((o) => (
-                                      <div className="wallet-order-row" key={o.id}>
+                                      <div
+                                        className="wallet-order-row"
+                                        key={o.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label={`Visualizar ${o.number}`}
+                                        onClick={() => setOrderModal(o)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter" || event.key === " ") setOrderModal(o);
+                                        }}
+                                      >
                                         <b>{o.number}</b>
                                         <span>{brDate(o.createdAt)}</span>
                                         <strong>{money(o.total)}</strong>
-                                        <button
-                                          className="icon-action view-action"
-                                          title="Visualizar OS"
-                                          aria-label={`Visualizar ${o.number}`}
-                                          onClick={() => setOrderModal(o)}
-                                        >
-                                          <ActionIcon type="view" />
-                                        </button>
                                       </div>
                                     ))}
                                   </div>
@@ -2190,27 +2194,31 @@ export default function Home() {
                     </button>
                   }
                 />
-                <div className="filters report-filters">
-                  <label className="field">
-                    <span>Mês</span>
-                    <input type="month" value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} />
-                  </label>
-                  <label className="field">
-                    <span>Cliente</span>
+                <div className="filters report-filters report-filters-standard">
+                  <Field label="Cliente">
                     <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
-                      <option value="">Todos os clientes</option>
-                      {customers.map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
+                      <option value="">Todos</option>
+                      {[...customers]
+                        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+                        .map((customer) => (
+                          <option key={customer.id} value={customer.name}>{customer.name}</option>
+                        ))}
                     </select>
-                  </label>
-                  <label className="field">
-                    <span>Status do pagamento</span>
+                  </Field>
+                  <Field label="Mês">
+                    <select value={reportMonth} onChange={(e) => setReportMonth(e.target.value)}>
+                      <option value="">Todos</option>
+                      {reportMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Status">
                     <select value={reportPaymentStatus} onChange={(e) => setReportPaymentStatus(e.target.value)}>
-                      <option value="">Todos os status</option>
+                      <option value="">Todos</option>
                       <option>Pago</option>
                       <option>Pagamento parcial</option>
                       <option>Aguardando pagamento</option>
                     </select>
-                  </label>
+                  </Field>
                   <button
                     type="button"
                     className="outline-button filter-clear"
@@ -2549,6 +2557,14 @@ export default function Home() {
                 ) : (
                   <span className="pending">Saldo devedor <strong>{money(Math.max(0, orderModal.total - orderModal.received))}</strong></span>
                 )}
+                {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
+                  <div className="boleto-payment-card">
+                    <span><b>Boleto aguardando pagamento</b><small>Confirme somente após identificar o recebimento.</small></span>
+                    <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
+                      ✓ Confirmar pagamento
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <ReviewField
@@ -2557,13 +2573,6 @@ export default function Home() {
               multiline
             />
           </div>
-          {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
-            <div className="review-payment-action">
-              <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
-                ✓ Confirmar pagamento
-              </button>
-            </div>
-          )}
           <div className={`detail-actions document-actions ${orderModal.productionStatus !== "Cancelada" ? "three" : ""}`}>
             <button className="outline-button" onClick={() => setOrderModal(null)}>
               Voltar
