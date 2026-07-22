@@ -2012,6 +2012,17 @@ export default function Home() {
                       <option>Pago</option>
                     </select>
                   </Field>
+                  <button
+                    type="button"
+                    className="outline-button filter-clear"
+                    onClick={() => {
+                      setWalletQuery("");
+                      setWalletMonthFilter("");
+                      setWalletStatusFilter("");
+                    }}
+                  >
+                    Limpar
+                  </button>
                 </div>
                 <section className="metrics report-metrics wallet-metrics">
                   <Metric icon="R$" label="Total em Carteira" value={money(walletTotals.total)} />
@@ -2200,7 +2211,13 @@ export default function Home() {
                       <option>Aguardando pagamento</option>
                     </select>
                   </label>
-                  {(reportMonth || reportCustomer || reportPaymentStatus) && <button className="outline-button" onClick={() => { setReportMonth(""); setReportCustomer(""); setReportPaymentStatus(""); }}>Limpar filtros</button>}
+                  <button
+                    type="button"
+                    className="outline-button filter-clear"
+                    onClick={() => { setReportMonth(""); setReportCustomer(""); setReportPaymentStatus(""); }}
+                  >
+                    Limpar
+                  </button>
                 </div>
                 <section className="metrics report-metrics">
                   <Metric
