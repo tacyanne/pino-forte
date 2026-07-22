@@ -2079,10 +2079,11 @@ export default function Home() {
                                     <span>Recebido <b>{money(item.received)}</b></span>
                                     <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
+                                  <strong className="wallet-section-title">HISTÓRICO DE EMISSÃO</strong>
                                   <div className="wallet-orders">
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
-                                      <span>Emissão</span>
+                                      <span>Data de emissão</span>
                                       <span>Valor</span>
                                       <span>Ação</span>
                                     </div>
@@ -2104,12 +2105,18 @@ export default function Home() {
                                   </div>
                                   {history.length > 0 && (
                                     <div className="payment-history">
-                                      <strong>Histórico de pagamentos</strong>
+                                      <strong className="wallet-section-title">HISTÓRICO DE PAGAMENTOS</strong>
+                                      <div className="payment-history-head">
+                                        <span>OS</span>
+                                        <span>Data de pagamento</span>
+                                        <span>Forma de pagamento</span>
+                                        <span>Valor pago</span>
+                                      </div>
                                       {history.map((p, i) => (
-                                        <div key={i}>
-                                          <span>
-                                            {p.orderNumber} · {brDate(p.date)} · {p.method}
-                                          </span>
+                                        <div className="payment-history-row" key={i}>
+                                          <span>{p.orderNumber}</span>
+                                          <span>{brDate(p.date)}</span>
+                                          <span>{p.method}</span>
                                           <b>{money(p.amount)}</b>
                                         </div>
                                       ))}
