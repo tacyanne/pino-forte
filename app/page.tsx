@@ -1681,17 +1681,17 @@ export default function Home() {
                           <td className="table-actions">
                             <button
                               className="icon-action danger"
-                              title={order.productionStatus === "Cancelada" ? "OS já cancelada" : "Cancelar"}
-                              aria-label={order.productionStatus === "Cancelada" ? "OS já cancelada" : "Cancelar OS"}
-                              disabled={order.productionStatus === "Cancelada"}
+                              title={order.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(order) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
+                              aria-label={order.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(order) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar OS"}
+                              disabled={order.productionStatus === "Cancelada" || paymentStatus(order) === "Pago"}
                               onClick={() => cancelOrder(order)}
                             ><ActionIcon type="cancel" /></button>
                             <button className="icon-action view-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
                             <button
                               className="icon-action edit"
-                              title={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : "Editar"}
-                              aria-label={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : "Editar OS"}
-                              disabled={order.productionStatus === "Cancelada"}
+                              title={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(order) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
+                              aria-label={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(order) === "Pago" ? "Edição indisponível para OS paga" : "Editar OS"}
+                              disabled={order.productionStatus === "Cancelada" || paymentStatus(order) === "Pago"}
                               onClick={() => editOrder(order, "orders")}
                             ><ActionIcon type="edit" /></button>
                           </td>
@@ -2398,21 +2398,21 @@ export default function Home() {
             >
               Baixar PDF
             </button>
-            {orderModal.productionStatus !== "Cancelada" && (
-              <>
+            {orderModal.productionStatus !== "Cancelada" && paymentStatus(orderModal) !== "Pago" && (
                 <button
                   className="primary-button"
                   onClick={() => editOrder(orderModal, "review")}
                 >
                   Editar
                 </button>
+            )}
+            {orderModal.productionStatus !== "Cancelada" && (
                 <button
                   className="whatsapp-button"
                   onClick={() => shareOrder(orderModal)}
                 >
                   Enviar ao cliente
                 </button>
-              </>
             )}
           </div>
         </Modal>
