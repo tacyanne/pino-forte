@@ -270,6 +270,8 @@ export default function Home() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("Todos");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("Todos");
+  const [orderPage, setOrderPage] = useState(1);
   const [notice, setNotice] = useState("");
   const [customerModal, setCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -455,10 +457,18 @@ export default function Home() {
   const filteredOrders = orders.filter(
     (o) =>
       (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
+      (paymentMethodFilter === "Todos" || o.paymentMethod === paymentMethodFilter) &&
       `${o.number} ${o.customerName} ${o.productCode}`
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const ordersPerPage = 10;
+  const orderPageCount = Math.max(1, Math.ceil(filteredOrders.length / ordersPerPage));
+  const paginatedOrders = filteredOrders.slice(
+    (orderPage - 1) * ordersPerPage,
+    orderPage * ordersPerPage,
+  );
+  useEffect(() => setOrderPage(1), [query, paymentFilter, paymentMethodFilter]);
   const filteredCustomers = customers.filter((c) =>
     `${c.name} ${c.document} ${c.whatsapp}`
       .toLowerCase()
@@ -559,6 +569,8 @@ export default function Home() {
     if (next === "orders") {
       setQuery("");
       setPaymentFilter("Todos");
+      setPaymentMethodFilter("Todos");
+      setOrderPage(1);
     }
     if (next === "new-order") {
       const first = products.find((p) => p.active)?.code || "";
@@ -1735,12 +1747,24 @@ export default function Home() {
                       <option key={s}>{s}</option>
                     ))}
                   </select>
+                  <select
+                    aria-label="Filtrar por forma de pagamento"
+                    value={paymentMethodFilter}
+                    onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                  >
+                    <option>Todos</option>
+                    <option>Pix</option>
+                    <option>Dinheiro</option>
+                    <option>Cartão</option>
+                    <option>Boleto</option>
+                    <option>Carteira</option>
+                  </select>
                 </Filters>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
                     <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th><th>Ações</th></tr></thead>
                     <tbody>
-                      {filteredOrders.map((order) => (
+                      {paginatedOrders.map((order) => (
                         <tr key={order.id}>
                           <td><b>{order.number}</b></td>
                           <td><b>{order.customerName}</b></td>
@@ -1770,6 +1794,30 @@ export default function Home() {
                     </tbody>
                   </table>
                 </div>
+                {filteredOrders.length > 0 && (
+                  <nav className="pagination" aria-label="Paginação das ordens de serviço">
+                    <span>
+                      Exibindo {(orderPage - 1) * ordersPerPage + 1}–{Math.min(orderPage * ordersPerPage, filteredOrders.length)} de {filteredOrders.length}
+                    </span>
+                    <div>
+                      <button
+                        type="button"
+                        disabled={orderPage === 1}
+                        onClick={() => setOrderPage((page) => Math.max(1, page - 1))}
+                      >
+                        Anterior
+                      </button>
+                      <strong>{orderPage} de {orderPageCount}</strong>
+                      <button
+                        type="button"
+                        disabled={orderPage === orderPageCount}
+                        onClick={() => setOrderPage((page) => Math.min(orderPageCount, page + 1))}
+                      >
+                        Próxima
+                      </button>
+                    </div>
+                  </nav>
+                )}
               </div>
             )}
             {screen === "customers" && (
