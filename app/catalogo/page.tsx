@@ -43,6 +43,7 @@ export default function CatalogoPage() {
                   <div>
                     <span>{product.line}</span>
                     <h3>Pino de balança</h3>
+                    <span className="catalog-type">COMUM</span>
                     <strong>{product.measure}</strong>
                   </div>
                 </div>
