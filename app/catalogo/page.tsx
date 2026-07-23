@@ -10,7 +10,7 @@ const products = [
 const whatsappMessage = encodeURIComponent(
   "Olá! Preciso realizar um pedido de pino de balança.",
 );
-const whatsapp = `https://wa.me/5543991585317?text=${whatsappMessage}`;
+const whatsapp = `https://wa.me/5543991565317?text=${whatsappMessage}`;
 
 export default function CatalogoPage() {
   return (
@@ -25,20 +25,12 @@ export default function CatalogoPage() {
           </div>
           <a className="catalog-top-contact" href={whatsapp} target="_blank" rel="noreferrer">
             <small>WhatsApp</small>
-            <strong>(43) 99158-5317</strong>
+            <strong>(43) 99156-5317</strong>
           </a>
         </div>
       </header>
 
       <section className="catalog-content" aria-label="Pinos disponíveis">
-        <div className="catalog-intro">
-          <div>
-            <span className="catalog-count">6 MODELOS DISPONÍVEIS</span>
-            <h2>Encontre o pino que você precisa</h2>
-          </div>
-          <p>Todos com diâmetro de 50 mm.</p>
-        </div>
-
         <div className="catalog-grid">
           {products.map((product) => {
             return (
