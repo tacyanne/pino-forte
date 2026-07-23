@@ -19,7 +19,6 @@ export default function CatalogoPage() {
         <div className="catalog-header-inner">
           <img src="/logo-sistema.png" alt="Rogério Mendes — Pino de Balança, Truck e Carreta" />
           <div className="catalog-title">
-            <span>PINOS DE BALANÇA</span>
             <h1>Catálogo de preços</h1>
             <p>Escolha o modelo e faça seu pedido pelo WhatsApp.</p>
           </div>
