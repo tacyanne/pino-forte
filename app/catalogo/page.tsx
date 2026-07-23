@@ -23,10 +23,6 @@ export default function CatalogoPage() {
             <h1>Catálogo de preços</h1>
             <p>Escolha o modelo e faça seu pedido pelo WhatsApp.</p>
           </div>
-          <a className="catalog-top-contact" href={whatsapp} target="_blank" rel="noreferrer">
-            <small>WhatsApp</small>
-            <strong>(43) 99156-5317</strong>
-          </a>
         </div>
       </header>
 
@@ -59,8 +55,7 @@ export default function CatalogoPage() {
 
       <footer className="catalog-footer">
         <div>
-          <strong>Faça seu pedido de forma rápida e fácil pelo WhatsApp!</strong>
-          <span>Informe o código do pino para agilizar o atendimento.</span>
+          <strong>Faça seu pedido de forma rápida e fácil</strong>
         </div>
         <a href={whatsapp} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp para realizar um pedido">Falar no WhatsApp</a>
       </footer>
