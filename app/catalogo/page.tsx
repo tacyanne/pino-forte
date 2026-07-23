@@ -1,10 +1,10 @@
 const products = [
-  { code: "RN 180", measure: "50 × 180 mm", price: "R$ 49,00", line: "Linha Randon" },
-  { code: "RN 190", measure: "50 × 190 mm", price: "R$ 55,00", line: "Linha Randon" },
-  { code: "RN 205", measure: "50 × 205 mm", price: "R$ 56,00", line: "Linha Randon" },
-  { code: "RN 225", measure: "50 × 225 mm", price: "R$ 57,00", line: "Linha Randon" },
-  { code: "RO 215", measure: "50 × 215 mm", price: "R$ 63,00", line: "Linha Rodoviária" },
-  { code: "RO 235", measure: "50 × 235 mm", price: "R$ 68,00", line: "Linha Rodoviária" },
+  { code: "RN 180", measure: "50 × 180 mm", price: "R$ 49,00", line: "Linha Randon", image: "/img-000.png" },
+  { code: "RN 190", measure: "50 × 190 mm", price: "R$ 55,00", line: "Linha Randon", image: "/img-001.png" },
+  { code: "RN 205", measure: "50 × 205 mm", price: "R$ 56,00", line: "Linha Randon", image: "/img-002.png" },
+  { code: "RN 225", measure: "50 × 225 mm", price: "R$ 57,00", line: "Linha Randon", image: "/img-003.png" },
+  { code: "RO 215", measure: "50 × 215 mm", price: "R$ 63,00", line: "Linha Rodoviária", image: "/img-004.png" },
+  { code: "RO 235", measure: "50 × 235 mm", price: "R$ 68,00", line: "Linha Rodoviária", image: "/img-005.png" },
 ];
 
 const whatsappMessage = encodeURIComponent(
@@ -37,7 +37,7 @@ export default function CatalogoPage() {
                 <div className="catalog-product">
                   <img
                     className="catalog-product-image"
-                    src="/pino-balanca.jpeg"
+                    src={product.image}
                     alt={`Pino de balança ${product.code}`}
                   />
                   <div>
