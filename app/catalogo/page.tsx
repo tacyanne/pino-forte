@@ -57,8 +57,8 @@ export default function CatalogoPage() {
         <div>
           <strong>Faça seu pedido de forma rápida e fácil</strong>
         </div>
-        <a href={whatsapp} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp pelo número 43 99156-5317">
-          Falar no WhatsApp — (43) 99156-5317
+        <a href={whatsapp} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp">
+          Falar no WhatsApp
         </a>
       </footer>
     </main>
