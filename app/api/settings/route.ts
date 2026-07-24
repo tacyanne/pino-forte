@@ -15,7 +15,25 @@ export async function GET(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   const db = await getDb();
   const [settings] = await db.select().from(appSettings).where(eq(appSettings.id, 1)).limit(1);
-  if (settings) return Response.json({ settings });
+  if (settings) {
+    const usesLegacyBrand =
+      settings.companyName === "Pino de Balança" ||
+      settings.responsible === "Rogério Mendes" ||
+      settings.orderFooter.includes("Pino de Balança");
+    if (usesLegacyBrand) {
+      const [updated] = await db
+        .update(appSettings)
+        .set({
+          companyName: "Pino Forte",
+          responsible: "",
+          orderFooter: "Documento gerado pelo sistema Pino Forte",
+        })
+        .where(eq(appSettings.id, 1))
+        .returning();
+      return Response.json({ settings: updated });
+    }
+    return Response.json({ settings });
+  }
   const [created] = await db.insert(appSettings).values(defaults).returning();
   return Response.json({ settings: created });
 }
