@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   description: "Fabricação e comércio de peças para suspensão de caminhões e carretas.",
   applicationName: "Pino Forte",
   manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Pino Forte",
+    statusBarStyle: "black-translucent",
+  },
   other: {
     "codex-preview": "development",
   },
