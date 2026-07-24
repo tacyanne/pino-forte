@@ -55,6 +55,17 @@ export default function CatalogoPage() {
       <footer className="catalog-footer">
         <div>
           <strong>Faça seu pedido de forma rápida e fácil</strong>
+          <span>
+            Desenvolvido por{" "}
+            <a
+              className="catalog-credit"
+              href="https://www.ribexai.com.br"
+              target="_blank"
+              rel="noreferrer"
+            >
+              RibeX AI
+            </a>
+          </span>
         </div>
         <a href={whatsapp} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp">
           Falar no WhatsApp
