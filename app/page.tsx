@@ -1011,7 +1011,7 @@ export default function Home() {
     pdf.rect(15, 10, 70, 38);
     pdf.rect(85, 10, 73, 38);
     pdf.rect(158, 10, 37, 38);
-    pdf.addImage(logo, "JPEG", 18, 18, 64, 22, undefined, "FAST");
+    pdf.addImage(logo, "JPEG", 23, 19.8, 54, 18.4, undefined, "FAST");
     pdf.setTextColor(30);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
@@ -1127,7 +1127,7 @@ export default function Home() {
     pdf.rect(left, 5, 70, 27);
     pdf.rect(75, 5, 80, 27);
     pdf.rect(155, 5, 50, 27);
-    pdf.addImage(logo, "JPEG", 8, 8.5, 64, 22, undefined, "FAST");
+    pdf.addImage(logo, "JPEG", 13, 9.3, 54, 18.4, undefined, "FAST");
     pdf.setTextColor(25);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
@@ -1257,7 +1257,7 @@ export default function Home() {
 
     const left = 15;
     const right = 195;
-    pdf.addImage(logo, "JPEG", left, 10, 66, 22.5, undefined, "FAST");
+    pdf.addImage(logo, "JPEG", left, 11.7, 56, 19.1, undefined, "FAST");
     pdf.setTextColor(25);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(11);
