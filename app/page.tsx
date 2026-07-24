@@ -1004,7 +1004,7 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
     const pdf = new jsPDF();
-    const logo = await loadImageData("/logo-pdf.png", true);
+    const logo = await loadImageData("/logo-pdf.png");
     pdf.setDrawColor(60);
     pdf.setLineWidth(0.35);
     pdf.rect(15, 10, 180, 270);
@@ -1099,7 +1099,7 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const logo = await loadImageData("/logo-pdf.png", true);
+    const logo = await loadImageData("/logo-pdf.png");
     const left = 5;
     const right = 205;
     pdf.setDrawColor(60);
@@ -1233,7 +1233,7 @@ export default function Home() {
   async function createWalletPdf(orders: Order[], customerName: string, month: string) {
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
     const total = orders.reduce((sum, order) => sum + order.total, 0);
-    const logo = await loadImageData("/logo-pdf.png", true);
+    const logo = await loadImageData("/logo-pdf.png");
     const [year, monthNumber] = month.split("-");
     const periodMonth = new Date(+year, +monthNumber - 1, 1).toLocaleDateString("pt-BR", { month: "long" });
     const period = `${periodMonth.charAt(0).toUpperCase()}${periodMonth.slice(1)}/${year}`;
