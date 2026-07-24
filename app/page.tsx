@@ -1802,24 +1802,31 @@ export default function Home() {
                     </button>
                   }
                 />
-                <Filters query={query} setQuery={setQuery} queryLabel="Buscar cliente ou OS">
-                  <label className="filter-field filter-month">
-                    <span>Mês</span>
+                <div className="filters report-filters report-filters-standard order-filters-standard">
+                  <Field label="Buscar cliente ou OS">
                     <input
-                      type="month"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Mês">
+                    <select
                       value={orderMonthFilter}
                       onChange={(event) => setOrderMonthFilter(event.target.value)}
-                    />
-                  </label>
-                  <label className="filter-field filter-status">
-                    <span>Status</span>
+                    >
+                      <option value="">Todos</option>
+                      {reportMonths.map((month) => (
+                        <option key={month} value={month}>{monthLabel(month)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Status">
                     <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
                       <option>Todos</option>
                       {["Pago", "Pagamento parcial", "Aguardando pagamento", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
                     </select>
-                  </label>
-                  <label className="filter-field filter-status">
-                    <span>Forma de pagamento</span>
+                  </Field>
+                  <Field label="Forma de pagamento">
                     <select value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)}>
                       <option>Todos</option>
                       <option>Pix</option>
@@ -1828,7 +1835,7 @@ export default function Home() {
                       <option>Boleto</option>
                       <option>Carteira</option>
                     </select>
-                  </label>
+                  </Field>
                   <button
                     type="button"
                     className="outline-button filter-clear"
@@ -1841,7 +1848,7 @@ export default function Home() {
                   >
                     Limpar
                   </button>
-                </Filters>
+                </div>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
                     <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th><th>Ações</th></tr></thead>
