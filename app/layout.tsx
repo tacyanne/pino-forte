@@ -15,12 +15,19 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Pino Forte | Fábrica de Peças para Suspensão",
   description: "Fabricação e comércio de peças para suspensão de caminhões e carretas.",
+  applicationName: "Pino Forte",
+  manifest: "/manifest.webmanifest",
   other: {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/pino-forte-favicon-64.png",
-    shortcut: "/pino-forte-favicon-64.png",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/pino-forte-favicon-64.png", type: "image/png", sizes: "64x64" },
+      { url: "/pino-forte-icon-192.png", type: "image/png", sizes: "192x192" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: [{ url: "/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
   },
 };
 
