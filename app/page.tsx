@@ -1090,9 +1090,6 @@ export default function Home() {
     pdf.setFontSize(8);
     pdf.setTextColor(100);
     pdf.text(orderFooter, 105, 273, { align: "center" });
-    pdf.setFont("helvetica", "bold");
-    pdf.setTextColor(70);
-    pdf.text("Desenvolvido por RibeX AI", 105, 277, { align: "center" });
     return pdf;
   }
   async function createPdf(order: Order) {
@@ -1215,9 +1212,6 @@ export default function Home() {
     pdf.setFontSize(6.5);
     pdf.setTextColor(100);
     pdf.text(orderFooter, 105, 139.5, { align: "center" });
-    pdf.setFont("helvetica", "bold");
-    pdf.setTextColor(70);
-    pdf.text("Desenvolvido por RibeX AI", 105, 142, { align: "center" });
     return pdf;
   }
   async function downloadPdf(order: Order) {
@@ -1345,10 +1339,10 @@ export default function Home() {
     pdf.setDrawColor(216, 107, 50);
     pdf.setLineWidth(0.45);
     pdf.line(left, 282, right, 282);
-    pdf.setFont("helvetica", "bold");
+    pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.5);
-    pdf.setTextColor(70);
-    pdf.text("Desenvolvido por RibeX AI", 105, 288, { align: "center" });
+    pdf.setTextColor(100);
+    pdf.text(orderFooter, 105, 288, { align: "center" });
     return pdf;
   }
   async function downloadWalletPdf(orders: Order[], customerName: string, month: string) {
