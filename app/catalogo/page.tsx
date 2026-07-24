@@ -20,7 +20,6 @@ export default function CatalogoPage() {
           <img src="/logo-sistema.png" alt="Pino Forte — Fábrica de Peças para Suspensão" />
           <div className="catalog-title">
             <h1>Catálogo de preços</h1>
-            <p>Escolha o modelo e faça seu pedido pelo WhatsApp.</p>
           </div>
         </div>
       </header>
