@@ -310,7 +310,7 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [companyPhone, setCompanyPhone] = useState("");
   const [companyName, setCompanyName] = useState("Pino Forte");
-  const [responsible, setResponsible] = useState("");
+  const [responsible, setResponsible] = useState("Rogério Mendes");
   const [orderFooter, setOrderFooter] = useState(
     "Documento gerado pelo sistema Pino Forte",
   );
@@ -348,7 +348,7 @@ export default function Home() {
       } catch {}
       if (settings) {
         setCompanyName(settings.companyName);
-        setResponsible(settings.responsible);
+        setResponsible(settings.responsible || "Rogério Mendes");
         setCompanyPhone(settings.companyPhone);
         setOrderFooter(settings.orderFooter);
       }
@@ -1089,7 +1089,10 @@ export default function Home() {
     pdf.text(responsible || "Responsável", 154, 261, { align: "center" });
     pdf.setFontSize(8);
     pdf.setTextColor(100);
-    pdf.text(orderFooter, 105, 275, { align: "center" });
+    pdf.text(orderFooter, 105, 273, { align: "center" });
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(70);
+    pdf.text("Desenvolvido por RibeX AI", 105, 277, { align: "center" });
     return pdf;
   }
   async function createPdf(order: Order) {
@@ -1211,7 +1214,10 @@ export default function Home() {
     pdf.text("Responsável pela empresa", 160, 137, { align: "center" });
     pdf.setFontSize(6.5);
     pdf.setTextColor(100);
-    pdf.text(orderFooter, 105, 141, { align: "center" });
+    pdf.text(orderFooter, 105, 139.5, { align: "center" });
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(70);
+    pdf.text("Desenvolvido por RibeX AI", 105, 142, { align: "center" });
     return pdf;
   }
   async function downloadPdf(order: Order) {
@@ -1257,21 +1263,21 @@ export default function Home() {
 
     const left = 15;
     const right = 195;
-    pdf.addImage(logo, "JPEG", left, 11.7, 56, 19.1, undefined, "FAST");
+    pdf.addImage(logo, "JPEG", left, 12.2, 52, 17.7, undefined, "FAST");
     pdf.setTextColor(25);
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(11);
-    pdf.text("PINO FORTE", 86, 16);
-    pdf.setFontSize(7.5);
-    pdf.text("FÁBRICA DE PEÇAS PARA SUSPENSÃO", 86, 22);
+    pdf.setFontSize(10);
+    pdf.text("PINO FORTE", 76, 15.5);
+    pdf.setFontSize(7);
+    pdf.text("FÁBRICA DE PEÇAS PARA SUSPENSÃO", 76, 21);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(8);
-    pdf.text(`Responsável: ${responsible || "—"}`, 86, 27);
-    pdf.text(`Telefone: ${companyPhone || "—"}`, 86, 32);
+    pdf.setFontSize(7.5);
+    pdf.text(`Responsável: ${responsible || "Rogério Mendes"}`, 76, 26.5);
+    pdf.text(`Telefone: ${companyPhone || "—"}`, 76, 31.5);
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(11);
-    pdf.text("COMPROVANTE DE QUITAÇÃO", right, 17, { align: "right" });
-    pdf.text("DA CARTEIRA", right, 24, { align: "right" });
+    pdf.setFontSize(10.5);
+    pdf.text("COMPROVANTE DE QUITAÇÃO", 165, 17, { align: "center" });
+    pdf.text("DA CARTEIRA", 165, 24, { align: "center" });
     pdf.setDrawColor(216, 107, 50);
     pdf.setLineWidth(1);
     pdf.line(left, 37, right, 37);
@@ -1309,7 +1315,7 @@ export default function Home() {
       labels.forEach((label) => pdf.text(label.text, label.x, y, { align: label.align || "left" }));
       y += 7;
     };
-    drawSectionTitle("HISTÓRICO DE EMISSÃO");
+    drawSectionTitle("HISTÓRICO DE EMISSÕES");
     drawHeader([{ text: "OS", x: 18 }, { text: "DATA DE EMISSÃO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(25);
@@ -1336,6 +1342,13 @@ export default function Home() {
       pdf.line(left, y + 3, right, y + 3);
       y += 8;
     });
+    pdf.setDrawColor(216, 107, 50);
+    pdf.setLineWidth(0.45);
+    pdf.line(left, 282, right, 282);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(70);
+    pdf.text("Desenvolvido por RibeX AI", 105, 288, { align: "center" });
     return pdf;
   }
   async function downloadWalletPdf(orders: Order[], customerName: string, month: string) {
@@ -2101,7 +2114,7 @@ export default function Home() {
                                     <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
                                   <div className="wallet-orders">
-                                    <strong className="wallet-section-title">HISTÓRICO DE EMISSÃO</strong>
+                                    <strong className="wallet-section-title">HISTÓRICO DE EMISSÕES</strong>
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
                                       <span>Data de emissão</span>

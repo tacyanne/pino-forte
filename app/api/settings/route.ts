@@ -6,7 +6,7 @@ import { requireUser } from "../../../lib/auth";
 const defaults = {
   id: 1,
   companyName: "Pino Forte",
-  responsible: "",
+  responsible: "Rogério Mendes",
   companyPhone: "",
   orderFooter: "Documento gerado pelo sistema Pino Forte",
 };
@@ -18,14 +18,13 @@ export async function GET(request: Request) {
   if (settings) {
     const usesLegacyBrand =
       settings.companyName === "Pino de Balança" ||
-      settings.responsible === "Rogério Mendes" ||
       settings.orderFooter.includes("Pino de Balança");
-    if (usesLegacyBrand) {
+    if (usesLegacyBrand || !settings.responsible?.trim()) {
       const [updated] = await db
         .update(appSettings)
         .set({
           companyName: "Pino Forte",
-          responsible: "",
+          responsible: settings.responsible?.trim() || defaults.responsible,
           orderFooter: "Documento gerado pelo sistema Pino Forte",
         })
         .where(eq(appSettings.id, 1))
