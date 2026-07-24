@@ -18,6 +18,9 @@ button { cursor:pointer; }
 .app-shell { min-height:100vh; display:flex; }
 .sidebar { position:fixed; inset:0 auto 0 0; width:244px; background:#050505; color:white; padding:20px 16px; display:flex; flex-direction:column; z-index:20; border-right:1px solid #292929; overflow-y:auto; }
 .brand { display:flex; flex:0 0 auto; align-items:center; justify-content:center; padding:0 0 18px; border-bottom:1px solid #292929; margin-bottom:17px; overflow:hidden; }
+.brand-home{width:100%;background:transparent;color:inherit;cursor:pointer}
+.brand-home:focus-visible,.mobile-logo-home:focus-visible{outline:3px solid #ff5c00;outline-offset:3px}
+.mobile-logo-home{display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;padding:0}
 .brand-logo { display:block; flex:0 0 auto; width:212px; height:116px; object-fit:contain; image-rendering:auto; }
 nav { flex:0 0 auto; }
 .brand strong,.brand span,.user-card strong,.user-card span { display:block; }
@@ -158,9 +161,10 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 /* Filtros de OS: grade estável, sem sobreposição e com ritmo visual uniforme */
 .report-filters-standard.order-filters-standard{
   display:grid;
-  grid-template-columns:minmax(280px,1.65fr) minmax(140px,.8fr) minmax(160px,.9fr) minmax(200px,1.05fr) 110px;
+  grid-template-columns:minmax(210px,1.7fr) minmax(105px,.72fr) minmax(125px,.9fr) minmax(145px,.92fr) 100px;
   align-items:end;
-  gap:14px;
+  column-gap:12px;
+  row-gap:14px;
 }
 .report-filters-standard.order-filters-standard .field,
 .report-filters-standard.order-filters-standard .field:first-child,
@@ -184,9 +188,9 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   padding:0 16px;
   align-self:end;
 }
-@media(max-width:1050px){
+@media(max-width:820px) and (min-width:761px){
   .report-filters-standard.order-filters-standard{
-    grid-template-columns:minmax(260px,1.5fr) repeat(2,minmax(150px,1fr));
+    grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(130px,1fr));
   }
   .report-filters-standard.order-filters-standard .field:last-of-type{
     grid-column:1/3;

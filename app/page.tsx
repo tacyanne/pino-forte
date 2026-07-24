@@ -1454,9 +1454,14 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
-        <div className="brand">
+        <button
+          type="button"
+          className="brand brand-home"
+          onClick={() => go("dashboard")}
+          aria-label="Ir para o início"
+        >
           <img className="brand-logo" src="/logo-sistema.png" alt="Pino Forte — Fábrica de Peças para Suspensão" />
-        </div>
+        </button>
         <nav>
           {nav.map(([s, i, l]) => (
             <button
@@ -1483,7 +1488,14 @@ export default function Home() {
       <section className="workspace">
         <header className="mobile-header">
           <button onClick={() => setMenu(!menu)}>☰</button>
-          <img className="mobile-header-logo" src="/logo-sistema.png" alt="Pino Forte" />
+          <button
+            type="button"
+            className="mobile-logo-home"
+            onClick={() => go("dashboard")}
+            aria-label="Ir para o início"
+          >
+            <img className="mobile-header-logo" src="/logo-sistema.png" alt="Pino Forte" />
+          </button>
           <button className="mobile-add" onClick={() => go("new-order")}>
             ＋
           </button>
