@@ -5,10 +5,10 @@ import { requireUser } from "../../../lib/auth";
 
 const defaults = {
   id: 1,
-  companyName: "Pino de Balança",
-  responsible: "Rogério Mendes",
+  companyName: "Pino Forte",
+  responsible: "",
   companyPhone: "",
-  orderFooter: "Documento gerado pelo sistema Pino de Balança",
+  orderFooter: "Documento gerado pelo sistema Pino Forte",
 };
 
 export async function GET(request: Request) {

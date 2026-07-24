@@ -13,14 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pino de Balança | Rogério Mendes",
-  description: "Catálogo de preços de pinos de balança para truck e carreta.",
+  title: "Pino Forte | Fábrica de Peças para Suspensão",
+  description: "Fabricação e comércio de peças para suspensão de caminhões e carretas.",
   other: {
     "codex-preview": "development",
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/pino-forte-favicon-64.png",
+    shortcut: "/pino-forte-favicon-64.png",
   },
 };
 

@@ -8,7 +8,7 @@ const products = [
 ];
 
 const whatsappMessage = encodeURIComponent(
-  "Olá! Preciso realizar um pedido de pino de balança.",
+  "Olá! Preciso realizar um pedido de peças para suspensão.",
 );
 const whatsapp = `https://wa.me/5543991565317?text=${whatsappMessage}`;
 
@@ -17,7 +17,7 @@ export default function CatalogoPage() {
     <main className="catalog-page">
       <header className="catalog-header">
         <div className="catalog-header-inner">
-          <img src="/logo-sistema.png" alt="Rogério Mendes — Pino de Balança, Truck e Carreta" />
+          <img src="/logo-sistema.png" alt="Pino Forte — Fábrica de Peças para Suspensão" />
           <div className="catalog-title">
             <h1>Catálogo de preços</h1>
             <p>Escolha o modelo e faça seu pedido pelo WhatsApp.</p>
