@@ -615,6 +615,16 @@ export default function Home() {
       items.map((item, i) => (i === index ? { ...item, ...changes } : item)),
     );
   }
+  function clearOrderForm(form: HTMLFormElement | null) {
+    const first = products.find((p) => p.active)?.code || "";
+    form?.reset();
+    setEditingOrder(null);
+    setSelectedCustomer("");
+    setSelectedCode(first);
+    setQuantity(1);
+    setReceived(0);
+    setOrderItems(first ? [{ code: first, quantity: 1 }] : []);
+  }
   function openCustomer(customer?: Customer) {
     if (customer) {
       setEditingCustomer(customer);
@@ -1758,6 +1768,13 @@ export default function Home() {
                       Cancelar
                     </button>
                     <button
+                      type="button"
+                      className="outline-button order-clear-button"
+                      onClick={(event) => clearOrderForm(event.currentTarget.form)}
+                    >
+                      Limpar
+                    </button>
+                    <button
                       type="submit"
                       disabled={saving}
                       className="primary-button"
@@ -2208,7 +2225,7 @@ export default function Home() {
                   }
                 />
                 <div className="filters report-filters report-filters-standard">
-                  <Field label="Cliente">
+                  <Field label="Buscar cliente">
                     <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
                       <option value="">Todos</option>
                       {[...customers]
