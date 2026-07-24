@@ -163,6 +163,57 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 @media(max-width:760px){.customer-page-form .registration-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.customer-page-form .registration-actions .primary-button,.customer-page-form .registration-actions .cancel-button{display:inline-flex;width:100%;min-width:0;grid-column:auto;grid-row:auto}}
 @media(max-width:760px){.order-simple-form{padding:16px 14px}.order-simple-form .form-card+.form-card{padding-top:16px!important;margin-top:16px!important}.order-simple-form .form-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.order-simple-form .form-actions .primary-button,.order-simple-form .form-actions .cancel-button{display:inline-flex;width:100%;min-width:0;grid-column:auto;grid-row:auto}}
 
+/* Alinhamento final das ações do sistema */
+.primary-button,
+.secondary-button,
+.outline-button,
+.save-button,
+.cancel-button,
+.whatsapp-button,
+.boleto-pay,
+.save-status-button{
+  box-sizing:border-box;
+  height:46px;
+  min-height:46px;
+  padding:0 18px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  line-height:1;
+  vertical-align:middle;
+}
+.document-actions .primary-button,
+.document-actions .outline-button,
+.document-actions .whatsapp-button{
+  height:46px;
+  min-height:46px;
+}
+.wallet-card-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,220px));
+  align-items:center;
+  justify-content:end;
+  gap:10px;
+}
+.wallet-card-actions:has(.wallet-pay:only-child){
+  grid-template-columns:minmax(0,220px);
+}
+.wallet-card-actions .wallet-pay{
+  width:100%;
+  min-width:0;
+  height:46px;
+  min-height:46px;
+  margin:0;
+}
+@media(max-width:760px){
+  .wallet-card-actions,
+  .wallet-card-actions:has(.wallet-pay:only-child){
+    grid-template-columns:1fr;
+    justify-content:stretch;
+  }
+}
+
 /* Catálogo público */
 .catalog-page{min-height:100vh;background:#f4f4f2;color:#171717;font-family:Montserrat,Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 .catalog-header{background:#050505;color:#fff;border-top:6px solid #ff5c00}
