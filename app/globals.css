@@ -190,7 +190,23 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .document-actions .whatsapp-button{
   height:46px;
   min-height:46px;
+  margin:0;
+  padding:0 18px;
+  line-height:1;
 }
+.review-shell .document-actions{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  align-items:stretch;
+  gap:14px;
+}
+.review-shell .document-actions>button{
+  width:100%;
+  min-width:0;
+  align-self:stretch;
+}
+.filters .filter-month{flex:0 0 190px;min-width:190px}
+.filters .filter-month input{width:100%;min-height:46px}
+.filters .filter-clear{flex:0 0 110px;width:110px;height:46px;min-height:46px;margin:0;align-self:flex-end}
 .wallet-card-actions{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,220px));
@@ -209,6 +225,8 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   margin:0;
 }
 @media(max-width:760px){
+  .filters .filter-month,.filters .filter-clear{width:100%;min-width:0;flex:1 1 auto}
+  .review-shell .document-actions{grid-template-columns:1fr!important;gap:10px}
   .wallet-card-actions,
   .wallet-card-actions:has(.wallet-pay:only-child){
     grid-template-columns:1fr;

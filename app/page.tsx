@@ -269,6 +269,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
+  const [orderMonthFilter, setOrderMonthFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("Todos");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("Todos");
   const [orderPage, setOrderPage] = useState(1);
@@ -456,6 +457,7 @@ export default function Home() {
   }, [orders, dashboardMonth]);
   const filteredOrders = orders.filter(
     (o) =>
+      (!orderMonthFilter || monthInSaoPaulo(o.createdAt) === orderMonthFilter) &&
       (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
       (paymentMethodFilter === "Todos" || o.paymentMethod === paymentMethodFilter) &&
       `${o.number} ${o.customerName} ${o.productCode}`
@@ -468,7 +470,7 @@ export default function Home() {
     (orderPage - 1) * ordersPerPage,
     orderPage * ordersPerPage,
   );
-  useEffect(() => setOrderPage(1), [query, paymentFilter, paymentMethodFilter]);
+  useEffect(() => setOrderPage(1), [query, orderMonthFilter, paymentFilter, paymentMethodFilter]);
   const filteredCustomers = customers.filter((c) =>
     `${c.name} ${c.document} ${c.whatsapp}`
       .toLowerCase()
@@ -1801,6 +1803,14 @@ export default function Home() {
                   }
                 />
                 <Filters query={query} setQuery={setQuery} queryLabel="Buscar cliente ou OS">
+                  <label className="filter-field filter-month">
+                    <span>Mês</span>
+                    <input
+                      type="month"
+                      value={orderMonthFilter}
+                      onChange={(event) => setOrderMonthFilter(event.target.value)}
+                    />
+                  </label>
                   <label className="filter-field filter-status">
                     <span>Status</span>
                     <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
@@ -1819,6 +1829,18 @@ export default function Home() {
                       <option>Carteira</option>
                     </select>
                   </label>
+                  <button
+                    type="button"
+                    className="outline-button filter-clear"
+                    onClick={() => {
+                      setQuery("");
+                      setOrderMonthFilter("");
+                      setPaymentFilter("Todos");
+                      setPaymentMethodFilter("Todos");
+                    }}
+                  >
+                    Limpar
+                  </button>
                 </Filters>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
