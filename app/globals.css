@@ -160,7 +160,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 /* Filtros de OS: grade estável, sem sobreposição e com ritmo visual uniforme */
 .report-filters-standard.order-filters-standard{
   display:grid;
-  grid-template-columns:minmax(280px,2fr) minmax(120px,.8fr) minmax(140px,1fr) minmax(190px,1.25fr) 110px;
+  grid-template-columns:minmax(320px,2.4fr) minmax(160px,1.05fr) minmax(150px,1fr) minmax(140px,.8fr) 110px;
   align-items:end;
   gap:14px;
   width:100%;
