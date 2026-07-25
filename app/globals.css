@@ -160,10 +160,10 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 /* Filtros de OS: grade estável, sem sobreposição e com ritmo visual uniforme */
 .report-filters-standard.order-filters-standard{
   display:grid;
-  grid-template-columns:minmax(210px,1.7fr) minmax(105px,.72fr) minmax(125px,.9fr) minmax(145px,.92fr) 100px;
+  grid-template-columns:minmax(280px,2fr) minmax(120px,.8fr) minmax(140px,1fr) minmax(190px,1.25fr) 110px;
   align-items:end;
-  column-gap:12px;
-  row-gap:14px;
+  gap:14px;
+  width:100%;
 }
 .report-filters-standard.order-filters-standard .field,
 .report-filters-standard.order-filters-standard .field:first-child,
@@ -173,11 +173,14 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   min-width:0;
   max-width:none;
   margin:0;
+  display:grid;
+  gap:7px;
 }
 .report-filters-standard.order-filters-standard .field input,
 .report-filters-standard.order-filters-standard .field select,
 .report-filters-standard.order-filters-standard .filter-clear{
   width:100%;
+  min-width:0;
   height:48px;
   min-height:48px;
   margin:0;
@@ -187,9 +190,9 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   padding:0 16px;
   align-self:end;
 }
-@media(max-width:820px) and (min-width:761px){
+@media(max-width:1100px) and (min-width:761px){
   .report-filters-standard.order-filters-standard{
-    grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(130px,1fr));
+    grid-template-columns:minmax(260px,1.5fr) repeat(2,minmax(150px,1fr));
   }
   .report-filters-standard.order-filters-standard .field:last-of-type{
     grid-column:1/3;
