@@ -361,6 +361,40 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   }
 }
 
+/* Mesmo ritmo visual nas buscas de OS, Carteira e Relatórios. */
+.report-filters-standard.order-filters-standard,
+.report-filters.wallet-filters,
+.report-filters-standard:not(.order-filters-standard){
+  column-gap:14px;
+  row-gap:14px;
+  margin-top:0;
+  margin-bottom:18px;
+}
+.report-filters-standard.order-filters-standard .field,
+.report-filters.wallet-filters .field,
+.report-filters-standard:not(.order-filters-standard) .field{
+  display:block;
+}
+.report-filters-standard.order-filters-standard .field label,
+.report-filters.wallet-filters .field label,
+.report-filters-standard:not(.order-filters-standard) .field label{
+  margin:0 0 7px;
+  line-height:1.35;
+}
+.report-filters-standard.order-filters-standard .field input,
+.report-filters-standard.order-filters-standard .field select,
+.report-filters.wallet-filters .field input,
+.report-filters.wallet-filters .field select,
+.report-filters-standard:not(.order-filters-standard) .field input,
+.report-filters-standard:not(.order-filters-standard) .field select,
+.report-filters-standard.order-filters-standard .filter-clear,
+.report-filters.wallet-filters .filter-clear,
+.report-filters-standard:not(.order-filters-standard) .filter-clear{
+  height:46px;
+  min-height:46px;
+  margin:0;
+}
+
 /* Catálogo público */
 .catalog-page{min-height:100vh;background:#f4f4f2;color:#171717;font-family:Montserrat,Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 .catalog-header{background:#050505;color:#fff;border-top:6px solid #ff5c00}
