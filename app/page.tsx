@@ -1797,7 +1797,7 @@ export default function Home() {
                     </button>
                   }
                 />
-                <div className="filters report-filters report-filters-standard order-filters-standard">
+                <div className="filters operational-filters operational-filters-orders">
                   <Field label="Buscar cliente ou OS">
                     <input
                       value={query}
@@ -2041,7 +2041,7 @@ export default function Home() {
             {screen === "wallet" && (
               <div className="page">
                 <Heading title="Carteira" />
-                <div className="filters report-filters wallet-filters">
+                <div className="filters operational-filters operational-filters-three">
                   <Field label="Buscar cliente">
                     <input
                       value={walletQuery}
@@ -2248,7 +2248,7 @@ export default function Home() {
                     </button>
                   }
                 />
-                <div className="filters report-filters report-filters-standard">
+                <div className="filters operational-filters operational-filters-three">
                   <Field label="Buscar cliente">
                     <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
                       <option value="">Todos</option>
