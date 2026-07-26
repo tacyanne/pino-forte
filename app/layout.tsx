@@ -28,11 +28,11 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
-      { url: "/pino-forte-favicon-64.png", type: "image/png", sizes: "64x64" },
-      { url: "/pino-forte-icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/pino-forte-favicon-64-v2.png", type: "image/png", sizes: "64x64" },
+      { url: "/pino-forte-icon-192-v2.png", type: "image/png", sizes: "192x192" },
     ],
     shortcut: "/favicon.ico",
-    apple: [{ url: "/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+    apple: [{ url: "/apple-touch-icon-v2.png", type: "image/png", sizes: "180x180" }],
   },
 };
 
