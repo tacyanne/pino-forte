@@ -276,6 +276,7 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [customerModal, setCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [zipCode, setZipCode] = useState("");
@@ -288,6 +289,7 @@ export default function Home() {
   const [zipLoading, setZipLoading] = useState(false);
   const [productModal, setProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
@@ -1928,12 +1930,24 @@ export default function Home() {
                         <th>CPF/CNPJ</th>
                         <th>WhatsApp</th>
                         <th>Status</th>
-                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredCustomers.map((c) => (
-                        <tr key={c.id}>
+                        <tr
+                          key={c.id}
+                          className="clickable-table-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Visualizar cliente ${c.name}`}
+                          onClick={() => setViewingCustomer(c)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setViewingCustomer(c);
+                            }
+                          }}
+                        >
                           <td className="customer-name-cell">
                             <b>{c.name}</b>
                           </td>
@@ -1945,22 +1959,6 @@ export default function Home() {
                             >
                               {c.active ? "Ativo" : "Inativo"}
                             </span>
-                          </td>
-                          <td className="table-actions">
-                            <button
-                              className="link-button"
-                              onClick={() => openCustomer(c)}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              className={`link-button ${c.active ? "danger-action" : "success-action"}`}
-                              onClick={() =>
-                                toggle("customer", c.id, !c.active)
-                              }
-                            >
-                              {c.active ? "Inativar" : "Ativar"}
-                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1989,7 +1987,7 @@ export default function Home() {
                   setQuery={setQuery}
                   queryLabel="Buscar pino"
                 />
-                <div className="table-wrap standardized-table">
+                <div className="table-wrap standardized-table product-table">
                   <table>
                     <thead>
                       <tr>
@@ -1998,13 +1996,25 @@ export default function Home() {
                         <th>Medida</th>
                         <th>Preço</th>
                         <th>Status</th>
-                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProducts.map((p) => (
-                        <tr key={p.id}>
-                          <td className="table-actions">
+                        <tr
+                          key={p.id}
+                          className="clickable-table-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Visualizar pino ${p.code}`}
+                          onClick={() => setViewingProduct(p)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setViewingProduct(p);
+                            }
+                          }}
+                        >
+                          <td>
                             <b>{p.code}</b>
                           </td>
                           <td>{p.name}</td>
@@ -2016,20 +2026,6 @@ export default function Home() {
                             >
                               {p.active ? "Ativo" : "Inativo"}
                             </span>
-                          </td>
-                          <td>
-                            <button
-                              className="link-button"
-                              onClick={() => { setEditingProduct(p); setProductModal(true); }}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              className={`link-button ${p.active ? "danger-action" : "success-action"}`}
-                              onClick={() => toggle("product", p.id, !p.active)}
-                            >
-                              {p.active ? "Inativar" : "Ativar"}
-                            </button>
                           </td>
                         </tr>
                       ))}
@@ -2386,6 +2382,101 @@ export default function Home() {
         )}
       </section>
       {menu && <button className="overlay" onClick={() => setMenu(false)} />}
+      {viewingCustomer && (
+        <Modal
+          title={viewingCustomer.name}
+          page
+          pageLabel="CLIENTE"
+          backLabel="Voltar"
+          close={() => setViewingCustomer(null)}
+        >
+          <div className="record-view">
+            <div className="record-view-grid">
+              <ReviewField label="Nome ou razão social" value={viewingCustomer.name} />
+              <ReviewField label="Status" value={viewingCustomer.active ? "Ativo" : "Inativo"} />
+              <ReviewField label="CPF/CNPJ" value={formatDocument(viewingCustomer.document).replace(/^(CPF|CNPJ):\s*/, "") || "—"} />
+              <ReviewField label="WhatsApp" value={formatPhone(viewingCustomer.whatsapp) || "—"} />
+              <ReviewField label="E-mail" value={viewingCustomer.email || "—"} />
+              <ReviewField label="CEP" value={viewingCustomer.zipCode || "—"} />
+              <ReviewField
+                label="Endereço"
+                value={[
+                  viewingCustomer.street,
+                  viewingCustomer.number,
+                  viewingCustomer.complement,
+                  viewingCustomer.neighborhood,
+                  viewingCustomer.city && viewingCustomer.state
+                    ? `${viewingCustomer.city} - ${viewingCustomer.state}`
+                    : viewingCustomer.city || viewingCustomer.state,
+                ].filter(Boolean).join(", ") || "—"}
+                multiline
+              />
+            </div>
+            <div className="record-view-actions">
+              <button
+                className="outline-button"
+                onClick={() => {
+                  const customer = viewingCustomer;
+                  setViewingCustomer(null);
+                  openCustomer(customer);
+                }}
+              >
+                Editar
+              </button>
+              <button
+                className={viewingCustomer.active ? "record-inactivate" : "record-activate"}
+                onClick={async () => {
+                  await toggle("customer", viewingCustomer.id, !viewingCustomer.active);
+                  setViewingCustomer(null);
+                }}
+              >
+                {viewingCustomer.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {viewingProduct && (
+        <Modal
+          title={viewingProduct.code}
+          page
+          pageLabel="PINO"
+          backLabel="Voltar"
+          close={() => setViewingProduct(null)}
+        >
+          <div className="record-view">
+            <div className="record-view-grid">
+              <ReviewField label="Código" value={viewingProduct.code} />
+              <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
+              <ReviewField label="Descrição" value={viewingProduct.name} />
+              <ReviewField label="Medida" value={viewingProduct.measure} />
+              <ReviewField label="Preço" value={money(viewingProduct.price)} />
+            </div>
+            <div className="record-view-actions">
+              <button
+                className="outline-button"
+                onClick={() => {
+                  const product = viewingProduct;
+                  setViewingProduct(null);
+                  setEditingProduct(product);
+                  setProductModal(true);
+                }}
+              >
+                Editar
+              </button>
+              <button
+                className={viewingProduct.active ? "record-inactivate" : "record-activate"}
+                onClick={async () => {
+                  await toggle("product", viewingProduct.id, !viewingProduct.active);
+                  setViewingProduct(null);
+                }}
+              >
+                {viewingProduct.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {customerModal && (
         <Modal
           title={editingCustomer ? "Editar cliente" : "Cadastrar cliente"}
