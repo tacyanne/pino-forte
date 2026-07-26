@@ -242,6 +242,10 @@ const orderItemSummary = (order: Order) =>
     .join(" | ");
 const normalizeCustomerName = (name: string) =>
   name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toUpperCase();
+const userInitials = (name: string) => {
+  const names = name.trim().split(/\s+/).filter(Boolean);
+  return names.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "—";
+};
 const findBestCustomer = (list: Customer[], name: string) => {
   const normalized = normalizeCustomerName(name);
   return list
@@ -1468,7 +1472,9 @@ export default function Home() {
         </nav>
         <div className="sidebar-bottom">
           <div className="user-card">
-            <div className="avatar">RM</div>
+            <div className="avatar" aria-label={`Iniciais de ${auth.user.name}`}>
+              {userInitials(auth.user.name)}
+            </div>
             <div>
               <strong>{auth.user.name}</strong>
               <span>{auth.user.role === "admin" ? "Administrador" : "Usuário"}</span>
