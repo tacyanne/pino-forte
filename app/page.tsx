@@ -573,8 +573,10 @@ export default function Home() {
   function go(next: Screen) {
     setCustomerModal(false);
     setEditingCustomer(null);
+    setViewingCustomer(null);
     setProductModal(false);
     setEditingProduct(null);
+    setViewingProduct(null);
     setOrderModal(null);
     setWalletPayment(null);
     if (next === "orders") {
@@ -2392,8 +2394,7 @@ export default function Home() {
         <Modal
           title={viewingCustomer.name}
           page
-          pageLabel="CLIENTE"
-          backLabel="Voltar"
+          pageLabel=""
           close={() => setViewingCustomer(null)}
         >
           <div className="record-view">
@@ -2418,26 +2419,31 @@ export default function Home() {
                 multiline
               />
             </div>
-            <div className="record-view-actions">
-              <button
-                className="outline-button"
-                onClick={() => {
-                  const customer = viewingCustomer;
-                  setViewingCustomer(null);
-                  openCustomer(customer);
-                }}
-              >
-                Editar
+            <div className="record-view-footer">
+              <button className="record-back-button" onClick={() => setViewingCustomer(null)}>
+                ← Voltar
               </button>
-              <button
-                className={viewingCustomer.active ? "record-inactivate" : "record-activate"}
-                onClick={async () => {
-                  await toggle("customer", viewingCustomer.id, !viewingCustomer.active);
-                  setViewingCustomer(null);
-                }}
-              >
-                {viewingCustomer.active ? "Inativar" : "Ativar"}
-              </button>
+              <div className="record-view-actions">
+                <button
+                  className="record-edit-button"
+                  onClick={() => {
+                    const customer = viewingCustomer;
+                    setViewingCustomer(null);
+                    openCustomer(customer);
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  className={viewingCustomer.active ? "record-inactivate" : "record-activate"}
+                  onClick={async () => {
+                    await toggle("customer", viewingCustomer.id, !viewingCustomer.active);
+                    setViewingCustomer(null);
+                  }}
+                >
+                  {viewingCustomer.active ? "Inativar" : "Ativar"}
+                </button>
+              </div>
             </div>
           </div>
         </Modal>
@@ -2447,7 +2453,6 @@ export default function Home() {
           title={viewingProduct.code}
           page
           pageLabel="PINO"
-          backLabel="Voltar"
           close={() => setViewingProduct(null)}
         >
           <div className="record-view">
@@ -2458,27 +2463,32 @@ export default function Home() {
               <ReviewField label="Medida" value={viewingProduct.measure} />
               <ReviewField label="Preço" value={money(viewingProduct.price)} />
             </div>
-            <div className="record-view-actions">
-              <button
-                className="outline-button"
-                onClick={() => {
-                  const product = viewingProduct;
-                  setViewingProduct(null);
-                  setEditingProduct(product);
-                  setProductModal(true);
-                }}
-              >
-                Editar
+            <div className="record-view-footer">
+              <button className="record-back-button" onClick={() => setViewingProduct(null)}>
+                ← Voltar
               </button>
-              <button
-                className={viewingProduct.active ? "record-inactivate" : "record-activate"}
-                onClick={async () => {
-                  await toggle("product", viewingProduct.id, !viewingProduct.active);
-                  setViewingProduct(null);
-                }}
-              >
-                {viewingProduct.active ? "Inativar" : "Ativar"}
-              </button>
+              <div className="record-view-actions">
+                <button
+                  className="record-edit-button"
+                  onClick={() => {
+                    const product = viewingProduct;
+                    setViewingProduct(null);
+                    setEditingProduct(product);
+                    setProductModal(true);
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  className={viewingProduct.active ? "record-inactivate" : "record-activate"}
+                  onClick={async () => {
+                    await toggle("product", viewingProduct.id, !viewingProduct.active);
+                    setViewingProduct(null);
+                  }}
+                >
+                  {viewingProduct.active ? "Inativar" : "Ativar"}
+                </button>
+              </div>
             </div>
           </div>
         </Modal>
@@ -2562,7 +2572,12 @@ export default function Home() {
               <button
                 type="button"
                 className="cancel-button"
-                onClick={() => setCustomerModal(false)}
+                onClick={() => {
+                  const customer = editingCustomer;
+                  setCustomerModal(false);
+                  setEditingCustomer(null);
+                  if (customer) setViewingCustomer(customer);
+                }}
               >
                 Cancelar
               </button>
@@ -2602,7 +2617,12 @@ export default function Home() {
               <button
                 type="button"
                 className="cancel-button"
-                onClick={() => { setProductModal(false); setEditingProduct(null); }}
+                onClick={() => {
+                  const product = editingProduct;
+                  setProductModal(false);
+                  setEditingProduct(null);
+                  if (product) setViewingProduct(product);
+                }}
               >
                 Cancelar
               </button>
