@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  Children,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { jsPDF } from "jspdf";
 
 type Screen =
@@ -2846,14 +2854,32 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
+  const required = label.trim().endsWith("*") || hasRequiredControl(children);
+  const cleanLabel = label.replace(/\s*\*+\s*$/, "");
+
   return (
     <label className="field">
-      <span>{label}</span>
+      <span>
+        {cleanLabel}
+        {required && <b className="required-mark" aria-label="campo obrigatório"> *</b>}
+      </span>
       {children}
     </label>
   );
+}
+function hasRequiredControl(children: ReactNode): boolean {
+  return Children.toArray(children).some((child) => {
+    if (!isValidElement(child)) return false;
+    const element = child as ReactElement<{
+      required?: boolean;
+      children?: ReactNode;
+    }>;
+    return Boolean(
+      element.props.required || hasRequiredControl(element.props.children),
+    );
+  });
 }
 function ReviewField({ label, value, multiline = false }: { label: string; value: string; multiline?: boolean }) {
   return (
