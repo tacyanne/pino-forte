@@ -285,7 +285,7 @@ export default function Home() {
   const [paymentFilter, setPaymentFilter] = useState("Todos");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("Todos");
   const [orderPage, setOrderPage] = useState(1);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" | "warning" | "info" } | null>(null);
   const [customerModal, setCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
@@ -605,12 +605,22 @@ export default function Home() {
     setScreen(next);
     setMenu(false);
     setQuery("");
-    setNotice("");
+    setNotice(null);
     window.scrollTo({ top: 0 });
   }
-  function flash(text: string) {
-    setNotice(text);
-    setTimeout(() => setNotice(""), 3500);
+  function flash(text: string, tone?: "success" | "error" | "warning" | "info") {
+    const normalized = text.toLocaleLowerCase("pt-BR");
+    const inferredTone =
+      tone ||
+      (/sucesso|confirmad[oa]|registrad[oa]|atualizad[oa]|criad[oa]/.test(normalized)
+        ? "success"
+        : /não foi possível|erro|inválid|incompleto|preencha|informe|selecione|adicione|sem whatsapp/.test(normalized)
+          ? "error"
+          : /cancelad[oa]|permita pop-ups/.test(normalized)
+            ? "warning"
+            : "info");
+    setNotice({ text, tone: inferredTone });
+    setTimeout(() => setNotice(null), 3500);
   }
   async function saveSettings() {
     if (!companyName.trim() || !responsible.trim() || !orderFooter.trim())
@@ -1508,7 +1518,11 @@ export default function Home() {
             ＋
           </button>
         </header>
-        {notice && <div className="toast">{notice}</div>}
+        {notice && (
+          <div className={`toast toast-${notice.tone}`} role="status" aria-live="polite">
+            {notice.text}
+          </div>
+        )}
         {loading ? (
           <div className="page">
             <div className="empty">Carregando dados...</div>
