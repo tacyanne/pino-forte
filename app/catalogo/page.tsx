@@ -1,18 +1,44 @@
-const products = [
-  { code: "RN 180", measure: "50 × 180 mm", price: "R$ 49,00", line: "Linha Randon", image: "/img-000.png" },
-  { code: "RN 190", measure: "50 × 190 mm", price: "R$ 55,00", line: "Linha Randon", image: "/img-001.png" },
-  { code: "RN 205", measure: "50 × 205 mm", price: "R$ 56,00", line: "Linha Randon", image: "/img-002.png" },
-  { code: "RN 225", measure: "50 × 225 mm", price: "R$ 57,00", line: "Linha Randon", image: "/img-003.png" },
-  { code: "RO 215", measure: "50 × 215 mm", price: "R$ 63,00", line: "Linha Rodoviária", image: "/img-004.png" },
-  { code: "RO 235", measure: "50 × 235 mm", price: "R$ 68,00", line: "Linha Rodoviária", image: "/img-005.png" },
-];
+import { asc, eq } from "drizzle-orm";
+import { getDb } from "../../db";
+import { products } from "../../db/schema";
+
+export const dynamic = "force-dynamic";
 
 const whatsappMessage = encodeURIComponent(
   "Olá! Preciso realizar um pedido de peças para suspensão.",
 );
 const whatsapp = `https://wa.me/5543991565317?text=${whatsappMessage}`;
 
-export default function CatalogoPage() {
+const productImages: Record<string, string> = {
+  "RN 180": "/img-000.png",
+  "RN 190": "/img-001.png",
+  "RN 205": "/img-002.png",
+  "RN 225": "/img-003.png",
+  "RO 215": "/img-004.png",
+  "RO 235": "/img-005.png",
+};
+
+function money(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
+function productLine(code: string) {
+  if (code.toUpperCase().startsWith("RN")) return "Linha Randon";
+  if (code.toUpperCase().startsWith("RO")) return "Linha Rodoviária";
+  return "Pino de balança";
+}
+
+export default async function CatalogoPage() {
+  const db = await getDb();
+  const catalogProducts = await db
+    .select()
+    .from(products)
+    .where(eq(products.active, true))
+    .orderBy(asc(products.code));
+
   return (
     <main className="catalog-page">
       <header className="catalog-header">
@@ -25,31 +51,39 @@ export default function CatalogoPage() {
       </header>
 
       <section className="catalog-content" aria-label="Pinos disponíveis">
-        <div className="catalog-grid">
-          {products.map((product) => {
-            return (
-              <article className="catalog-card" key={product.code}>
+        {catalogProducts.length ? (
+          <div className="catalog-grid">
+            {catalogProducts.map((product) => (
+              <article className="catalog-card" key={product.id}>
                 <div className="catalog-card-top">
                   <span className="catalog-code">{product.code}</span>
-                  <strong className="catalog-price">{product.price}</strong>
+                  <strong className="catalog-price">{money(product.price)}</strong>
                 </div>
                 <div className="catalog-product">
-                  <img
-                    className="catalog-product-image"
-                    src={product.image}
-                    alt={`Pino de balança ${product.code}`}
-                  />
+                  {productImages[product.code] ? (
+                    <img
+                      className="catalog-product-image"
+                      src={productImages[product.code]}
+                      alt={`Pino de balança ${product.code}`}
+                    />
+                  ) : (
+                    <div className="catalog-pin" aria-hidden="true">
+                      <i />
+                      <i />
+                    </div>
+                  )}
                   <div>
-                    <span>{product.line}</span>
-                    <h3>Pino de balança</h3>
-                    <span className="catalog-type">COMUM</span>
+                    <span>{productLine(product.code)}</span>
+                    <h3>{product.name}</h3>
                     <strong>{product.measure}</strong>
                   </div>
                 </div>
               </article>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="empty">Nenhum pino disponível no momento.</p>
+        )}
       </section>
 
       <footer className="catalog-footer">
