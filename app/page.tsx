@@ -2009,7 +2009,6 @@ export default function Home() {
                       <tr>
                         <th>Código</th>
                         <th>Descrição</th>
-                        <th>Medida</th>
                         <th>Preço</th>
                         <th>Status</th>
                       </tr>
@@ -2034,7 +2033,6 @@ export default function Home() {
                             <b>{p.code}</b>
                           </td>
                           <td>{p.name}</td>
-                          <td>{p.measure}</td>
                           <td>{money(p.price)}</td>
                           <td>
                             <span
