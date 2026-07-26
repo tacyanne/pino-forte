@@ -2398,7 +2398,7 @@ export default function Home() {
       {menu && <button className="overlay" onClick={() => setMenu(false)} />}
       {viewingCustomer && (
         <Modal
-          title={viewingCustomer.name}
+          title="Visualizar cliente"
           page
           pageLabel=""
           close={() => setViewingCustomer(null)}
@@ -2456,9 +2456,9 @@ export default function Home() {
       )}
       {viewingProduct && (
         <Modal
-          title={viewingProduct.code}
+          title="Visualizar pino"
           page
-          pageLabel="PINO"
+          pageLabel=""
           close={() => setViewingProduct(null)}
         >
           <div className="record-view">
