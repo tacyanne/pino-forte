@@ -22,6 +22,13 @@
       "when": 1784335572722,
       "tag": "0002_bored_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785205655566,
+      "tag": "0003_reset_orders_and_selected_customers",
+      "breakpoints": true
     }
   ]
 }

@@ -365,6 +365,10 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   box-shadow:none!important;
   opacity:.65;
 }
+.review-shell .document-actions.order-view-actions .system-back-button{
+  width:100%;
+  min-width:0;
+}
 @media(max-width:760px){
   .system-back-button,
   .record-view-footer .system-back-button,
