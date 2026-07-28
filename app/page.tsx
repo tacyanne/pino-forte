@@ -1801,7 +1801,7 @@ export default function Home() {
                         }
                       }}
                     >
-                      Cancelar
+                      {editingOrder ? "Voltar" : "Cancelar"}
                     </button>
                     <button
                       type="submit"
