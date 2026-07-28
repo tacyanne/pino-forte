@@ -74,7 +74,8 @@ export default async function CatalogoPage() {
                   )}
                   <div>
                     <span>{productLine(product.code)}</span>
-                    <h3>{product.name}</h3>
+                    <h3>Pino de balança</h3>
+                    <span className="catalog-type">COMUM</span>
                     <strong>{product.measure}</strong>
                   </div>
                 </div>
