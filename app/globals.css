@@ -301,6 +301,34 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   min-width:0;
   align-self:stretch;
 }
+
+/* A lista de OS segue o padrão de navegação por linha usado nos demais cadastros. */
+.orders-table .clickable-order-row{
+  cursor:pointer;
+  transition:background-color .15s ease,box-shadow .15s ease;
+}
+.orders-table .clickable-order-row:hover{
+  background:#f5f9f8;
+}
+.orders-table .clickable-order-row:focus-visible{
+  outline:3px solid #2f7ea344;
+  outline-offset:-3px;
+}
+.orders-table th:last-child,
+.orders-table td:last-child{
+  width:150px;
+  text-align:center;
+}
+.review-shell .order-view-actions{
+  grid-template-columns:repeat(auto-fit,minmax(145px,1fr))!important;
+}
+.review-shell .order-view-actions .order-cancel-button{
+  width:100%;
+  min-width:0;
+  height:46px;
+  min-height:46px;
+  margin:0;
+}
 .filters .filter-month{flex:0 0 190px;min-width:190px}
 .filters .filter-month input{width:100%;min-height:46px}
 .filters .filter-clear{flex:0 0 110px;width:110px;height:46px;min-height:46px;margin:0;align-self:flex-end}

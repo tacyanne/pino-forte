@@ -1878,33 +1878,29 @@ export default function Home() {
                 </div>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
-                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th><th>Ações</th></tr></thead>
+                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th></tr></thead>
                     <tbody>
                       {paginatedOrders.map((order) => (
-                        <tr key={order.id}>
+                        <tr
+                          key={order.id}
+                          className="clickable-order-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Visualizar ${order.number}`}
+                          onClick={() => setOrderModal(order)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setOrderModal(order);
+                            }
+                          }}
+                        >
                           <td><b>{order.number}</b></td>
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
                           <td>{money(order.total)}</td>
                           <td>{order.paymentMethod}</td>
                           <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
-                          <td className="table-actions">
-                            <button
-                              className="icon-action danger"
-                              title={order.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(order) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
-                              aria-label={order.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(order) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar OS"}
-                              disabled={order.productionStatus === "Cancelada" || paymentStatus(order) === "Pago"}
-                              onClick={() => cancelOrder(order)}
-                            ><ActionIcon type="cancel" /></button>
-                            <button className="icon-action view-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
-                            <button
-                              className="icon-action edit"
-                              title={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(order) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
-                              aria-label={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(order) === "Pago" ? "Edição indisponível para OS paga" : "Editar OS"}
-                              disabled={order.productionStatus === "Cancelada" || paymentStatus(order) === "Pago"}
-                              onClick={() => editOrder(order, "orders")}
-                            ><ActionIcon type="edit" /></button>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -2764,7 +2760,7 @@ export default function Home() {
               multiline
             />
           </div>
-          <div className={`detail-actions document-actions ${orderModal.productionStatus !== "Cancelada" ? "three" : ""}`}>
+          <div className="detail-actions document-actions order-view-actions">
             <button className="outline-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
@@ -2774,14 +2770,22 @@ export default function Home() {
             >
               Baixar PDF
             </button>
-            {orderModal.productionStatus !== "Cancelada" && paymentStatus(orderModal) !== "Pago" && (
-                <button
-                  className="primary-button"
-                  onClick={() => editOrder(orderModal, "review")}
-                >
-                  Editar
-                </button>
-            )}
+            <button
+              className="cancel-button order-cancel-button"
+              title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
+              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              onClick={() => cancelOrder(orderModal)}
+            >
+              Cancelar
+            </button>
+            <button
+              className="primary-button"
+              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(orderModal) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
+              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              onClick={() => editOrder(orderModal, "review")}
+            >
+              Editar
+            </button>
             {orderModal.productionStatus !== "Cancelada" && (
                 <button
                   className="whatsapp-button"
