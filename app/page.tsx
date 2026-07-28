@@ -1045,7 +1045,7 @@ export default function Home() {
     pdf.setFontSize(10);
     pdf.text("PINO FORTE", 89, 20);
     pdf.setFontSize(7.5);
-    pdf.text("FÁBRICA DE PEÇAS PARA SUSPENSÃO", 89, 26);
+    pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 89, 26);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8);
     pdf.text(`Responsável: ${responsible || "—"}`, 89, 34);
@@ -1161,7 +1161,7 @@ export default function Home() {
     pdf.setFontSize(10);
     pdf.text("PINO FORTE", 79, 13);
     pdf.setFontSize(7);
-    pdf.text("FÁBRICA DE PEÇAS PARA SUSPENSÃO", 79, 18.5);
+    pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 79, 18.5);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.5);
     pdf.text(`Responsável: ${responsible || "—"}`, 79, 24);
@@ -1291,7 +1291,7 @@ export default function Home() {
     pdf.setFontSize(10);
     pdf.text("PINO FORTE", 76, 15.5);
     pdf.setFontSize(7);
-    pdf.text("FÁBRICA DE PEÇAS PARA SUSPENSÃO", 76, 21);
+    pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 76, 21);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.5);
     pdf.text(`Responsável: ${responsible || "Rogério Mendes"}`, 76, 26.5);
@@ -1398,7 +1398,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fábrica de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -1476,7 +1476,7 @@ export default function Home() {
           onClick={() => go("dashboard")}
           aria-label="Ir para o início"
         >
-          <img className="brand-logo" src="/logo-sistema.png" alt="Pino Forte — Fábrica de Peças para Suspensão" />
+          <img className="brand-logo" src="/logo-sistema.png" alt="Pino Forte — Fabricação de Peças para Suspensão" />
         </button>
         <nav>
           {nav.map(([s, i, l]) => (

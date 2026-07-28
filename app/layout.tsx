@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pino Forte | Fábrica de Peças para Suspensão",
+  title: "Pino Forte | Fabricação de Peças para Suspensão",
   description: "Fabricação e comércio de peças para suspensão de caminhões e carretas.",
   applicationName: "Pino Forte",
   manifest: "/manifest.webmanifest",
