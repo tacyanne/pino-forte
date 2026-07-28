@@ -27,12 +27,12 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/pino-forte-favicon-64-v2.png", type: "image/png", sizes: "64x64" },
-      { url: "/pino-forte-icon-192-v2.png", type: "image/png", sizes: "192x192" },
+      { url: "/favicon-v3.ico", sizes: "any" },
+      { url: "/pino-forte-favicon-64-v3.png", type: "image/png", sizes: "64x64" },
+      { url: "/pino-forte-icon-192-v3.png", type: "image/png", sizes: "192x192" },
     ],
-    shortcut: "/favicon.ico",
-    apple: [{ url: "/apple-touch-icon-v2.png", type: "image/png", sizes: "180x180" }],
+    shortcut: "/favicon-v3.ico",
+    apple: [{ url: "/apple-touch-icon-v3.png", type: "image/png", sizes: "180x180" }],
   },
 };
 
