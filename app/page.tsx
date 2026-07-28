@@ -1572,7 +1572,14 @@ export default function Home() {
                       <button onClick={() => go("orders")}>Ver todas</button>
                     </div>
                     <OrderList
-                      orders={orders.slice(0, 6)}
+                      orders={orders
+                        .slice()
+                        .sort(
+                          (a, b) =>
+                            dateTimestamp(b.createdAt) -
+                            dateTimestamp(a.createdAt),
+                        )
+                        .slice(0, 6)}
                       onOpen={setOrderModal}
                     />
                   </div>
