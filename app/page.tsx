@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  Children,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { jsPDF } from "jspdf";
 
 type Screen =
@@ -242,6 +250,10 @@ const orderItemSummary = (order: Order) =>
     .join(" | ");
 const normalizeCustomerName = (name: string) =>
   name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toUpperCase();
+const userInitials = (name: string) => {
+  const names = name.trim().split(/\s+/).filter(Boolean);
+  return names.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "—";
+};
 const findBestCustomer = (list: Customer[], name: string) => {
   const normalized = normalizeCustomerName(name);
   return list
@@ -269,12 +281,14 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
+  const [orderMonthFilter, setOrderMonthFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("Todos");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("Todos");
   const [orderPage, setOrderPage] = useState(1);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<{ text: string; tone: "success" | "error" | "warning" | "info" } | null>(null);
   const [customerModal, setCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [zipCode, setZipCode] = useState("");
@@ -287,6 +301,7 @@ export default function Home() {
   const [zipLoading, setZipLoading] = useState(false);
   const [productModal, setProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
@@ -309,10 +324,10 @@ export default function Home() {
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [companyPhone, setCompanyPhone] = useState("");
-  const [companyName, setCompanyName] = useState("Pino de Balança");
+  const [companyName, setCompanyName] = useState("Pino Forte");
   const [responsible, setResponsible] = useState("Rogério Mendes");
   const [orderFooter, setOrderFooter] = useState(
-    "Documento gerado pelo sistema Pino de Balança",
+    "Documento gerado pelo sistema Pino Forte",
   );
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
@@ -348,7 +363,7 @@ export default function Home() {
       } catch {}
       if (settings) {
         setCompanyName(settings.companyName);
-        setResponsible(settings.responsible);
+        setResponsible(settings.responsible || "Rogério Mendes");
         setCompanyPhone(settings.companyPhone);
         setOrderFooter(settings.orderFooter);
       }
@@ -456,6 +471,7 @@ export default function Home() {
   }, [orders, dashboardMonth]);
   const filteredOrders = orders.filter(
     (o) =>
+      (!orderMonthFilter || monthInSaoPaulo(o.createdAt) === orderMonthFilter) &&
       (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
       (paymentMethodFilter === "Todos" || o.paymentMethod === paymentMethodFilter) &&
       `${o.number} ${o.customerName} ${o.productCode}`
@@ -468,7 +484,7 @@ export default function Home() {
     (orderPage - 1) * ordersPerPage,
     orderPage * ordersPerPage,
   );
-  useEffect(() => setOrderPage(1), [query, paymentFilter, paymentMethodFilter]);
+  useEffect(() => setOrderPage(1), [query, orderMonthFilter, paymentFilter, paymentMethodFilter]);
   const filteredCustomers = customers.filter((c) =>
     `${c.name} ${c.document} ${c.whatsapp}`
       .toLowerCase()
@@ -565,8 +581,10 @@ export default function Home() {
   function go(next: Screen) {
     setCustomerModal(false);
     setEditingCustomer(null);
+    setViewingCustomer(null);
     setProductModal(false);
     setEditingProduct(null);
+    setViewingProduct(null);
     setOrderModal(null);
     setWalletPayment(null);
     if (next === "orders") {
@@ -587,12 +605,22 @@ export default function Home() {
     setScreen(next);
     setMenu(false);
     setQuery("");
-    setNotice("");
+    setNotice(null);
     window.scrollTo({ top: 0 });
   }
-  function flash(text: string) {
-    setNotice(text);
-    setTimeout(() => setNotice(""), 3500);
+  function flash(text: string, tone?: "success" | "error" | "warning" | "info") {
+    const normalized = text.toLocaleLowerCase("pt-BR");
+    const inferredTone =
+      tone ||
+      (/sucesso|confirmad[oa]|registrad[oa]|atualizad[oa]|criad[oa]/.test(normalized)
+        ? "success"
+        : /não foi possível|erro|inválid|incompleto|preencha|informe|selecione|adicione|sem whatsapp/.test(normalized)
+          ? "error"
+          : /cancelad[oa]|permita pop-ups/.test(normalized)
+            ? "warning"
+            : "info");
+    setNotice({ text, tone: inferredTone });
+    setTimeout(() => setNotice(null), 3500);
   }
   async function saveSettings() {
     if (!companyName.trim() || !responsible.trim() || !orderFooter.trim())
@@ -1004,22 +1032,24 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
     const pdf = new jsPDF();
-    const logo = await loadImageData("/logo-pdf.png", true);
+    const logo = await loadImageData("/logo-pdf.png");
     pdf.setDrawColor(60);
     pdf.setLineWidth(0.35);
     pdf.rect(15, 10, 180, 270);
-    pdf.rect(15, 10, 38, 38);
-    pdf.rect(53, 10, 105, 38);
+    pdf.rect(15, 10, 70, 38);
+    pdf.rect(85, 10, 73, 38);
     pdf.rect(158, 10, 37, 38);
-    pdf.addImage(logo, "JPEG", 17, 12, 34, 34, undefined, "FAST");
+    pdf.addImage(logo, "JPEG", 23, 19.8, 54, 18.4, undefined, "FAST");
     pdf.setTextColor(30);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
-    pdf.text("PINO DE BALANÇA | TRUCK E CARRETA", 57, 22);
+    pdf.text("PINO FORTE", 89, 20);
+    pdf.setFontSize(7.5);
+    pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 89, 26);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.text(`Responsável: ${responsible || "—"}`, 57, 32);
-    pdf.text(`WhatsApp: ${companyPhone || "—"}`, 57, 40);
+    pdf.setFontSize(8);
+    pdf.text(`Responsável: ${responsible || "—"}`, 89, 34);
+    pdf.text(`WhatsApp: ${companyPhone || "—"}`, 89, 41);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(9);
     pdf.text("ORDEM DE SERVIÇO", 176.5, 18, { align: "center" });
@@ -1087,7 +1117,7 @@ export default function Home() {
     pdf.text(responsible || "Responsável", 154, 261, { align: "center" });
     pdf.setFontSize(8);
     pdf.setTextColor(100);
-    pdf.text(orderFooter, 105, 275, { align: "center" });
+    pdf.text(orderFooter, 105, 273, { align: "center" });
     return pdf;
   }
   async function createPdf(order: Order) {
@@ -1099,7 +1129,7 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const logo = await loadImageData("/logo-pdf.png", true);
+    const logo = await loadImageData("/logo-pdf.png");
     const left = 5;
     const right = 205;
     pdf.setDrawColor(60);
@@ -1122,18 +1152,20 @@ export default function Home() {
       pdf.setLineWidth(0.3);
     }
 
-    pdf.rect(left, 5, 28, 27);
-    pdf.rect(33, 5, 122, 27);
+    pdf.rect(left, 5, 70, 27);
+    pdf.rect(75, 5, 80, 27);
     pdf.rect(155, 5, 50, 27);
-    pdf.addImage(logo, "JPEG", 7, 7, 24, 23, undefined, "FAST");
+    pdf.addImage(logo, "JPEG", 13, 9.3, 54, 18.4, undefined, "FAST");
     pdf.setTextColor(25);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
-    pdf.text("PINO DE BALANÇA | TRUCK E CARRETA", 38, 14);
+    pdf.text("PINO FORTE", 79, 13);
+    pdf.setFontSize(7);
+    pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 79, 18.5);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(7.5);
-    pdf.text(`Responsável: ${responsible || "—"}`, 38, 21);
-    pdf.text(`Telefone: ${companyPhone || "—"}`, 38, 27);
+    pdf.text(`Responsável: ${responsible || "—"}`, 79, 24);
+    pdf.text(`Telefone: ${companyPhone || "—"}`, 79, 29);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(8);
     pdf.text("ORDEM DE SERVIÇO", 180, 12, { align: "center" });
@@ -1207,7 +1239,7 @@ export default function Home() {
     pdf.text("Responsável pela empresa", 160, 137, { align: "center" });
     pdf.setFontSize(6.5);
     pdf.setTextColor(100);
-    pdf.text(orderFooter, 105, 141, { align: "center" });
+    pdf.text(orderFooter, 105, 139.5, { align: "center" });
     return pdf;
   }
   async function downloadPdf(order: Order) {
@@ -1233,7 +1265,7 @@ export default function Home() {
   async function createWalletPdf(orders: Order[], customerName: string, month: string) {
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
     const total = orders.reduce((sum, order) => sum + order.total, 0);
-    const logo = await loadImageData("/logo-pdf.png", true);
+    const logo = await loadImageData("/logo-pdf.png");
     const [year, monthNumber] = month.split("-");
     const periodMonth = new Date(+year, +monthNumber - 1, 1).toLocaleDateString("pt-BR", { month: "long" });
     const period = `${periodMonth.charAt(0).toUpperCase()}${periodMonth.slice(1)}/${year}`;
@@ -1253,19 +1285,21 @@ export default function Home() {
 
     const left = 15;
     const right = 195;
-    pdf.addImage(logo, "JPEG", left, 10, 24, 23, undefined, "FAST");
+    pdf.addImage(logo, "JPEG", left, 12.2, 52, 17.7, undefined, "FAST");
     pdf.setTextColor(25);
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(11);
-    pdf.text("PINO DE BALANÇA | TRUCK E CARRETA", 44, 17);
+    pdf.setFontSize(10);
+    pdf.text("PINO FORTE", 76, 15.5);
+    pdf.setFontSize(7);
+    pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 76, 21);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(8);
-    pdf.text(`Responsável: ${responsible || "—"}`, 44, 24);
-    pdf.text(`Telefone: ${companyPhone || "—"}`, 44, 30);
+    pdf.setFontSize(7.5);
+    pdf.text(`Responsável: ${responsible || "Rogério Mendes"}`, 76, 26.5);
+    pdf.text(`Telefone: ${companyPhone || "—"}`, 76, 31.5);
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(11);
-    pdf.text("COMPROVANTE DE QUITAÇÃO", right, 17, { align: "right" });
-    pdf.text("DA CARTEIRA", right, 24, { align: "right" });
+    pdf.setFontSize(10.5);
+    pdf.text("COMPROVANTE DE QUITAÇÃO", 165, 17, { align: "center" });
+    pdf.text("DA CARTEIRA", 165, 24, { align: "center" });
     pdf.setDrawColor(216, 107, 50);
     pdf.setLineWidth(1);
     pdf.line(left, 37, right, 37);
@@ -1303,7 +1337,7 @@ export default function Home() {
       labels.forEach((label) => pdf.text(label.text, label.x, y, { align: label.align || "left" }));
       y += 7;
     };
-    drawSectionTitle("HISTÓRICO DE EMISSÃO");
+    drawSectionTitle("HISTÓRICO DE EMISSÕES");
     drawHeader([{ text: "OS", x: 18 }, { text: "DATA DE EMISSÃO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(25);
@@ -1330,6 +1364,13 @@ export default function Home() {
       pdf.line(left, y + 3, right, y + 3);
       y += 8;
     });
+    pdf.setDrawColor(216, 107, 50);
+    pdf.setLineWidth(0.45);
+    pdf.line(left, 282, right, 282);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(100);
+    pdf.text(orderFooter, 105, 288, { align: "center" });
     return pdf;
   }
   async function downloadWalletPdf(orders: Order[], customerName: string, month: string) {
@@ -1357,7 +1398,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #174a52;padding-bottom:18px}h1{color:#174a52;margin:0}.n{color:#d86b32;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#174a52;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino de Balança</h1><span>Ordem de Serviço de fabricação</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -1402,7 +1443,7 @@ export default function Home() {
   if (!auth.user) return (
     <main className="auth-page">
       <section className="auth-card">
-        <div className="auth-logo"><img src="/logo-sistema.png" alt="Rogério Mendes" /></div>
+        <div className="auth-logo"><img src="/logo-sistema.png" alt="Pino Forte" /></div>
         <div className="auth-content">
         <h1>Acesso ao sistema</h1>
         <form onSubmit={submitAuth} noValidate>
@@ -1429,9 +1470,14 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
-        <div className="brand">
-          <img className="brand-logo" src="/logo-sistema.png" alt="Rogério Mendes — Pino de Balança" />
-        </div>
+        <button
+          type="button"
+          className="brand brand-home"
+          onClick={() => go("dashboard")}
+          aria-label="Ir para o início"
+        >
+          <img className="brand-logo" src="/logo-sistema.png" alt="Pino Forte — Fabricação de Peças para Suspensão" />
+        </button>
         <nav>
           {nav.map(([s, i, l]) => (
             <button
@@ -1446,7 +1492,9 @@ export default function Home() {
         </nav>
         <div className="sidebar-bottom">
           <div className="user-card">
-            <div className="avatar">RM</div>
+            <div className="avatar" aria-label={`Iniciais de ${auth.user.name}`}>
+              {userInitials(auth.user.name)}
+            </div>
             <div>
               <strong>{auth.user.name}</strong>
               <span>{auth.user.role === "admin" ? "Administrador" : "Usuário"}</span>
@@ -1458,12 +1506,23 @@ export default function Home() {
       <section className="workspace">
         <header className="mobile-header">
           <button onClick={() => setMenu(!menu)}>☰</button>
-          <img className="mobile-header-logo" src="/logo-sistema.png" alt="Rogério Mendes" />
+          <button
+            type="button"
+            className="mobile-logo-home"
+            onClick={() => go("dashboard")}
+            aria-label="Ir para o início"
+          >
+            <img className="mobile-header-logo" src="/logo-sistema.png" alt="Pino Forte" />
+          </button>
           <button className="mobile-add" onClick={() => go("new-order")}>
             ＋
           </button>
         </header>
-        {notice && <div className="toast">{notice}</div>}
+        {notice && (
+          <div className={`toast toast-${notice.tone}`} role="status" aria-live="polite">
+            {notice.text}
+          </div>
+        )}
         {loading ? (
           <div className="page">
             <div className="empty">Carregando dados...</div>
@@ -1513,7 +1572,14 @@ export default function Home() {
                       <button onClick={() => go("orders")}>Ver todas</button>
                     </div>
                     <OrderList
-                      orders={orders.slice(0, 6)}
+                      orders={orders
+                        .slice()
+                        .sort(
+                          (a, b) =>
+                            dateTimestamp(b.createdAt) -
+                            dateTimestamp(a.createdAt),
+                        )
+                        .slice(0, 6)}
                       onOpen={setOrderModal}
                     />
                   </div>
@@ -1729,7 +1795,7 @@ export default function Home() {
                   <div className="form-actions">
                     <button
                       type="button"
-                      className="cancel-button"
+                      className={editingOrder ? "system-back-button" : "cancel-button"}
                       onClick={() => {
                         if (editingOrder) {
                           const order = editingOrder;
@@ -1742,7 +1808,7 @@ export default function Home() {
                         }
                       }}
                     >
-                      Cancelar
+                      {editingOrder ? "Voltar" : "Cancelar"}
                     </button>
                     <button
                       type="submit"
@@ -1770,16 +1836,31 @@ export default function Home() {
                     </button>
                   }
                 />
-                <Filters query={query} setQuery={setQuery} queryLabel="Buscar cliente ou OS">
-                  <label className="filter-field filter-status">
-                    <span>Status</span>
+                <div className="filters operational-filters operational-filters-orders">
+                  <Field label="Buscar cliente ou OS">
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Mês">
+                    <select
+                      value={orderMonthFilter}
+                      onChange={(event) => setOrderMonthFilter(event.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      {reportMonths.map((month) => (
+                        <option key={month} value={month}>{monthLabel(month)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Status">
                     <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
                       <option>Todos</option>
                       {["Pago", "Pagamento parcial", "Aguardando pagamento", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
                     </select>
-                  </label>
-                  <label className="filter-field filter-status">
-                    <span>Forma de pagamento</span>
+                  </Field>
+                  <Field label="Forma de pagamento">
                     <select value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)}>
                       <option>Todos</option>
                       <option>Pix</option>
@@ -1788,37 +1869,50 @@ export default function Home() {
                       <option>Boleto</option>
                       <option>Carteira</option>
                     </select>
-                  </label>
-                </Filters>
+                  </Field>
+                  <button
+                    type="button"
+                    className="outline-button filter-clear"
+                    onClick={() => {
+                      setQuery("");
+                      setOrderMonthFilter("");
+                      setPaymentFilter("Todos");
+                      setPaymentMethodFilter("Todos");
+                    }}
+                  >
+                    Limpar
+                  </button>
+                </div>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
-                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th><th>Ações</th></tr></thead>
+                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th></tr></thead>
                     <tbody>
+                      {!paginatedOrders.length && (
+                        <tr className="orders-empty-row">
+                          <td colSpan={6}>Nenhuma Ordem de Serviço encontrada.</td>
+                        </tr>
+                      )}
                       {paginatedOrders.map((order) => (
-                        <tr key={order.id}>
+                        <tr
+                          key={order.id}
+                          className="clickable-order-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Visualizar ${order.number}`}
+                          onClick={() => setOrderModal(order)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setOrderModal(order);
+                            }
+                          }}
+                        >
                           <td><b>{order.number}</b></td>
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
                           <td>{money(order.total)}</td>
                           <td>{order.paymentMethod}</td>
                           <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
-                          <td className="table-actions">
-                            <button
-                              className="icon-action danger"
-                              title={order.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(order) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
-                              aria-label={order.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(order) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar OS"}
-                              disabled={order.productionStatus === "Cancelada" || paymentStatus(order) === "Pago"}
-                              onClick={() => cancelOrder(order)}
-                            ><ActionIcon type="cancel" /></button>
-                            <button className="icon-action view-action" title="Visualizar" aria-label="Visualizar OS" onClick={() => setOrderModal(order)}><ActionIcon type="view" /></button>
-                            <button
-                              className="icon-action edit"
-                              title={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(order) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
-                              aria-label={order.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(order) === "Pago" ? "Edição indisponível para OS paga" : "Editar OS"}
-                              disabled={order.productionStatus === "Cancelada" || paymentStatus(order) === "Pago"}
-                              onClick={() => editOrder(order, "orders")}
-                            ><ActionIcon type="edit" /></button>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1874,12 +1968,24 @@ export default function Home() {
                         <th>CPF/CNPJ</th>
                         <th>WhatsApp</th>
                         <th>Status</th>
-                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredCustomers.map((c) => (
-                        <tr key={c.id}>
+                        <tr
+                          key={c.id}
+                          className="clickable-table-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Visualizar cliente ${c.name}`}
+                          onClick={() => setViewingCustomer(c)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setViewingCustomer(c);
+                            }
+                          }}
+                        >
                           <td className="customer-name-cell">
                             <b>{c.name}</b>
                           </td>
@@ -1891,22 +1997,6 @@ export default function Home() {
                             >
                               {c.active ? "Ativo" : "Inativo"}
                             </span>
-                          </td>
-                          <td className="table-actions">
-                            <button
-                              className="link-button"
-                              onClick={() => openCustomer(c)}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              className={`link-button ${c.active ? "danger-action" : "success-action"}`}
-                              onClick={() =>
-                                toggle("customer", c.id, !c.active)
-                              }
-                            >
-                              {c.active ? "Inativar" : "Ativar"}
-                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1935,26 +2025,36 @@ export default function Home() {
                   setQuery={setQuery}
                   queryLabel="Buscar pino"
                 />
-                <div className="table-wrap standardized-table">
+                <div className="table-wrap standardized-table product-table">
                   <table>
                     <thead>
                       <tr>
                         <th>Código</th>
                         <th>Descrição</th>
-                        <th>Medida</th>
                         <th>Preço</th>
                         <th>Status</th>
-                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredProducts.map((p) => (
-                        <tr key={p.id}>
-                          <td className="table-actions">
+                        <tr
+                          key={p.id}
+                          className="clickable-table-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Visualizar pino ${p.code}`}
+                          onClick={() => setViewingProduct(p)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setViewingProduct(p);
+                            }
+                          }}
+                        >
+                          <td>
                             <b>{p.code}</b>
                           </td>
                           <td>{p.name}</td>
-                          <td>{p.measure}</td>
                           <td>{money(p.price)}</td>
                           <td>
                             <span
@@ -1962,20 +2062,6 @@ export default function Home() {
                             >
                               {p.active ? "Ativo" : "Inativo"}
                             </span>
-                          </td>
-                          <td>
-                            <button
-                              className="link-button"
-                              onClick={() => { setEditingProduct(p); setProductModal(true); }}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              className={`link-button ${p.active ? "danger-action" : "success-action"}`}
-                              onClick={() => toggle("product", p.id, !p.active)}
-                            >
-                              {p.active ? "Inativar" : "Ativar"}
-                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1987,7 +2073,7 @@ export default function Home() {
             {screen === "wallet" && (
               <div className="page">
                 <Heading title="Carteira" />
-                <div className="filters report-filters wallet-filters">
+                <div className="filters operational-filters operational-filters-three">
                   <Field label="Buscar cliente">
                     <input
                       value={walletQuery}
@@ -2095,7 +2181,7 @@ export default function Home() {
                                     <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
                                   <div className="wallet-orders">
-                                    <strong className="wallet-section-title">HISTÓRICO DE EMISSÃO</strong>
+                                    <strong className="wallet-section-title">HISTÓRICO DE EMISSÕES</strong>
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
                                       <span>Data de emissão</span>
@@ -2194,8 +2280,8 @@ export default function Home() {
                     </button>
                   }
                 />
-                <div className="filters report-filters report-filters-standard">
-                  <Field label="Cliente">
+                <div className="filters operational-filters operational-filters-three">
+                  <Field label="Buscar cliente">
                     <select value={reportCustomer} onChange={(e) => setReportCustomer(e.target.value)}>
                       <option value="">Todos</option>
                       {[...customers]
@@ -2332,6 +2418,105 @@ export default function Home() {
         )}
       </section>
       {menu && <button className="overlay" onClick={() => setMenu(false)} />}
+      {viewingCustomer && (
+        <Modal
+          title="Visualizar cliente"
+          page
+          pageLabel=""
+          close={() => setViewingCustomer(null)}
+        >
+          <div className="record-view">
+            <div className="record-view-grid">
+              <ReviewField label="Nome ou razão social" value={viewingCustomer.name} />
+              <ReviewField label="Status" value={viewingCustomer.active ? "Ativo" : "Inativo"} />
+              <ReviewField label="CPF/CNPJ" value={formatDocument(viewingCustomer.document).replace(/^(CPF|CNPJ):\s*/, "") || "—"} />
+              <ReviewField label="WhatsApp" value={formatPhone(viewingCustomer.whatsapp) || "—"} />
+              <ReviewField label="E-mail" value={viewingCustomer.email || "—"} />
+              <ReviewField label="CEP" value={viewingCustomer.zipCode || "—"} />
+              <ReviewField
+                label="Endereço"
+                value={[
+                  viewingCustomer.street,
+                  viewingCustomer.number,
+                  viewingCustomer.complement,
+                  viewingCustomer.neighborhood,
+                  viewingCustomer.city && viewingCustomer.state
+                    ? `${viewingCustomer.city} - ${viewingCustomer.state}`
+                    : viewingCustomer.city || viewingCustomer.state,
+                ].filter(Boolean).join(", ") || "—"}
+                multiline
+              />
+            </div>
+            <div className="record-view-footer record-view-actions-row">
+              <button className="record-back-button system-back-button" onClick={() => setViewingCustomer(null)}>
+                Voltar
+              </button>
+              <button
+                className="record-edit-button"
+                onClick={() => {
+                  const customer = viewingCustomer;
+                  setViewingCustomer(null);
+                  openCustomer(customer);
+                }}
+              >
+                Editar
+              </button>
+              <button
+                className={viewingCustomer.active ? "record-inactivate" : "record-activate"}
+                onClick={async () => {
+                  await toggle("customer", viewingCustomer.id, !viewingCustomer.active);
+                  setViewingCustomer(null);
+                }}
+              >
+                {viewingCustomer.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {viewingProduct && (
+        <Modal
+          title="Visualizar pino"
+          page
+          pageLabel=""
+          close={() => setViewingProduct(null)}
+        >
+          <div className="record-view">
+            <div className="record-view-grid">
+              <ReviewField label="Código" value={viewingProduct.code} />
+              <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
+              <ReviewField label="Descrição" value={viewingProduct.name} />
+              <ReviewField label="Medida" value={viewingProduct.measure} />
+              <ReviewField label="Preço" value={money(viewingProduct.price)} />
+            </div>
+            <div className="record-view-footer record-view-actions-row">
+              <button className="record-back-button system-back-button" onClick={() => setViewingProduct(null)}>
+                Voltar
+              </button>
+              <button
+                className="record-edit-button"
+                onClick={() => {
+                  const product = viewingProduct;
+                  setViewingProduct(null);
+                  setEditingProduct(product);
+                  setProductModal(true);
+                }}
+              >
+                Editar
+              </button>
+              <button
+                className={viewingProduct.active ? "record-inactivate" : "record-activate"}
+                onClick={async () => {
+                  await toggle("product", viewingProduct.id, !viewingProduct.active);
+                  setViewingProduct(null);
+                }}
+              >
+                {viewingProduct.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {customerModal && (
         <Modal
           title={editingCustomer ? "Editar cliente" : "Cadastrar cliente"}
@@ -2411,7 +2596,12 @@ export default function Home() {
               <button
                 type="button"
                 className="cancel-button"
-                onClick={() => setCustomerModal(false)}
+                onClick={() => {
+                  const customer = editingCustomer;
+                  setCustomerModal(false);
+                  setEditingCustomer(null);
+                  if (customer) setViewingCustomer(customer);
+                }}
               >
                 Cancelar
               </button>
@@ -2451,7 +2641,12 @@ export default function Home() {
               <button
                 type="button"
                 className="cancel-button"
-                onClick={() => { setProductModal(false); setEditingProduct(null); }}
+                onClick={() => {
+                  const product = editingProduct;
+                  setProductModal(false);
+                  setEditingProduct(null);
+                  if (product) setViewingProduct(product);
+                }}
               >
                 Cancelar
               </button>
@@ -2573,8 +2768,8 @@ export default function Home() {
               multiline
             />
           </div>
-          <div className={`detail-actions document-actions ${orderModal.productionStatus !== "Cancelada" ? "three" : ""}`}>
-            <button className="outline-button" onClick={() => setOrderModal(null)}>
+          <div className="detail-actions document-actions order-view-actions">
+            <button className="outline-button system-back-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
             <button
@@ -2583,14 +2778,22 @@ export default function Home() {
             >
               Baixar PDF
             </button>
-            {orderModal.productionStatus !== "Cancelada" && paymentStatus(orderModal) !== "Pago" && (
-                <button
-                  className="primary-button"
-                  onClick={() => editOrder(orderModal, "review")}
-                >
-                  Editar
-                </button>
-            )}
+            <button
+              className="cancel-button order-cancel-button"
+              title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
+              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              onClick={() => cancelOrder(orderModal)}
+            >
+              Cancelar
+            </button>
+            <button
+              className="primary-button"
+              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(orderModal) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
+              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              onClick={() => editOrder(orderModal, "review")}
+            >
+              Editar
+            </button>
             {orderModal.productionStatus !== "Cancelada" && (
                 <button
                   className="whatsapp-button"
@@ -2675,14 +2878,32 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
+  const required = label.trim().endsWith("*") || hasRequiredControl(children);
+  const cleanLabel = label.replace(/\s*\*+\s*$/, "");
+
   return (
     <label className="field">
-      <span>{label}</span>
+      <span>
+        {cleanLabel}
+        {required && <b className="required-mark" aria-label="campo obrigatório"> *</b>}
+      </span>
       {children}
     </label>
   );
+}
+function hasRequiredControl(children: ReactNode): boolean {
+  return Children.toArray(children).some((child) => {
+    if (!isValidElement(child)) return false;
+    const element = child as ReactElement<{
+      required?: boolean;
+      children?: ReactNode;
+    }>;
+    return Boolean(
+      element.props.required || hasRequiredControl(element.props.children),
+    );
+  });
 }
 function ReviewField({ label, value, multiline = false }: { label: string; value: string; multiline?: boolean }) {
   return (
