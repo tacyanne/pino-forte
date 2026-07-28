@@ -1788,7 +1788,7 @@ export default function Home() {
                   <div className="form-actions">
                     <button
                       type="button"
-                      className="cancel-button"
+                      className={editingOrder ? "system-back-button" : "cancel-button"}
                       onClick={() => {
                         if (editingOrder) {
                           const order = editingOrder;
@@ -2436,8 +2436,8 @@ export default function Home() {
               />
             </div>
             <div className="record-view-footer">
-              <button className="record-back-button" onClick={() => setViewingCustomer(null)}>
-                ← Voltar
+              <button className="record-back-button system-back-button" onClick={() => setViewingCustomer(null)}>
+                Voltar
               </button>
               <div className="record-view-actions">
                 <button
@@ -2480,8 +2480,8 @@ export default function Home() {
               <ReviewField label="Preço" value={money(viewingProduct.price)} />
             </div>
             <div className="record-view-footer">
-              <button className="record-back-button" onClick={() => setViewingProduct(null)}>
-                ← Voltar
+              <button className="record-back-button system-back-button" onClick={() => setViewingProduct(null)}>
+                Voltar
               </button>
               <div className="record-view-actions">
                 <button
@@ -2761,7 +2761,7 @@ export default function Home() {
             />
           </div>
           <div className="detail-actions document-actions order-view-actions">
-            <button className="outline-button" onClick={() => setOrderModal(null)}>
+            <button className="outline-button system-back-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
             <button
