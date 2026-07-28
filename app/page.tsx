@@ -2435,31 +2435,29 @@ export default function Home() {
                 multiline
               />
             </div>
-            <div className="record-view-footer">
+            <div className="record-view-footer record-view-actions-row">
               <button className="record-back-button system-back-button" onClick={() => setViewingCustomer(null)}>
                 Voltar
               </button>
-              <div className="record-view-actions">
-                <button
-                  className="record-edit-button"
-                  onClick={() => {
-                    const customer = viewingCustomer;
-                    setViewingCustomer(null);
-                    openCustomer(customer);
-                  }}
-                >
-                  Editar
-                </button>
-                <button
-                  className={viewingCustomer.active ? "record-inactivate" : "record-activate"}
-                  onClick={async () => {
-                    await toggle("customer", viewingCustomer.id, !viewingCustomer.active);
-                    setViewingCustomer(null);
-                  }}
-                >
-                  {viewingCustomer.active ? "Inativar" : "Ativar"}
-                </button>
-              </div>
+              <button
+                className="record-edit-button"
+                onClick={() => {
+                  const customer = viewingCustomer;
+                  setViewingCustomer(null);
+                  openCustomer(customer);
+                }}
+              >
+                Editar
+              </button>
+              <button
+                className={viewingCustomer.active ? "record-inactivate" : "record-activate"}
+                onClick={async () => {
+                  await toggle("customer", viewingCustomer.id, !viewingCustomer.active);
+                  setViewingCustomer(null);
+                }}
+              >
+                {viewingCustomer.active ? "Inativar" : "Ativar"}
+              </button>
             </div>
           </div>
         </Modal>
@@ -2479,32 +2477,30 @@ export default function Home() {
               <ReviewField label="Medida" value={viewingProduct.measure} />
               <ReviewField label="Preço" value={money(viewingProduct.price)} />
             </div>
-            <div className="record-view-footer">
+            <div className="record-view-footer record-view-actions-row">
               <button className="record-back-button system-back-button" onClick={() => setViewingProduct(null)}>
                 Voltar
               </button>
-              <div className="record-view-actions">
-                <button
-                  className="record-edit-button"
-                  onClick={() => {
-                    const product = viewingProduct;
-                    setViewingProduct(null);
-                    setEditingProduct(product);
-                    setProductModal(true);
-                  }}
-                >
-                  Editar
-                </button>
-                <button
-                  className={viewingProduct.active ? "record-inactivate" : "record-activate"}
-                  onClick={async () => {
-                    await toggle("product", viewingProduct.id, !viewingProduct.active);
-                    setViewingProduct(null);
-                  }}
-                >
-                  {viewingProduct.active ? "Inativar" : "Ativar"}
-                </button>
-              </div>
+              <button
+                className="record-edit-button"
+                onClick={() => {
+                  const product = viewingProduct;
+                  setViewingProduct(null);
+                  setEditingProduct(product);
+                  setProductModal(true);
+                }}
+              >
+                Editar
+              </button>
+              <button
+                className={viewingProduct.active ? "record-inactivate" : "record-activate"}
+                onClick={async () => {
+                  await toggle("product", viewingProduct.id, !viewingProduct.active);
+                  setViewingProduct(null);
+                }}
+              >
+                {viewingProduct.active ? "Inativar" : "Ativar"}
+              </button>
             </div>
           </div>
         </Modal>
