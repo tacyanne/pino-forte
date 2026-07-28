@@ -1880,6 +1880,11 @@ export default function Home() {
                   <table>
                     <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th></tr></thead>
                     <tbody>
+                      {!paginatedOrders.length && (
+                        <tr className="orders-empty-row">
+                          <td colSpan={6}>Nenhuma Ordem de Serviço encontrada.</td>
+                        </tr>
+                      )}
                       {paginatedOrders.map((order) => (
                         <tr
                           key={order.id}
