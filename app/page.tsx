@@ -845,6 +845,7 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           id: editingOrder?.id,
+          customerId: orderCustomer?.id,
           customerName: selectedCustomer,
           createdAt: toIsoDate(orderDate),
           deliveryDate: editingOrder?.deliveryDate || todayIso(),
@@ -1781,6 +1782,14 @@ export default function Home() {
                     >
                       ＋ Adicionar outro pino
                     </button>
+                    {orderCustomer?.customerType === "Distribuidor" && (
+                      <div className="payment-summary distributor-discount-summary">
+                        <span>Condição comercial <strong>Distribuidor</strong></span>
+                        <span>Subtotal <strong>{money(subtotal)}</strong></span>
+                        <span>Desconto aplicado ({discountRate}%) <strong>- {money(discountAmount)}</strong></span>
+                        <span>Total com desconto <strong>{money(total)}</strong></span>
+                      </div>
+                    )}
                   </Card>
                   <Card n="3" title="Pagamento e observações">
                     <div className="form-grid order-payment-grid">

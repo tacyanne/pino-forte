@@ -15,6 +15,7 @@ function automaticDiscount(customerType: string, quantity: number) {
 async function calculateTotals(
   db: Awaited<ReturnType<typeof getDb>>,
   auth: { role: string },
+  customerId: number,
   customerName: string,
   items: OrderItem[],
   requestedDiscount: unknown,
@@ -24,7 +25,9 @@ async function calculateTotals(
     (sum, item) => sum + Math.max(1, Number(item.quantity)) * Math.max(0, Number(item.unitPrice)),
     0,
   );
-  const [customer] = await db.select().from(customers).where(eq(customers.name, customerName)).limit(1);
+  const [customer] = customerId
+    ? await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
+    : await db.select().from(customers).where(eq(customers.name, customerName.trim())).limit(1);
   const automatic = automaticDiscount(customer?.customerType || "Cliente final", quantity);
   const requested = requestedDiscount === undefined || requestedDiscount === null || requestedDiscount === ""
     ? automatic
@@ -97,7 +100,7 @@ export async function POST(request: Request) {
       );
     }
     const db = await getDb();
-    const totals = await calculateTotals(db, auth, String(body.customerName), normalizedItems, body.discountRate);
+    const totals = await calculateTotals(db, auth, Number(body.customerId || 0), String(body.customerName), normalizedItems, body.discountRate);
     const [{ lastId }] = await db
       .select({ lastId: max(serviceOrders.id) })
       .from(serviceOrders);
@@ -177,7 +180,7 @@ export async function PATCH(request: Request) {
         : [];
       if (items.length) {
         const customerName = String(body.customerName ?? current.customerName);
-        const totals = await calculateTotals(db, auth, customerName, items, body.discountRate);
+        const totals = await calculateTotals(db, auth, Number(body.customerId || 0), customerName, items, body.discountRate);
         changes.productCode = JSON.stringify(items);
         changes.quantity = totals.quantity;
         changes.unitPrice = Math.max(0, Number(items[0].unitPrice));
