@@ -29,9 +29,11 @@ async function calculateTotals(
   const [customer] = customerId
     ? await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
     : await db.select().from(customers).where(eq(customers.name, customerName.trim())).limit(1);
+  // O cadastro do cliente é a fonte oficial da condição comercial.
+  // Um valor antigo mantido no formulário não pode sobrescrever "Distribuidor".
   const customerType =
-    String(requestedCustomerType || "").trim() ||
     customer?.customerType ||
+    String(requestedCustomerType || "").trim() ||
     "Cliente final";
   const automatic = automaticDiscount(customerType, quantity);
   const requested = requestedDiscount === undefined || requestedDiscount === null || requestedDiscount === ""

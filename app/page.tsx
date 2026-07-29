@@ -448,7 +448,11 @@ export default function Home() {
     0,
   );
   const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
-  const orderCustomer = customers.find((customer) => customer.name === selectedCustomer);
+  const normalizedSelectedCustomer = selectedCustomer.trim().toLocaleLowerCase("pt-BR");
+  const orderCustomer = customers.find(
+    (customer) =>
+      customer.name.trim().toLocaleLowerCase("pt-BR") === normalizedSelectedCustomer,
+  );
   const automaticDiscountRate =
     isDistributor(orderCustomer?.customerType || selectedOrderCustomerType)
       ? totalQuantity >= 20
@@ -922,7 +926,11 @@ export default function Home() {
     setEditOrderReturnTo(returnTo);
     setSelectedCustomer(order.customerName);
     setSelectedOrderCustomerType(
-      customers.find((customer) => customer.name === order.customerName)?.customerType ||
+      customers.find(
+        (customer) =>
+          customer.name.trim().toLocaleLowerCase("pt-BR") ===
+          order.customerName.trim().toLocaleLowerCase("pt-BR"),
+      )?.customerType ||
         order.customerType ||
         "Cliente final",
     );
@@ -1678,7 +1686,11 @@ export default function Home() {
                           value={selectedCustomer}
                           onChange={(e) => {
                             const name = e.target.value;
-                            const customer = customers.find((item) => item.name === name);
+                            const normalizedName = name.trim().toLocaleLowerCase("pt-BR");
+                            const customer = customers.find(
+                              (item) =>
+                                item.name.trim().toLocaleLowerCase("pt-BR") === normalizedName,
+                            );
                             setSelectedCustomer(name);
                             setSelectedOrderCustomerType(customer?.customerType || "");
                           }}
