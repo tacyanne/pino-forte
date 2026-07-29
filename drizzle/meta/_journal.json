@@ -29,6 +29,13 @@
       "when": 1785205655566,
       "tag": "0003_reset_orders_and_selected_customers",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785283200000,
+      "tag": "0004_reset_service_orders",
+      "breakpoints": true
     }
   ]
 }
