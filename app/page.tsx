@@ -2551,20 +2551,22 @@ export default function Home() {
               <ReviewField label="CPF/CNPJ" value={formatDocument(viewingCustomer.document).replace(/^(CPF|CNPJ):\s*/, "") || "—"} />
               <ReviewField label="WhatsApp" value={formatPhone(viewingCustomer.whatsapp) || "—"} />
               <ReviewField label="E-mail" value={viewingCustomer.email || "—"} />
-              <ReviewField label="CEP" value={viewingCustomer.zipCode || "—"} />
-              <ReviewField
-                label="Endereço"
-                value={[
-                  viewingCustomer.street,
-                  viewingCustomer.number,
-                  viewingCustomer.complement,
-                  viewingCustomer.neighborhood,
-                  viewingCustomer.city && viewingCustomer.state
-                    ? `${viewingCustomer.city} - ${viewingCustomer.state}`
-                    : viewingCustomer.city || viewingCustomer.state,
-                ].filter(Boolean).join(", ") || "—"}
-                multiline
-              />
+              <div className="customer-address-view-row">
+                <ReviewField label="CEP" value={viewingCustomer.zipCode || "—"} />
+                <ReviewField
+                  label="Endereço"
+                  value={[
+                    viewingCustomer.street,
+                    viewingCustomer.number,
+                    viewingCustomer.complement,
+                    viewingCustomer.neighborhood,
+                    viewingCustomer.city && viewingCustomer.state
+                      ? `${viewingCustomer.city} - ${viewingCustomer.state}`
+                      : viewingCustomer.city || viewingCustomer.state,
+                  ].filter(Boolean).join(", ") || "—"}
+                  multiline
+                />
+              </div>
             </div>
             <div className="record-view-footer record-view-actions-row">
               <button className="record-back-button system-back-button" onClick={() => setViewingCustomer(null)}>
