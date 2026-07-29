@@ -50,15 +50,44 @@ export async function GET(request: Request) {
       .from(serviceOrders)
       .orderBy(desc(serviceOrders.id))
       .limit(100);
+    const customerRows = await db.select().from(customers);
+    const customerTypes = new Map(
+      customerRows.map((customer) => [
+        customer.name.trim().toLocaleLowerCase("pt-BR"),
+        customer.customerType,
+      ]),
+    );
+    const repairedRows = await Promise.all(
+      rows.map(async (order) => {
+        const isDistributor =
+          customerTypes.get(order.customerName.trim().toLocaleLowerCase("pt-BR")) ===
+          "Distribuidor";
+        if (!isDistributor || order.discountRate > 0) return order;
+        const subtotal = order.subtotal > 0 ? order.subtotal : order.total;
+        const discountRate = automaticDiscount("Distribuidor", order.quantity);
+        const total = Math.round(subtotal * (1 - discountRate / 100) * 100) / 100;
+        const [updated] = await db
+          .update(serviceOrders)
+          .set({
+            subtotal,
+            discountRate,
+            total,
+            received: Math.min(order.received, total),
+          })
+          .where(eq(serviceOrders.id, order.id))
+          .returning();
+        return updated || order;
+      }),
+    );
     return Response.json({
-      orders: rows.map((order) => ({
+      orders: repairedRows.map((order) => ({
         ...order,
         productionStatus:
           order.productionStatus === "Aguardando"
             ? "Fila de produção"
             : order.productionStatus,
       })),
-    });
+    }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return Response.json(
       {
