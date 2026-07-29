@@ -1894,7 +1894,7 @@ export default function Home() {
                           }
                         />
                       </Field>
-                      <div className="payment-summary">
+                      <div className={`payment-summary ${discountRate > 0 ? "four-columns" : "two-columns"}`}>
                         {discountRate > 0 && (
                           <>
                             <span>Subtotal <strong>{money(subtotal)}</strong></span>
@@ -2878,7 +2878,7 @@ export default function Home() {
               <ReviewField label="Forma de entrega" value={orderModal.deliveryType} />
               <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${paymentStatus(orderModal)}`} />
               <ReviewField label="Valor recebido" value={money(orderModal.received)} />
-              <div className="payment-summary">
+              <div className={`payment-summary ${isDistributor(orderModal.customerType) ? "four-columns" : "two-columns"}`}>
                 {isDistributor(orderModal.customerType) && (
                   <>
                     <span>
