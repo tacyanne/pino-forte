@@ -17,6 +17,7 @@ type Screen =
   | "orders"
   | "customers"
   | "products"
+  | "catalog"
   | "wallet"
   | "reports"
   | "settings";
@@ -1106,6 +1107,69 @@ export default function Home() {
       image.src = url;
     });
   }
+  async function downloadCatalogPdf(audience: "final" | "distributor") {
+    const activeProducts = products
+      .filter((product) => product.active)
+      .sort((a, b) => a.code.localeCompare(b.code, "pt-BR"));
+    if (!activeProducts.length) {
+      flash("Nenhum pino ativo disponível para o catálogo.");
+      return;
+    }
+    const distributor = audience === "distributor";
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const logo = await loadImageData("/logo-pdf.png");
+    pdf.setFillColor(8, 8, 8);
+    pdf.rect(0, 0, 210, 38, "F");
+    pdf.addImage(logo, "JPEG", 12, 7, 56, 24);
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(18);
+    pdf.text(distributor ? "CATÁLOGO DISTRIBUIDOR" : "CATÁLOGO DE PREÇOS", 198, 21, { align: "right" });
+    pdf.setTextColor(22, 39, 43);
+    pdf.setFontSize(10);
+    pdf.text(
+      distributor ? "Valores com desconto padrão de 8%." : "Catálogo para cliente final.",
+      12,
+      48,
+    );
+
+    let y = 58;
+    activeProducts.forEach((product, index) => {
+      if (y > 265) {
+        pdf.addPage();
+        y = 18;
+      }
+      const price = distributor ? product.price * 0.92 : product.price;
+      pdf.setDrawColor(207, 215, 213);
+      pdf.setLineWidth(0.25);
+      pdf.roundedRect(12, y, 186, 27, 3, 3);
+      pdf.setFillColor(255, 92, 0);
+      pdf.roundedRect(17, y + 5, 30, 17, 2, 2, "F");
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      pdf.text(product.code, 32, y + 15.5, { align: "center" });
+      pdf.setTextColor(22, 39, 43);
+      pdf.setFontSize(11);
+      pdf.text(product.name, 54, y + 11);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(82, 97, 100);
+      pdf.text(product.measure, 54, y + 18);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(13);
+      pdf.setTextColor(22, 39, 43);
+      pdf.text(money(price), 191, y + 16, { align: "right" });
+      y += 32;
+      if (index === activeProducts.length - 1) {
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.setTextColor(82, 97, 100);
+        pdf.text(`${orderFooter} · ${companyPhone}`, 105, 287, { align: "center" });
+      }
+    });
+    pdf.save(distributor ? "catalogo-pino-forte-distribuidor.pdf" : "catalogo-pino-forte-cliente-final.pdf");
+  }
   async function createPdfLegacy(order: Order) {
     const items = getOrderItems(order);
     let currentCustomers = customers;
@@ -1556,6 +1620,7 @@ export default function Home() {
     ["orders", "▤", "OS"],
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Pinos"],
+    ["catalog", "▦", "Catálogo"],
     ["wallet", "▣", "Carteira"],
     ["reports", "▥", "Relatórios"],
     ["settings", "⚙", "Configurações"],
@@ -2184,6 +2249,47 @@ export default function Home() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+            {screen === "catalog" && (
+              <div className="page">
+                <Heading
+                  eyebrow="MATERIAIS COMERCIAIS"
+                  title="Catálogo"
+                  subtitle="Acesse ou baixe a versão correta para cada público."
+                />
+                <div className="catalog-management-grid">
+                  <article className="catalog-management-card">
+                    <div>
+                      <span>CLIENTE FINAL</span>
+                      <h2>Catálogo de preços</h2>
+                      <p>Apresenta os valores integrais cadastrados para venda ao consumidor.</p>
+                    </div>
+                    <div className="catalog-management-actions">
+                      <a className="secondary-button" href="/catalogo" target="_blank" rel="noreferrer">
+                        Acessar online
+                      </a>
+                      <button className="primary-button" onClick={() => downloadCatalogPdf("final")}>
+                        Baixar PDF
+                      </button>
+                    </div>
+                  </article>
+                  <article className="catalog-management-card distributor">
+                    <div>
+                      <span>DISTRIBUIDOR</span>
+                      <h2>Catálogo para distribuidor</h2>
+                      <p>Apresenta os preços com o desconto comercial padrão de 8%.</p>
+                    </div>
+                    <div className="catalog-management-actions">
+                      <a className="secondary-button" href="/catalogo?tipo=distribuidor" target="_blank" rel="noreferrer">
+                        Acessar online
+                      </a>
+                      <button className="primary-button" onClick={() => downloadCatalogPdf("distributor")}>
+                        Baixar PDF
+                      </button>
+                    </div>
+                  </article>
                 </div>
               </div>
             )}

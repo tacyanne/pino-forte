@@ -31,7 +31,13 @@ function productLine(code: string) {
   return "Pino de balança";
 }
 
-export default async function CatalogoPage() {
+export default async function CatalogoPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tipo?: string }>;
+}) {
+  const params = await searchParams;
+  const distributor = params?.tipo === "distribuidor";
   const db = await getDb();
   const catalogProducts = await db
     .select()
@@ -45,7 +51,7 @@ export default async function CatalogoPage() {
         <div className="catalog-header-inner">
           <img src="/logo-sistema.png" alt="Pino Forte — Fabricação de Peças para Suspensão" />
           <div className="catalog-title">
-            <h1>Catálogo de preços</h1>
+            <h1>{distributor ? "Catálogo distribuidor" : "Catálogo de preços"}</h1>
           </div>
         </div>
       </header>
@@ -57,7 +63,9 @@ export default async function CatalogoPage() {
               <article className="catalog-card" key={product.id}>
                 <div className="catalog-card-top">
                   <span className="catalog-code">{product.code}</span>
-                  <strong className="catalog-price">{money(product.price)}</strong>
+                  <strong className="catalog-price">
+                    {money(distributor ? product.price * 0.92 : product.price)}
+                  </strong>
                 </div>
                 <div className="catalog-product">
                   {productImages[product.code] ? (
