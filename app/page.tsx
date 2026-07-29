@@ -1817,6 +1817,25 @@ export default function Home() {
                                 {money((p?.price || 0) * item.quantity)}
                               </strong>
                             </div>
+                            {index === orderItems.length - 1 && (
+                              <button
+                                type="button"
+                                className="outline-button add-item-inline"
+                                disabled={
+                                  products.filter((product) => product.active).every((product) =>
+                                    orderItems.some((selected) => selected.code === product.code),
+                                  )
+                                }
+                                onClick={() =>
+                                  setOrderItems((items) => [
+                                    ...items,
+                                    { code: "", quantity: 1 },
+                                  ])
+                                }
+                              >
+                                ＋ Adicionar outro pino
+                              </button>
+                            )}
                             {orderItems.length > 1 && (
                               <button
                                 type="button"
@@ -1836,23 +1855,6 @@ export default function Home() {
                         );
                       })}
                     </div>
-                    <button
-                      type="button"
-                      className="outline-button"
-                      disabled={
-                        products.filter((p) => p.active).every((p) =>
-                          orderItems.some((item) => item.code === p.code),
-                        )
-                      }
-                      onClick={() =>
-                        setOrderItems((items) => [
-                          ...items,
-                          { code: "", quantity: 1 },
-                        ])
-                      }
-                    >
-                      ＋ Adicionar outro pino
-                    </button>
                     {orderCustomer && isDistributor(orderCustomer.customerType) && (
                       <div className="payment-summary distributor-discount-summary">
                         <span>Condição comercial <strong>Distribuidor</strong></span>
