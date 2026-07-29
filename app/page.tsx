@@ -337,6 +337,7 @@ export default function Home() {
     "Documento gerado pelo sistema Pino Forte",
   );
   const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [selectedOrderCustomerType, setSelectedOrderCustomerType] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [received, setReceived] = useState(0);
@@ -449,7 +450,7 @@ export default function Home() {
   const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
   const orderCustomer = customers.find((customer) => customer.name === selectedCustomer);
   const automaticDiscountRate =
-    isDistributor(orderCustomer?.customerType)
+    isDistributor(selectedOrderCustomerType || orderCustomer?.customerType)
       ? totalQuantity >= 20
         ? 10
         : totalQuantity >= 10
@@ -622,6 +623,7 @@ export default function Home() {
     if (next === "new-order") {
       setEditingOrder(null);
       setSelectedCustomer("");
+      setSelectedOrderCustomerType("");
       setQuantity(1);
       setReceived(0);
       setSelectedDeliveryType("");
@@ -858,7 +860,7 @@ export default function Home() {
         body: JSON.stringify({
           id: editingOrder?.id,
           customerId: orderCustomer?.id,
-          customerType: orderCustomer?.customerType,
+          customerType: selectedOrderCustomerType || orderCustomer?.customerType,
           customerName: selectedCustomer,
           createdAt: toIsoDate(orderDate),
           deliveryDate: editingOrder?.deliveryDate || todayIso(),
@@ -919,6 +921,11 @@ export default function Home() {
     setEditingOrder(order);
     setEditOrderReturnTo(returnTo);
     setSelectedCustomer(order.customerName);
+    setSelectedOrderCustomerType(
+      order.customerType ||
+        customers.find((customer) => customer.name === order.customerName)?.customerType ||
+        "Cliente final",
+    );
     setOrderItems(items);
     setSelectedCode(items[0]?.code || "");
     setQuantity(items[0]?.quantity || 1);
@@ -1669,7 +1676,12 @@ export default function Home() {
                         <select
                           required
                           value={selectedCustomer}
-                          onChange={(e) => setSelectedCustomer(e.target.value)}
+                          onChange={(e) => {
+                            const name = e.target.value;
+                            const customer = customers.find((item) => item.name === name);
+                            setSelectedCustomer(name);
+                            setSelectedOrderCustomerType(customer?.customerType || "");
+                          }}
                         >
                           <option value="">Selecione</option>
                           {customers
@@ -1678,6 +1690,19 @@ export default function Home() {
                               <option key={c.id}>{c.name}</option>
                             ))}
                         </select>
+                      </Field>
+                      <Field label="Tipo de cliente">
+                        <input
+                          readOnly
+                          value={
+                            selectedCustomer
+                              ? selectedOrderCustomerType ||
+                                orderCustomer?.customerType ||
+                                "Cliente final"
+                              : ""
+                          }
+                          placeholder="Selecione o cliente"
+                        />
                       </Field>
                       <Field label="Data do pedido *">
                         <input
@@ -1793,7 +1818,7 @@ export default function Home() {
                     </button>
                     {orderCustomer && (
                       <div className="payment-summary distributor-discount-summary">
-                        <span>Condição comercial <strong>{isDistributor(orderCustomer.customerType) ? "Distribuidor" : "Cliente final"}</strong></span>
+                        <span>Condição comercial <strong>{isDistributor(selectedOrderCustomerType || orderCustomer.customerType) ? "Distribuidor" : "Cliente final"}</strong></span>
                         <span>Quantidade total <strong>{totalQuantity}</strong></span>
                         <span>Subtotal <strong>{money(subtotal)}</strong></span>
                         <span>Desconto aplicado <strong>{discountRate}% · - {money(discountAmount)}</strong></span>
@@ -1832,7 +1857,7 @@ export default function Home() {
                           }
                         />
                       </Field>
-                      {isDistributor(orderCustomer?.customerType) && auth.user?.role === "admin" && (
+                      {isDistributor(selectedOrderCustomerType || orderCustomer?.customerType) && auth.user?.role === "admin" && (
                         <Field label="Desconto autorizado (%)">
                           <input
                             type="number"
