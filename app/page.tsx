@@ -1113,7 +1113,10 @@ export default function Home() {
       image.src = url;
     });
   }
-  async function downloadCatalogPdf(audience: "final" | "distributor") {
+  async function downloadCatalogPdf(
+    audience: "final" | "distributor",
+    variant: "bw" | "color",
+  ) {
     const activeProducts = products
       .filter((product) => product.active)
       .sort((a, b) => a.code.localeCompare(b.code, "pt-BR"));
@@ -1122,14 +1125,15 @@ export default function Home() {
       return;
     }
     const distributor = audience === "distributor";
+    const color = variant === "color";
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const logo = await loadImageData("/logo-pdf.png", true);
+    const logo = await loadImageData(color ? "/logo-sistema.png" : "/logo-pdf.png", !color);
     const productImageData = await Promise.all(
       activeProducts.map(async (product) => {
         const imageUrl = catalogProductImages[product.code];
         if (!imageUrl) return "";
         try {
-          return await loadImageData(imageUrl, true);
+          return await loadImageData(imageUrl, !color);
         } catch {
           return "";
         }
@@ -1138,8 +1142,19 @@ export default function Home() {
     const pages = Math.ceil(activeProducts.length / 6);
     for (let page = 0; page < pages; page += 1) {
       if (page > 0) pdf.addPage();
-      pdf.setTextColor(30, 30, 30);
-      pdf.addImage(logo, "JPEG", 12, 10, 78, 26, undefined, "FAST");
+      if (color) {
+        pdf.setFillColor(248, 248, 246);
+        pdf.rect(0, 0, 210, 297, "F");
+        pdf.setFillColor(255, 92, 0);
+        pdf.rect(0, 0, 210, 2, "F");
+        pdf.setFillColor(7, 7, 7);
+        pdf.rect(0, 2, 210, 42, "F");
+        pdf.addImage(logo, "JPEG", 12, 8, 78, 28, undefined, "FAST");
+        pdf.setTextColor(255, 255, 255);
+      } else {
+        pdf.setTextColor(30, 30, 30);
+        pdf.addImage(logo, "JPEG", 12, 10, 78, 26, undefined, "FAST");
+      }
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(distributor ? 18 : 20);
       pdf.text(
@@ -1148,14 +1163,17 @@ export default function Home() {
         24,
         { align: "right" },
       );
-      pdf.setDrawColor(30, 30, 30);
-      pdf.setLineWidth(0.35);
-      pdf.line(12, 43, 198, 43);
+      if (!color) {
+        pdf.setDrawColor(30, 30, 30);
+        pdf.setLineWidth(0.35);
+        pdf.line(12, 43, 198, 43);
+      }
 
       if (distributor) {
-        pdf.setFillColor(247, 247, 247);
-        pdf.setDrawColor(190, 190, 190);
+        pdf.setFillColor(color ? 255 : 247, color ? 248 : 247, color ? 244 : 247);
+        pdf.setDrawColor(color ? 255 : 190, color ? 92 : 190, color ? 0 : 190);
         pdf.roundedRect(12, 47, 186, 14, 2, 2, "FD");
+        pdf.setTextColor(35, 35, 35);
         pdf.setFontSize(8.5);
         pdf.setFont("helvetica", "bold");
         pdf.text("REGRA DE DESCONTO", 17, 52.5);
@@ -1175,16 +1193,18 @@ export default function Home() {
         const y = cardY + row * (cardHeight + rowGap);
         const width = 89;
 
-        pdf.setDrawColor(190, 190, 190);
+        pdf.setFillColor(255, 255, 255);
+        pdf.setDrawColor(color ? 215 : 190, color ? 215 : 190, color ? 210 : 190);
         pdf.setLineWidth(0.25);
-        pdf.roundedRect(x, y, width, cardHeight, 3, 3);
-        pdf.setFillColor(245, 245, 245);
-        pdf.setDrawColor(90, 90, 90);
+        pdf.roundedRect(x, y, width, cardHeight, 3, 3, color ? "FD" : "S");
+        pdf.setFillColor(color ? 255 : 245, color ? 92 : 245, color ? 0 : 245);
+        pdf.setDrawColor(color ? 255 : 90, color ? 92 : 90, color ? 0 : 90);
         pdf.roundedRect(x + 5, y + 5, 24, 9, 2, 2, "FD");
-        pdf.setTextColor(35, 35, 35);
+        pdf.setTextColor(color ? 255 : 35, color ? 255 : 35, color ? 255 : 35);
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(8.5);
         pdf.text(product.code, x + 17, y + 11, { align: "center" });
+        pdf.setTextColor(35, 35, 35);
         pdf.setFontSize(12);
         pdf.text(money(product.price), x + width - 5, y + 11, { align: "right" });
 
@@ -1218,14 +1238,22 @@ export default function Home() {
         }
       });
 
-      pdf.setDrawColor(185, 185, 185);
-      pdf.line(12, 276, 198, 276);
-      pdf.setTextColor(35, 35, 35);
+      if (color) {
+        pdf.setFillColor(7, 7, 7);
+        pdf.roundedRect(12, 270, 186, 18, 3, 3, "F");
+        pdf.setTextColor(255, 255, 255);
+      } else {
+        pdf.setDrawColor(185, 185, 185);
+        pdf.line(12, 276, 198, 276);
+        pdf.setTextColor(35, 35, 35);
+      }
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(8.5);
-      pdf.text("Faça seu pedido de forma rápida e fácil | (43) 99156-5317", 105, 286, { align: "center" });
+      pdf.text("Faça seu pedido de forma rápida e fácil | (43) 99156-5317", 105, color ? 281 : 286, { align: "center" });
     }
-    pdf.save(distributor ? "catalogo-pino-forte-distribuidor.pdf" : "catalogo-pino-forte-cliente-final.pdf");
+    pdf.save(
+      `catalogo-pino-forte-${distributor ? "distribuidor" : "cliente-final"}-${color ? "colorido" : "pb"}.pdf`,
+    );
   }
   async function createPdfLegacy(order: Order) {
     const items = getOrderItems(order);
@@ -2327,10 +2355,10 @@ export default function Home() {
                       <a className="secondary-button" href="/catalogo" target="_blank" rel="noreferrer">
                         Acessar online
                       </a>
-                      <button className="primary-button" onClick={() => downloadCatalogPdf("final")}>
+                      <button className="primary-button" onClick={() => downloadCatalogPdf("final", "bw")}>
                         Baixar P&B
                       </button>
-                      <button className="secondary-button catalog-color-download" disabled title="Aguardando o arquivo colorido">
+                      <button className="secondary-button catalog-color-download" onClick={() => downloadCatalogPdf("final", "color")}>
                         Baixar Colorido
                       </button>
                     </div>
@@ -2345,10 +2373,10 @@ export default function Home() {
                       <a className="secondary-button" href="/catalogo?tipo=distribuidor" target="_blank" rel="noreferrer">
                         Acessar online
                       </a>
-                      <button className="primary-button" onClick={() => downloadCatalogPdf("distributor")}>
+                      <button className="primary-button" onClick={() => downloadCatalogPdf("distributor", "bw")}>
                         Baixar P&B
                       </button>
-                      <button className="secondary-button catalog-color-download" disabled title="Aguardando o arquivo colorido">
+                      <button className="secondary-button catalog-color-download" onClick={() => downloadCatalogPdf("distributor", "color")}>
                         Baixar Colorido
                       </button>
                     </div>
