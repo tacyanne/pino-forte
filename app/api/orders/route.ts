@@ -130,9 +130,9 @@ export async function POST(request: Request) {
     const productionStatus = ["Fila de produção", "Em produção", "Pronta", "Entregue"].includes(requestedStatus)
       ? requestedStatus
       : "Fila de produção";
-    if (!body.customerName || !body.productCode || !body.deliveryDate) {
+    if (!String(body.customerName || "").trim() || !normalizedItems.length || normalizedItems.some((item) => !item.code)) {
       return Response.json(
-        { error: "Cliente, pino e previsão de entrega são obrigatórios." },
+        { error: "Selecione o cliente e pelo menos um pino." },
         { status: 400 },
       );
     }
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
         discountRate: totals.discountRate,
         total: totals.total,
         received: Math.min(received, totals.total),
-        deliveryDate: String(body.deliveryDate),
+        deliveryDate: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
         deliveryType,
         paymentMethod,
         productionStatus,
