@@ -57,15 +57,22 @@ export default async function CatalogoPage({
       </header>
 
       <section className="catalog-content" aria-label="Pinos disponíveis">
+        {distributor && (
+          <div className="catalog-discount-rule">
+            <strong>Regra de desconto</strong>
+            <span>Até 9 unidades: 5%</span>
+            <span>De 10 a 19 unidades: 8%</span>
+            <span>20 unidades ou mais: 10%</span>
+            <small>Descontos acima de 10% dependem de autorização.</small>
+          </div>
+        )}
         {catalogProducts.length ? (
           <div className="catalog-grid">
             {catalogProducts.map((product) => (
               <article className="catalog-card" key={product.id}>
                 <div className="catalog-card-top">
                   <span className="catalog-code">{product.code}</span>
-                  <strong className="catalog-price">
-                    {money(distributor ? product.price * 0.92 : product.price)}
-                  </strong>
+                  <strong className="catalog-price">{money(product.price)}</strong>
                 </div>
                 <div className="catalog-product">
                   {productImages[product.code] ? (
@@ -87,6 +94,14 @@ export default async function CatalogoPage({
                     <strong>{product.measure}</strong>
                   </div>
                 </div>
+                {distributor && (
+                  <div className="catalog-discount-values">
+                    <strong>Desconto por peça</strong>
+                    <span>5%: - {money(product.price * 0.05)}</span>
+                    <span>8%: - {money(product.price * 0.08)}</span>
+                    <span>10%: - {money(product.price * 0.1)}</span>
+                  </div>
+                )}
               </article>
             ))}
           </div>
@@ -96,22 +111,8 @@ export default async function CatalogoPage({
       </section>
 
       <footer className="catalog-footer">
-        <div>
-          <strong>Faça seu pedido de forma rápida e fácil</strong>
-          <span>
-            Desenvolvido por{" "}
-            <a
-              className="catalog-credit"
-              href="https://www.ribexai.com.br"
-              target="_blank"
-              rel="noreferrer"
-            >
-              RibeX AI
-            </a>
-          </span>
-        </div>
         <a href={whatsapp} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp">
-          Falar no WhatsApp
+          Faça seu pedido de forma rápida e fácil | (43) 99156-5317
         </a>
       </footer>
     </main>

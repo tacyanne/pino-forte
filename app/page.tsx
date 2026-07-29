@@ -69,6 +69,14 @@ type Order = {
   notes: string;
   createdAt: string;
 };
+const catalogProductImages: Record<string, string> = {
+  "RN 180": "/img-000.png",
+  "RN 190": "/img-001.png",
+  "RN 205": "/img-002.png",
+  "RN 225": "/img-003.png",
+  "RO 215": "/img-004.png",
+  "RO 235": "/img-005.png",
+};
 
 const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -1092,11 +1100,9 @@ export default function Home() {
             const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
             for (let i = 0; i < pixels.data.length; i += 4) {
               const luminance = pixels.data[i] * 0.299 + pixels.data[i + 1] * 0.587 + pixels.data[i + 2] * 0.114;
-              const color = luminance < 38 ? 255 : 25;
-              pixels.data[i] = color;
-              pixels.data[i + 1] = color;
-              pixels.data[i + 2] = color;
-              pixels.data[i + 3] = 255;
+              pixels.data[i] = luminance;
+              pixels.data[i + 1] = luminance;
+              pixels.data[i + 2] = luminance;
             }
             context.putImageData(pixels, 0, 0);
           }
@@ -1117,57 +1123,108 @@ export default function Home() {
     }
     const distributor = audience === "distributor";
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const logo = await loadImageData("/logo-pdf.png");
-    pdf.setFillColor(8, 8, 8);
-    pdf.rect(0, 0, 210, 38, "F");
-    pdf.addImage(logo, "JPEG", 12, 7, 56, 24);
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(18);
-    pdf.text(distributor ? "CATÁLOGO DISTRIBUIDOR" : "CATÁLOGO DE PREÇOS", 198, 21, { align: "right" });
-    pdf.setTextColor(22, 39, 43);
-    pdf.setFontSize(10);
-    pdf.text(
-      distributor ? "Valores com desconto padrão de 8%." : "Catálogo para cliente final.",
-      12,
-      48,
+    const logo = await loadImageData("/logo-pdf.png", true);
+    const productImageData = await Promise.all(
+      activeProducts.map(async (product) => {
+        const imageUrl = catalogProductImages[product.code];
+        if (!imageUrl) return "";
+        try {
+          return await loadImageData(imageUrl, true);
+        } catch {
+          return "";
+        }
+      }),
     );
+    const pages = Math.ceil(activeProducts.length / 6);
+    for (let page = 0; page < pages; page += 1) {
+      if (page > 0) pdf.addPage();
+      pdf.setTextColor(30, 30, 30);
+      pdf.addImage(logo, "JPEG", 12, 10, 78, 26, undefined, "FAST");
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(distributor ? 18 : 20);
+      pdf.text(
+        distributor ? "CATÁLOGO DISTRIBUIDOR" : "CATÁLOGO DE PREÇOS",
+        198,
+        24,
+        { align: "right" },
+      );
+      pdf.setDrawColor(30, 30, 30);
+      pdf.setLineWidth(0.35);
+      pdf.line(12, 43, 198, 43);
 
-    let y = 58;
-    activeProducts.forEach((product, index) => {
-      if (y > 265) {
-        pdf.addPage();
-        y = 18;
-      }
-      const price = distributor ? product.price * 0.92 : product.price;
-      pdf.setDrawColor(207, 215, 213);
-      pdf.setLineWidth(0.25);
-      pdf.roundedRect(12, y, 186, 27, 3, 3);
-      pdf.setFillColor(255, 92, 0);
-      pdf.roundedRect(17, y + 5, 30, 17, 2, 2, "F");
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(11);
-      pdf.text(product.code, 32, y + 15.5, { align: "center" });
-      pdf.setTextColor(22, 39, 43);
-      pdf.setFontSize(11);
-      pdf.text(product.name, 54, y + 11);
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(9);
-      pdf.setTextColor(82, 97, 100);
-      pdf.text(product.measure, 54, y + 18);
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(13);
-      pdf.setTextColor(22, 39, 43);
-      pdf.text(money(price), 191, y + 16, { align: "right" });
-      y += 32;
-      if (index === activeProducts.length - 1) {
+      if (distributor) {
+        pdf.setFillColor(247, 247, 247);
+        pdf.setDrawColor(190, 190, 190);
+        pdf.roundedRect(12, 47, 186, 14, 2, 2, "FD");
+        pdf.setFontSize(8.5);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("REGRA DE DESCONTO", 17, 52.5);
         pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8);
-        pdf.setTextColor(82, 97, 100);
-        pdf.text(`${orderFooter} · ${companyPhone}`, 105, 287, { align: "center" });
+        pdf.text("Até 9 un.: 5%  |  10 a 19 un.: 8%  |  20 un. ou mais: 10%  |  Acima de 10%: autorização.", 17, 57.5);
       }
-    });
+
+      const pageProducts = activeProducts.slice(page * 6, page * 6 + 6);
+      const cardY = distributor ? 65 : 49;
+      const cardHeight = distributor ? 56 : 61;
+      const rowGap = 5;
+      pageProducts.forEach((product, pageIndex) => {
+        const sourceIndex = page * 6 + pageIndex;
+        const column = pageIndex % 2;
+        const row = Math.floor(pageIndex / 2);
+        const x = column === 0 ? 12 : 109;
+        const y = cardY + row * (cardHeight + rowGap);
+        const width = 89;
+
+        pdf.setDrawColor(190, 190, 190);
+        pdf.setLineWidth(0.25);
+        pdf.roundedRect(x, y, width, cardHeight, 3, 3);
+        pdf.setFillColor(245, 245, 245);
+        pdf.setDrawColor(90, 90, 90);
+        pdf.roundedRect(x + 5, y + 5, 24, 9, 2, 2, "FD");
+        pdf.setTextColor(35, 35, 35);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(8.5);
+        pdf.text(product.code, x + 17, y + 11, { align: "center" });
+        pdf.setFontSize(12);
+        pdf.text(money(product.price), x + width - 5, y + 11, { align: "right" });
+
+        if (productImageData[sourceIndex]) {
+          pdf.addImage(productImageData[sourceIndex], "JPEG", x + 6, y + 19, 36, 29, undefined, "FAST");
+        }
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(95, 95, 95);
+        pdf.setFontSize(7.5);
+        pdf.text(product.code.startsWith("RN") ? "Linha Randon" : "Linha Rodoviária", x + 47, y + 25);
+        pdf.setTextColor(35, 35, 35);
+        pdf.setFontSize(10);
+        pdf.text("Pino de balança", x + 47, y + 33);
+        pdf.setTextColor(105, 105, 105);
+        pdf.setFontSize(7);
+        pdf.text("C O M U M", x + 47, y + 40);
+        pdf.setTextColor(35, 35, 35);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(9.5);
+        pdf.text(product.measure, x + 47, y + 48);
+
+        if (distributor) {
+          pdf.setFontSize(6.7);
+          pdf.setTextColor(75, 75, 75);
+          pdf.setFont("helvetica", "normal");
+          pdf.text(
+            `Desconto por peça: 5% ${money(product.price * 0.05)}  |  8% ${money(product.price * 0.08)}  |  10% ${money(product.price * 0.1)}`,
+            x + 5,
+            y + cardHeight - 3,
+          );
+        }
+      });
+
+      pdf.setDrawColor(185, 185, 185);
+      pdf.line(12, 276, 198, 276);
+      pdf.setTextColor(35, 35, 35);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(8.5);
+      pdf.text(`${orderFooter} | ${companyPhone}`, 105, 286, { align: "center" });
+    }
     pdf.save(distributor ? "catalogo-pino-forte-distribuidor.pdf" : "catalogo-pino-forte-cliente-final.pdf");
   }
   async function createPdfLegacy(order: Order) {
@@ -2279,7 +2336,7 @@ export default function Home() {
                     <div>
                       <span>DISTRIBUIDOR</span>
                       <h2>Catálogo para distribuidor</h2>
-                      <p>Apresenta os preços com o desconto comercial padrão de 8%.</p>
+                      <p>Apresenta o preço de cada peça e os descontos de 5%, 8% e 10% conforme a quantidade.</p>
                     </div>
                     <div className="catalog-management-actions">
                       <a className="secondary-button" href="/catalogo?tipo=distribuidor" target="_blank" rel="noreferrer">
