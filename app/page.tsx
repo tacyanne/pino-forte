@@ -2485,6 +2485,7 @@ export default function Home() {
             <div className="record-view-grid">
               <ReviewField label="Nome ou razão social" value={viewingCustomer.name} />
               <ReviewField label="Status" value={viewingCustomer.active ? "Ativo" : "Inativo"} />
+              <ReviewField label="Tipo de cliente" value={viewingCustomer.customerType || "Cliente final"} />
               <ReviewField label="CPF/CNPJ" value={formatDocument(viewingCustomer.document).replace(/^(CPF|CNPJ):\s*/, "") || "—"} />
               <ReviewField label="WhatsApp" value={formatPhone(viewingCustomer.whatsapp) || "—"} />
               <ReviewField label="E-mail" value={viewingCustomer.email || "—"} />
