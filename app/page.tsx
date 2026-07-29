@@ -62,6 +62,7 @@ type Order = {
   deliveryDate: string;
   deliveryType: string;
   paymentMethod: string;
+  walletMonth: string;
   productionStatus: string;
   commercialStatus: string;
   notes: string;
@@ -557,7 +558,7 @@ export default function Home() {
           )
           .reduce(
             (months, o) => {
-              const month = monthInSaoPaulo(o.createdAt);
+              const month = o.walletMonth || monthInSaoPaulo(o.createdAt);
               const customers = months[month] || (months[month] = {});
               const key = o.customerName;
               const current = customers[key] || {

@@ -46,6 +46,7 @@ export const serviceOrders = sqliteTable("service_orders", {
   deliveryDate: text("delivery_date").notNull(),
   deliveryType: text("delivery_type").notNull(),
   paymentMethod: text("payment_method").notNull(),
+  walletMonth: text("wallet_month").notNull().default(""),
   productionStatus: text("production_status").notNull().default("Aguardando"),
   commercialStatus: text("commercial_status").notNull().default("Pedido confirmado"),
   notes: text("notes").notNull().default(""),

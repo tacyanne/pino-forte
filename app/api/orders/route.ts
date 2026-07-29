@@ -169,6 +169,25 @@ export async function POST(request: Request) {
             },
           ])
         : String(body.commercialStatus || "");
+    const orderCreatedAt = String(body.createdAt || new Date().toISOString().slice(0, 10));
+    let walletMonth = "";
+    if (storedPaymentMethod === "Carteira") {
+      const customerKey = String(body.customerName).trim().toLocaleLowerCase("pt-BR");
+      const existingOrders = await db.select().from(serviceOrders);
+      const openWalletOrder = existingOrders
+        .filter(
+          (order) =>
+            order.customerName.trim().toLocaleLowerCase("pt-BR") === customerKey &&
+            order.paymentMethod === "Carteira" &&
+            order.productionStatus !== "Cancelada" &&
+            order.received < order.total,
+        )
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      walletMonth =
+        openWalletOrder?.walletMonth ||
+        openWalletOrder?.createdAt.slice(0, 7) ||
+        orderCreatedAt.slice(0, 7);
+    }
     const [{ lastId }] = await db
       .select({ lastId: max(serviceOrders.id) })
       .from(serviceOrders);
@@ -180,7 +199,7 @@ export async function POST(request: Request) {
         customerName: String(body.customerName),
         customerType: totals.customerType,
         origin: String(body.origin || "WhatsApp"),
-        createdAt: body.createdAt ? String(body.createdAt) : undefined,
+        createdAt: orderCreatedAt,
         productCode: items.length
           ? JSON.stringify(items)
           : String(body.productCode),
@@ -193,6 +212,7 @@ export async function POST(request: Request) {
         deliveryDate: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
         deliveryType,
         paymentMethod: storedPaymentMethod,
+        walletMonth,
         productionStatus,
         commercialStatus: initialWalletHistory,
         notes: String(body.notes || ""),
@@ -286,6 +306,29 @@ export async function PATCH(request: Request) {
     }
     if (body.deliveryType !== undefined) changes.deliveryType = String(body.deliveryType);
     if (body.paymentMethod !== undefined) changes.paymentMethod = String(body.paymentMethod);
+    if (effectivePaymentMethod === "Carteira") {
+      const customerName = String(body.customerName ?? current.customerName);
+      const customerKey = customerName.trim().toLocaleLowerCase("pt-BR");
+      const existingOrders = await db.select().from(serviceOrders);
+      const openWalletOrder = existingOrders
+        .filter(
+          (order) =>
+            order.id !== current.id &&
+            order.customerName.trim().toLocaleLowerCase("pt-BR") === customerKey &&
+            order.paymentMethod === "Carteira" &&
+            order.productionStatus !== "Cancelada" &&
+            order.received < order.total,
+        )
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      const effectiveCreatedAt = String(body.createdAt ?? current.createdAt);
+      changes.walletMonth =
+        openWalletOrder?.walletMonth ||
+        openWalletOrder?.createdAt.slice(0, 7) ||
+        current.walletMonth ||
+        effectiveCreatedAt.slice(0, 7);
+    } else if (body.paymentMethod !== undefined) {
+      changes.walletMonth = "";
+    }
     if (!Object.keys(changes).length)
       return Response.json(
         { error: "Nenhuma alteração informada." },
