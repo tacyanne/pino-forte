@@ -2355,10 +2355,10 @@ export default function Home() {
                       <a className="secondary-button" href="/catalogo" target="_blank" rel="noreferrer">
                         Acessar online
                       </a>
-                      <button className="primary-button" onClick={() => downloadCatalogPdf("final", "bw")}>
+                      <button className="secondary-button" onClick={() => downloadCatalogPdf("final", "bw")}>
                         Baixar P&B
                       </button>
-                      <button className="secondary-button catalog-color-download" onClick={() => downloadCatalogPdf("final", "color")}>
+                      <button className="primary-button catalog-color-download" onClick={() => downloadCatalogPdf("final", "color")}>
                         Baixar Colorido
                       </button>
                     </div>
@@ -2373,10 +2373,10 @@ export default function Home() {
                       <a className="secondary-button" href="/catalogo?tipo=distribuidor" target="_blank" rel="noreferrer">
                         Acessar online
                       </a>
-                      <button className="primary-button" onClick={() => downloadCatalogPdf("distributor", "bw")}>
+                      <button className="secondary-button" onClick={() => downloadCatalogPdf("distributor", "bw")}>
                         Baixar P&B
                       </button>
-                      <button className="secondary-button catalog-color-download" onClick={() => downloadCatalogPdf("distributor", "color")}>
+                      <button className="primary-button catalog-color-download" onClick={() => downloadCatalogPdf("distributor", "color")}>
                         Baixar Colorido
                       </button>
                     </div>
