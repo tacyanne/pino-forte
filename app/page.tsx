@@ -1833,7 +1833,7 @@ export default function Home() {
                                   ])
                                 }
                               >
-                                ＋ Adicionar outro pino
+                                ＋ Pino
                               </button>
                             )}
                             {orderItems.length > 1 && (
