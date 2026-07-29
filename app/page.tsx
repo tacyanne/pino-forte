@@ -1223,7 +1223,7 @@ export default function Home() {
       pdf.setTextColor(35, 35, 35);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(8.5);
-      pdf.text(`${orderFooter} | ${companyPhone}`, 105, 286, { align: "center" });
+      pdf.text("Faça seu pedido de forma rápida e fácil | (43) 99156-5317", 105, 286, { align: "center" });
     }
     pdf.save(distributor ? "catalogo-pino-forte-distribuidor.pdf" : "catalogo-pino-forte-cliente-final.pdf");
   }
