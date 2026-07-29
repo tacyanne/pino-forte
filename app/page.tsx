@@ -1855,15 +1855,6 @@ export default function Home() {
                         );
                       })}
                     </div>
-                    {orderCustomer && isDistributor(orderCustomer.customerType) && (
-                      <div className="payment-summary distributor-discount-summary">
-                        <span>Condição comercial <strong>Distribuidor</strong></span>
-                        <span>Quantidade total <strong>{totalQuantity}</strong></span>
-                        <span>Subtotal <strong>{money(subtotal)}</strong></span>
-                        <span>Desconto aplicado <strong>{discountRate}% · - {money(discountAmount)}</strong></span>
-                        <span>Total com desconto <strong>{money(total)}</strong></span>
-                      </div>
-                    )}
                   </Card>
                   <Card n="3" title="Pagamento e observações">
                     <div className="form-grid order-payment-grid">
