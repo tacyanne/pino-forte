@@ -33,6 +33,7 @@ type Customer = {
   neighborhood: string;
   city: string;
   state: string;
+  customerType: string;
   active: boolean;
   createdAt: string;
 };
@@ -53,6 +54,8 @@ type Order = {
   productCode: string;
   quantity: number;
   unitPrice: number;
+  subtotal: number;
+  discountRate: number;
   total: number;
   received: number;
   deliveryDate: string;
@@ -291,6 +294,7 @@ export default function Home() {
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerType, setCustomerType] = useState("Cliente final");
   const [zipCode, setZipCode] = useState("");
   const [street, setStreet] = useState("");
   const [addressNumber, setAddressNumber] = useState("");
@@ -333,6 +337,7 @@ export default function Home() {
   const [selectedCode, setSelectedCode] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [received, setReceived] = useState(0);
+  const [discountOverride, setDiscountOverride] = useState("");
   const [orderItems, setOrderItems] = useState<
     { code: string; quantity: number }[]
   >([]);
@@ -430,12 +435,28 @@ export default function Home() {
     setAuth((value) => ({ ...value, users: refreshed.users || [] }));
   }
   const product = products.find((p) => p.code === selectedCode) || products[0];
-  const total = orderItems.reduce(
+  const subtotal = orderItems.reduce(
     (sum, item) =>
       sum +
       (products.find((p) => p.code === item.code)?.price || 0) * item.quantity,
     0,
   );
+  const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
+  const orderCustomer = customers.find((customer) => customer.name === selectedCustomer);
+  const automaticDiscountRate =
+    orderCustomer?.customerType === "Distribuidor"
+      ? totalQuantity >= 20
+        ? 10
+        : totalQuantity >= 10
+          ? 8
+          : 5
+      : 0;
+  const discountRate =
+    auth.user?.role === "admin" && discountOverride !== ""
+      ? Math.max(0, Math.min(99, Number(discountOverride) || 0))
+      : automaticDiscountRate;
+  const discountAmount = subtotal * discountRate / 100;
+  const total = Math.round((subtotal - discountAmount) * 100) / 100;
   const dashboardFinance = useMemo(() => {
     const monthOrders = orders.filter(
       (order) => order.productionStatus !== "Cancelada" && monthInSaoPaulo(order.createdAt) === dashboardMonth,
@@ -599,6 +620,7 @@ export default function Home() {
       setSelectedCustomer("");
       setQuantity(1);
       setReceived(0);
+      setDiscountOverride("");
       setSelectedCode(first);
       setOrderItems(first ? [{ code: first, quantity: 1 }] : []);
     }
@@ -648,6 +670,7 @@ export default function Home() {
       setEditingCustomer(customer);
       setCustomerName(customer.name);
       setCustomerEmail(customer.email);
+      setCustomerType(customer.customerType || "Cliente final");
       setPhone(maskPhone(customer.whatsapp));
       setZipCode(maskZipCode(customer.zipCode || ""));
       setStreet(customer.street || "");
@@ -667,6 +690,7 @@ export default function Home() {
       setEditingCustomer(null);
       setCustomerName("");
       setCustomerEmail("");
+      setCustomerType("Cliente final");
       setPhone("");
       setZipCode("");
       setStreet("");
@@ -728,6 +752,7 @@ export default function Home() {
           whatsapp: phone,
           document: doc ? `${docType}: ${doc}` : "",
           email: customerEmail,
+          customerType,
           zipCode,
           street,
           number: addressNumber,
@@ -827,6 +852,7 @@ export default function Home() {
           quantity,
           unitPrice: product.price,
           items,
+          discountRate: auth.user?.role === "admin" && discountOverride !== "" ? discountRate : undefined,
           received: paidOnCreation ? total : paymentMethod === "Boleto" ? 0 : received,
           deliveryType: f.get("deliveryType"),
           paymentMethod,
@@ -883,6 +909,7 @@ export default function Home() {
     setSelectedCode(items[0]?.code || "");
     setQuantity(items[0]?.quantity || 1);
     setReceived(order.received);
+    setDiscountOverride(order.discountRate ? String(order.discountRate) : "");
     setOrderModal(null);
     setScreen("new-order");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1212,7 +1239,14 @@ export default function Home() {
     });
     pdf.line(left, 100, right, 100);
     pdf.setFont("helvetica", "bold");
-    pdf.text("TOTAL DA ORDEM", 75, 105, { align: "center" });
+    pdf.text(
+      order.discountRate > 0
+        ? `SUBTOTAL ${money(order.subtotal || order.total)} · DESCONTO ${order.discountRate}%`
+        : "TOTAL DA ORDEM",
+      75,
+      105,
+      { align: "center" },
+    );
     pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 129, 105, { align: "center" });
     pdf.text(money(order.total), 201, 105, { align: "right" });
 
@@ -1398,7 +1432,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.total)}</td></tr></table><div class="total">Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -1776,7 +1810,29 @@ export default function Home() {
                           }
                         />
                       </Field>
+                      {orderCustomer?.customerType === "Distribuidor" && auth.user?.role === "admin" && (
+                        <Field label="Desconto autorizado (%)">
+                          <input
+                            type="number"
+                            min="0"
+                            max="99"
+                            step="0.01"
+                            value={discountOverride}
+                            placeholder={`${automaticDiscountRate}% automático`}
+                            onChange={(e) => setDiscountOverride(e.target.value)}
+                          />
+                          <small className="field-help">
+                            Acima de 10% fica registrado como autorização administrativa.
+                          </small>
+                        </Field>
+                      )}
                       <div className="payment-summary">
+                        {discountRate > 0 && (
+                          <>
+                            <span>Subtotal <strong>{money(subtotal)}</strong></span>
+                            <span>Desconto distribuidor ({discountRate}%) <strong>- {money(discountAmount)}</strong></span>
+                          </>
+                        )}
                         <span>Total da OS <strong>{money(total)}</strong></span>
                         <span>Valor recebido <strong>{money(received)}</strong></span>
                         {received > total ? (
@@ -2565,6 +2621,12 @@ export default function Home() {
                   }}
                 />
               </Field>
+              <Field label="Tipo de cliente *">
+                <select value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
+                  <option>Cliente final</option>
+                  <option>Distribuidor</option>
+                </select>
+              </Field>
             </div>
             <div className="address-section">
               <div className="form-grid address-grid">
@@ -2745,6 +2807,12 @@ export default function Home() {
               <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${paymentStatus(orderModal)}`} />
               <ReviewField label="Valor recebido" value={money(orderModal.received)} />
               <div className="payment-summary">
+                {orderModal.discountRate > 0 && (
+                  <>
+                    <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
+                    <span>Desconto distribuidor ({orderModal.discountRate}%) <strong>- {money((orderModal.subtotal || orderModal.total) - orderModal.total)}</strong></span>
+                  </>
+                )}
                 <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
                 <span>Valor recebido <strong>{money(orderModal.received)}</strong></span>
                 {orderModal.received > orderModal.total ? (

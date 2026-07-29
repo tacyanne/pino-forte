@@ -14,6 +14,7 @@ export const customers = sqliteTable("customers", {
   neighborhood: text("neighborhood").notNull().default(""),
   city: text("city").notNull().default(""),
   state: text("state").notNull().default(""),
+  customerType: text("customer_type").notNull().default("Cliente final"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -37,6 +38,8 @@ export const serviceOrders = sqliteTable("service_orders", {
   productCode: text("product_code").notNull(),
   quantity: integer("quantity").notNull(),
   unitPrice: real("unit_price").notNull(),
+  subtotal: real("subtotal").notNull().default(0),
+  discountRate: real("discount_rate").notNull().default(0),
   total: real("total").notNull(),
   received: real("received").notNull().default(0),
   deliveryDate: text("delivery_date").notNull(),

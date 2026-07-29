@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; code?: string; sku?: string; measure?: string; price?: number };
+    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number };
     const db = await getDb();
     if (body.type === "product") {
       const code = body.code?.trim().toUpperCase() || "";
@@ -50,7 +50,8 @@ export async function POST(request: Request) {
     if (!document) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
     const existing = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
     if (existing.length) return Response.json({ error: "Este CPF/CNPJ já está cadastrado." }, { status: 409 });
-    const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "", zipCode: body.zipCode?.trim() || "", street: body.street?.trim() || "", number: body.number?.trim() || "", complement: body.complement?.trim() || "", neighborhood: body.neighborhood?.trim() || "", city: body.city?.trim() || "", state: body.state?.trim() || "" }).returning();
+    const customerType = body.customerType === "Distribuidor" ? "Distribuidor" : "Cliente final";
+    const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "", zipCode: body.zipCode?.trim() || "", street: body.street?.trim() || "", number: body.number?.trim() || "", complement: body.complement?.trim() || "", neighborhood: body.neighborhood?.trim() || "", city: body.city?.trim() || "", state: body.state?.trim() || "", customerType }).returning();
     return Response.json({ customer }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: 500 });
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; code?: string; measure?: string; sku?: string };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string };
     const id = Number(body.id);
     if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
     const db = await getDb();
@@ -90,6 +91,7 @@ export async function PATCH(request: Request) {
     if (body.neighborhood !== undefined) changes.neighborhood = body.neighborhood.trim();
     if (body.city !== undefined) changes.city = body.city.trim();
     if (body.state !== undefined) changes.state = body.state.trim();
+    if (body.customerType !== undefined) changes.customerType = body.customerType === "Distribuidor" ? "Distribuidor" : "Cliente final";
     const [customer] = await db.update(customers).set(changes).where(eq(customers.id, id)).returning();
     return Response.json({ customer });
   } catch (error) {

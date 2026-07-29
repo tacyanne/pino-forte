@@ -1,7 +1,42 @@
 import { desc, eq, max } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { serviceOrders } from "../../../db/schema";
+import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
+
+type OrderItem = { code: string; quantity: number; unitPrice: number };
+
+function automaticDiscount(customerType: string, quantity: number) {
+  if (customerType !== "Distribuidor") return 0;
+  if (quantity >= 20) return 10;
+  if (quantity >= 10) return 8;
+  return 5;
+}
+
+async function calculateTotals(
+  db: Awaited<ReturnType<typeof getDb>>,
+  auth: { role: string },
+  customerName: string,
+  items: OrderItem[],
+  requestedDiscount: unknown,
+) {
+  const quantity = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
+  const subtotal = items.reduce(
+    (sum, item) => sum + Math.max(1, Number(item.quantity)) * Math.max(0, Number(item.unitPrice)),
+    0,
+  );
+  const [customer] = await db.select().from(customers).where(eq(customers.name, customerName)).limit(1);
+  const automatic = automaticDiscount(customer?.customerType || "Cliente final", quantity);
+  const requested = requestedDiscount === undefined || requestedDiscount === null || requestedDiscount === ""
+    ? automatic
+    : Number(requestedDiscount);
+  if (!Number.isFinite(requested) || requested < 0 || requested >= 100)
+    throw new Error("Informe um desconto válido.");
+  if (requested > 10 && auth.role !== "admin")
+    throw new Error("Descontos acima de 10% exigem autorização do administrador.");
+  const discountRate = auth.role === "admin" ? requested : automatic;
+  const total = Math.round(subtotal * (1 - discountRate / 100) * 100) / 100;
+  return { quantity, subtotal, discountRate, total };
+}
 
 export async function GET(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
@@ -43,9 +78,10 @@ export async function POST(request: Request) {
           body.items as { code: string; quantity: number; unitPrice: number }[]
         ).filter((item) => item.code && Number(item.quantity) > 0)
       : [];
-    const quantity = items.length
-      ? items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0)
-      : Math.max(1, Number(body.quantity || 1));
+    const normalizedItems: OrderItem[] = items.length
+      ? items
+      : [{ code: String(body.productCode || ""), quantity: Math.max(1, Number(body.quantity || 1)), unitPrice: Math.max(0, Number(body.unitPrice || 0)) }];
+    const quantity = normalizedItems.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
     const unitPrice = items.length
       ? Math.max(0, Number(items[0].unitPrice))
       : Math.max(0, Number(body.unitPrice || 0));
@@ -61,6 +97,7 @@ export async function POST(request: Request) {
       );
     }
     const db = await getDb();
+    const totals = await calculateTotals(db, auth, String(body.customerName), normalizedItems, body.discountRate);
     const [{ lastId }] = await db
       .select({ lastId: max(serviceOrders.id) })
       .from(serviceOrders);
@@ -77,16 +114,10 @@ export async function POST(request: Request) {
           : String(body.productCode),
         quantity,
         unitPrice,
-        total: items.length
-          ? items.reduce(
-              (sum, item) =>
-                sum +
-                Math.max(1, Number(item.quantity)) *
-                  Math.max(0, Number(item.unitPrice)),
-              0,
-            )
-          : quantity * unitPrice,
-        received,
+        subtotal: totals.subtotal,
+        discountRate: totals.discountRate,
+        total: totals.total,
+        received: Math.min(received, totals.total),
         deliveryDate: String(body.deliveryDate),
         deliveryType: String(body.deliveryType || "Retirada no local"),
         paymentMethod: String(body.paymentMethod || "Pix"),
@@ -123,6 +154,8 @@ export async function PATCH(request: Request) {
       "Cancelada",
     ];
     const db = await getDb();
+    const [current] = await db.select().from(serviceOrders).where(eq(serviceOrders.id, id)).limit(1);
+    if (!current) return Response.json({ error: "OS não encontrada." }, { status: 404 });
     const changes: Partial<typeof serviceOrders.$inferInsert> = {};
     if (
       body.productionStatus &&
@@ -143,13 +176,14 @@ export async function PATCH(request: Request) {
         ? (body.items as { code: string; quantity: number; unitPrice: number }[])
         : [];
       if (items.length) {
+        const customerName = String(body.customerName ?? current.customerName);
+        const totals = await calculateTotals(db, auth, customerName, items, body.discountRate);
         changes.productCode = JSON.stringify(items);
-        changes.quantity = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
+        changes.quantity = totals.quantity;
         changes.unitPrice = Math.max(0, Number(items[0].unitPrice));
-        changes.total = items.reduce(
-          (sum, item) => sum + Math.max(1, Number(item.quantity)) * Math.max(0, Number(item.unitPrice)),
-          0,
-        );
+        changes.subtotal = totals.subtotal;
+        changes.discountRate = totals.discountRate;
+        changes.total = totals.total;
       } else {
         changes.productCode = String(body.productCode);
       }
