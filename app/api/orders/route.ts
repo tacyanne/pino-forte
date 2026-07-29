@@ -155,6 +155,20 @@ export async function POST(request: Request) {
       normalizedItems,
       body.discountRate,
     );
+    const moveToWallet =
+      ["Pix", "Boleto", "Cartão"].includes(paymentMethod) &&
+      received < totals.total;
+    const storedPaymentMethod = moveToWallet ? "Carteira" : paymentMethod;
+    const initialWalletHistory =
+      moveToWallet && received > 0
+        ? JSON.stringify([
+            {
+              amount: Math.min(received, totals.total),
+              method: paymentMethod,
+              date: String(body.createdAt || new Date().toISOString().slice(0, 10)),
+            },
+          ])
+        : String(body.commercialStatus || "");
     const [{ lastId }] = await db
       .select({ lastId: max(serviceOrders.id) })
       .from(serviceOrders);
@@ -178,8 +192,9 @@ export async function POST(request: Request) {
         received: Math.min(received, totals.total),
         deliveryDate: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
         deliveryType,
-        paymentMethod,
+        paymentMethod: storedPaymentMethod,
         productionStatus,
+        commercialStatus: initialWalletHistory,
         notes: String(body.notes || ""),
       })
       .returning();

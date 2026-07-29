@@ -337,6 +337,7 @@ export default function Home() {
     "Documento gerado pelo sistema Pino Forte",
   );
   const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedOrderCustomerType, setSelectedOrderCustomerType] = useState("");
   const [selectedCode, setSelectedCode] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -449,10 +450,12 @@ export default function Home() {
   );
   const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
   const normalizedSelectedCustomer = selectedCustomer.trim().toLocaleLowerCase("pt-BR");
-  const orderCustomer = customers.find(
-    (customer) =>
-      customer.name.trim().toLocaleLowerCase("pt-BR") === normalizedSelectedCustomer,
-  );
+  const orderCustomer =
+    customers.find((customer) => String(customer.id) === selectedCustomerId) ||
+    customers.find(
+      (customer) =>
+        customer.name.trim().toLocaleLowerCase("pt-BR") === normalizedSelectedCustomer,
+    );
   const automaticDiscountRate =
     isDistributor(orderCustomer?.customerType || selectedOrderCustomerType)
       ? totalQuantity >= 20
@@ -461,10 +464,7 @@ export default function Home() {
           ? 8
           : 5
       : 0;
-  const discountRate =
-    auth.user?.role === "admin" && discountOverride !== ""
-      ? Math.max(0, Math.min(99, Number(discountOverride) || 0))
-      : automaticDiscountRate;
+  const discountRate = automaticDiscountRate;
   const discountAmount = subtotal * discountRate / 100;
   const total = Math.round((subtotal - discountAmount) * 100) / 100;
   const dashboardFinance = useMemo(() => {
@@ -627,6 +627,7 @@ export default function Home() {
     if (next === "new-order") {
       setEditingOrder(null);
       setSelectedCustomer("");
+      setSelectedCustomerId("");
       setSelectedOrderCustomerType("");
       setQuantity(1);
       setReceived(0);
@@ -784,6 +785,7 @@ export default function Home() {
         ).sort((a, b) => a.name.localeCompare(b.name)),
       );
       setSelectedCustomer(j.customer.name);
+      setSelectedCustomerId(String(j.customer.id));
       setSelectedOrderCustomerType(j.customer.customerType || "");
       setCustomerModal(false);
       setDoc("");
@@ -859,6 +861,19 @@ export default function Home() {
         throw new Error("Informe o valor recebido.");
       const orderDate = String(f.get("orderDate") || "");
       if (!isValidBrDate(orderDate)) throw new Error("Informe uma data do pedido válida.");
+      const moveToWallet =
+        ["Pix", "Boleto", "Cartão"].includes(paymentMethod) &&
+        received < total;
+      const initialWalletHistory =
+        moveToWallet && received > 0
+          ? JSON.stringify([
+              {
+                amount: received,
+                method: paymentMethod,
+                date: toIsoDate(orderDate),
+              },
+            ])
+          : editingOrder?.commercialStatus || "";
       const r = await fetch("/api/orders", {
         method: editingOrder ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
@@ -873,10 +888,11 @@ export default function Home() {
           quantity,
           unitPrice: product.price,
           items,
-          discountRate: auth.user?.role === "admin" && discountOverride !== "" ? discountRate : undefined,
+          discountRate: undefined,
           received,
           deliveryType,
-          paymentMethod,
+          paymentMethod: moveToWallet ? "Carteira" : paymentMethod,
+          commercialStatus: initialWalletHistory,
           notes: f.get("notes"),
         }),
       });
@@ -926,12 +942,21 @@ export default function Home() {
     setEditingOrder(order);
     setEditOrderReturnTo(returnTo);
     setSelectedCustomer(order.customerName);
-    setSelectedOrderCustomerType(
+    const matchingCustomer =
+      customers.find(
+        (customer) =>
+          customer.name.trim().toLocaleLowerCase("pt-BR") ===
+            order.customerName.trim().toLocaleLowerCase("pt-BR") &&
+          isDistributor(customer.customerType) === isDistributor(order.customerType),
+      ) ||
       customers.find(
         (customer) =>
           customer.name.trim().toLocaleLowerCase("pt-BR") ===
           order.customerName.trim().toLocaleLowerCase("pt-BR"),
-      )?.customerType ||
+      );
+    setSelectedCustomerId(matchingCustomer ? String(matchingCustomer.id) : "");
+    setSelectedOrderCustomerType(
+      matchingCustomer?.customerType ||
         order.customerType ||
         "Cliente final",
     );
@@ -1684,15 +1709,14 @@ export default function Home() {
                       <Field label="Cliente *">
                         <select
                           required
-                          value={selectedCustomer}
+                          value={selectedCustomerId}
                           onChange={(e) => {
-                            const name = e.target.value;
-                            const normalizedName = name.trim().toLocaleLowerCase("pt-BR");
+                            const id = e.target.value;
                             const customer = customers.find(
-                              (item) =>
-                                item.name.trim().toLocaleLowerCase("pt-BR") === normalizedName,
+                              (item) => String(item.id) === id,
                             );
-                            setSelectedCustomer(name);
+                            setSelectedCustomerId(id);
+                            setSelectedCustomer(customer?.name || "");
                             setSelectedOrderCustomerType(customer?.customerType || "");
                           }}
                         >
@@ -1700,7 +1724,7 @@ export default function Home() {
                           {customers
                             .filter((c) => c.active)
                             .map((c) => (
-                              <option key={c.id}>{c.name}</option>
+                              <option key={c.id} value={String(c.id)}>{c.name}</option>
                             ))}
                         </select>
                       </Field>
@@ -1870,22 +1894,6 @@ export default function Home() {
                           }
                         />
                       </Field>
-                      {isDistributor(orderCustomer?.customerType || selectedOrderCustomerType) && auth.user?.role === "admin" && (
-                        <Field label="Desconto autorizado (%)">
-                          <input
-                            type="number"
-                            min="0"
-                            max="99"
-                            step="0.01"
-                            value={discountOverride}
-                            placeholder={`${automaticDiscountRate}% automático`}
-                            onChange={(e) => setDiscountOverride(e.target.value)}
-                          />
-                          <small className="field-help">
-                            Acima de 10% fica registrado como autorização administrativa.
-                          </small>
-                        </Field>
-                      )}
                       <div className="payment-summary">
                         {discountRate > 0 && (
                           <>
@@ -2871,15 +2879,19 @@ export default function Home() {
               <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${paymentStatus(orderModal)}`} />
               <ReviewField label="Valor recebido" value={money(orderModal.received)} />
               <div className="payment-summary">
-                <span>
-                  Condição comercial
-                  <strong>{isDistributor(orderModal.customerType) ? "Distribuidor" : "Cliente final"}</strong>
-                </span>
-                <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
-                <span>
-                  Desconto ({orderModal.discountRate || 0}%)
-                  <strong>- {money((orderModal.subtotal || orderModal.total) - orderModal.total)}</strong>
-                </span>
+                {isDistributor(orderModal.customerType) && (
+                  <>
+                    <span>
+                      Condição comercial
+                      <strong>Distribuidor</strong>
+                    </span>
+                    <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
+                    <span>
+                      Desconto ({orderModal.discountRate || 0}%)
+                      <strong>- {money((orderModal.subtotal || orderModal.total) - orderModal.total)}</strong>
+                    </span>
+                  </>
+                )}
                 <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
                 <span>Valor recebido <strong>{money(orderModal.received)}</strong></span>
                 {orderModal.received > orderModal.total ? (
