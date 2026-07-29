@@ -22,7 +22,10 @@ export async function GET(request: Request) {
       productRows = await db.select().from(products).orderBy(asc(products.code));
     }
     const customerRows = await db.select().from(customers).orderBy(asc(customers.name));
-    return Response.json({ products: productRows, customers: customerRows });
+    return Response.json(
+      { products: productRows, customers: customerRows },
+      { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
+    );
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível carregar os cadastros." }, { status: 500 });
   }

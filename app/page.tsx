@@ -352,7 +352,7 @@ export default function Home() {
     setLoading(true);
     try {
       const [cat, ord, config] = await Promise.all([
-        fetch("/api/catalog").then((r) => r.json()),
+        fetch("/api/catalog", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/orders").then((r) => r.json()),
         fetch("/api/settings").then((r) => r.json()),
       ]);
@@ -784,6 +784,7 @@ export default function Home() {
         ).sort((a, b) => a.name.localeCompare(b.name)),
       );
       setSelectedCustomer(j.customer.name);
+      setSelectedOrderCustomerType(j.customer.customerType || "");
       setCustomerModal(false);
       setDoc("");
       setPhone("");
@@ -1828,9 +1829,9 @@ export default function Home() {
                     >
                       ＋ Adicionar outro pino
                     </button>
-                    {orderCustomer && (
+                    {orderCustomer && isDistributor(orderCustomer.customerType) && (
                       <div className="payment-summary distributor-discount-summary">
-                        <span>Condição comercial <strong>{isDistributor(orderCustomer.customerType || selectedOrderCustomerType) ? "Distribuidor" : "Cliente final"}</strong></span>
+                        <span>Condição comercial <strong>Distribuidor</strong></span>
                         <span>Quantidade total <strong>{totalQuantity}</strong></span>
                         <span>Subtotal <strong>{money(subtotal)}</strong></span>
                         <span>Desconto aplicado <strong>{discountRate}% · - {money(discountAmount)}</strong></span>
