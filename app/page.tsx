@@ -2861,8 +2861,8 @@ export default function Home() {
                 return (
                   <div className="review-item-row" key={`${item.code}-${index}`}>
                     <ReviewField label={`Pino ${index + 1}`} value={selectedProduct?.name || item.code} />
-                    <ReviewField label="Valor unitário" value={money(unitPrice)} />
                     <ReviewField label="Quantidade" value={String(item.quantity)} />
+                    <ReviewField label="Valor unitário" value={money(unitPrice)} />
                     <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />
                   </div>
                 );
