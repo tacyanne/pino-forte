@@ -1160,7 +1160,7 @@ export default function Home() {
         pdf.setFont("helvetica", "bold");
         pdf.text("REGRA DE DESCONTO", 17, 52.5);
         pdf.setFont("helvetica", "normal");
-        pdf.text("Até 9 un.: 5%  |  10 a 19 un.: 8%  |  20 un. ou mais: 10%  |  Acima de 10%: autorização.", 17, 57.5);
+        pdf.text("5% até 9 unidades  |  8% de 10 a 19 unidades  |  10% de 20 em diante", 17, 57.5);
       }
 
       const pageProducts = activeProducts.slice(page * 6, page * 6 + 6);
@@ -1211,7 +1211,7 @@ export default function Home() {
           pdf.setTextColor(75, 75, 75);
           pdf.setFont("helvetica", "normal");
           pdf.text(
-            `Desconto por peça: 5% ${money(product.price * 0.05)}  |  8% ${money(product.price * 0.08)}  |  10% ${money(product.price * 0.1)}`,
+            `Preço por peça: 5% ${money(product.price * 0.95)}  |  8% ${money(product.price * 0.92)}  |  10% ${money(product.price * 0.9)}`,
             x + 5,
             y + cardHeight - 3,
           );
@@ -2328,7 +2328,10 @@ export default function Home() {
                         Acessar online
                       </a>
                       <button className="primary-button" onClick={() => downloadCatalogPdf("final")}>
-                        Baixar PDF
+                        Baixar P&B
+                      </button>
+                      <button className="secondary-button catalog-color-download" disabled title="Aguardando o arquivo colorido">
+                        Baixar Colorido
                       </button>
                     </div>
                   </article>
@@ -2343,7 +2346,10 @@ export default function Home() {
                         Acessar online
                       </a>
                       <button className="primary-button" onClick={() => downloadCatalogPdf("distributor")}>
-                        Baixar PDF
+                        Baixar P&B
+                      </button>
+                      <button className="secondary-button catalog-color-download" disabled title="Aguardando o arquivo colorido">
+                        Baixar Colorido
                       </button>
                     </div>
                   </article>

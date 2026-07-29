@@ -60,10 +60,9 @@ export default async function CatalogoPage({
         {distributor && (
           <div className="catalog-discount-rule">
             <strong>Regra de desconto</strong>
-            <span>Até 9 unidades: 5%</span>
-            <span>De 10 a 19 unidades: 8%</span>
-            <span>20 unidades ou mais: 10%</span>
-            <small>Descontos acima de 10% dependem de autorização.</small>
+            <span>5% até 9 unidades</span>
+            <span>8% de 10 a 19 unidades</span>
+            <span>10% de 20 em diante</span>
           </div>
         )}
         {catalogProducts.length ? (
@@ -96,10 +95,10 @@ export default async function CatalogoPage({
                 </div>
                 {distributor && (
                   <div className="catalog-discount-values">
-                    <strong>Desconto por peça</strong>
-                    <span>5%: - {money(product.price * 0.05)}</span>
-                    <span>8%: - {money(product.price * 0.08)}</span>
-                    <span>10%: - {money(product.price * 0.1)}</span>
+                    <strong>Preço por peça</strong>
+                    <span>5%: {money(product.price * 0.95)}</span>
+                    <span>8%: {money(product.price * 0.92)}</span>
+                    <span>10%: {money(product.price * 0.9)}</span>
                   </div>
                 )}
               </article>
