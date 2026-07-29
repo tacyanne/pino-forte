@@ -2650,7 +2650,7 @@ export default function Home() {
           close={() => setCustomerModal(false)}
         >
           <form className="customer-page-form" onSubmit={saveCustomer} noValidate>
-            <div className="form-grid customer-main-grid">
+            <div className="form-grid customer-registration-primary">
               <Field label="Nome ou razão social *">
                 <input
                   name="name"
@@ -2660,23 +2660,18 @@ export default function Home() {
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
               </Field>
-              <Field label="E-mail">
-                <input
-                  name="email"
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                />
+              <Field label="Status">
+                <input value={editingCustomer?.active === false ? "Inativo" : "Ativo"} readOnly />
+              </Field>
+              <Field label="Tipo de cliente *">
+                <select required value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
+                  <option value="">Selecione</option>
+                  <option>Cliente final</option>
+                  <option>Distribuidor</option>
+                </select>
               </Field>
             </div>
-            <div className="form-grid">
-              <Field label="WhatsApp *">
-                <input
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(maskPhone(e.target.value))}
-                />
-              </Field>
+            <div className="form-grid customer-registration-contact">
               <Field label="CPF ou CNPJ *">
                 <input
                   required
@@ -2690,12 +2685,20 @@ export default function Home() {
                   }}
                 />
               </Field>
-              <Field label="Tipo de cliente *">
-                <select required value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
-                  <option value="">Selecione</option>
-                  <option>Cliente final</option>
-                  <option>Distribuidor</option>
-                </select>
+              <Field label="WhatsApp *">
+                <input
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(maskPhone(e.target.value))}
+                />
+              </Field>
+              <Field label="E-mail">
+                <input
+                  name="email"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                />
               </Field>
             </div>
             <div className="address-section">
