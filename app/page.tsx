@@ -1785,10 +1785,6 @@ export default function Home() {
                                   ))}
                               </select>
                             </Field>
-                            <div className="order-item-value">
-                              <span>Valor unitário</span>
-                              <strong>{money(p?.price || 0)}</strong>
-                            </div>
                             <Field label="Quantidade *">
                               <input
                                 required
@@ -1811,6 +1807,10 @@ export default function Home() {
                                 }}
                               />
                             </Field>
+                            <div className="order-item-value">
+                              <span>Valor unitário</span>
+                              <strong>{money(p?.price || 0)}</strong>
+                            </div>
                             <div className="subtotal">
                               <span>Valor total</span>
                               <strong>
