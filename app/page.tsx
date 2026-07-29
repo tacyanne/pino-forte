@@ -2608,11 +2608,13 @@ export default function Home() {
         >
           <div className="record-view">
             <div className="record-view-grid">
-              <ReviewField label="Código" value={viewingProduct.code} />
-              <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
-              <ReviewField label="Descrição" value={viewingProduct.name} />
-              <ReviewField label="Medida" value={viewingProduct.measure} />
-              <ReviewField label="Preço" value={money(viewingProduct.price)} />
+              <div className="product-view-row">
+                <ReviewField label="Código" value={viewingProduct.code} />
+                <ReviewField label="Descrição" value={viewingProduct.name} />
+                <ReviewField label="Medida" value={viewingProduct.measure} />
+                <ReviewField label="Preço" value={money(viewingProduct.price)} />
+                <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
+              </div>
             </div>
             <div className="record-view-footer record-view-actions-row">
               <button className="record-back-button system-back-button" onClick={() => setViewingProduct(null)}>
@@ -2770,6 +2772,9 @@ export default function Home() {
                     e.currentTarget.value = maskCurrency(e.currentTarget.value);
                   }}
                 />
+              </Field>
+              <Field label="Status">
+                <input value={editingProduct?.active === false ? "Inativo" : "Ativo"} readOnly />
               </Field>
             </div>
             <div className="form-actions registration-actions">
