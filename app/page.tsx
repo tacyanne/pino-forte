@@ -1902,7 +1902,6 @@ export default function Home() {
                           </>
                         )}
                         <span>Total da OS <strong>{money(total)}</strong></span>
-                        <span>Valor recebido <strong>{money(received)}</strong></span>
                         {received > total ? (
                           <span className="credit">Crédito do cliente <strong>{money(received - total)}</strong></span>
                         ) : (
@@ -2858,6 +2857,7 @@ export default function Home() {
           <div className="order-view-form">
             <div className="form-grid order-customer-date-grid">
               <ReviewField label="Cliente" value={orderModal.customerName} />
+              <ReviewField label="Tipo de cliente" value={isDistributor(orderModal.customerType) ? "Distribuidor" : "Cliente final"} />
               <ReviewField label="Data do pedido" value={brDate(orderModal.createdAt)} />
             </div>
             <div className="review-items">
@@ -2893,7 +2893,6 @@ export default function Home() {
                   </>
                 )}
                 <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
-                <span>Valor recebido <strong>{money(orderModal.received)}</strong></span>
                 {orderModal.received > orderModal.total ? (
                   <span className="credit">Crédito do cliente <strong>{money(orderModal.received - orderModal.total)}</strong></span>
                 ) : (

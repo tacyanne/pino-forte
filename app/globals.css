@@ -122,7 +122,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 @media(max-width:760px){.settings-title-action{align-items:stretch;flex-direction:column}.settings-title-action .settings-submit-button{width:100%;flex:auto}}
 
 /* Abertura de OS simples, seguindo o cadastro de cliente */
-.order-simple-form{max-width:980px;gap:0}
+.order-simple-form{max-width:none;gap:0}
 .order-simple-form .form-card{display:block;background:transparent;border:0;border-radius:0;box-shadow:none;padding:0!important;margin:0!important}
 .order-simple-form .form-card+.form-card{border-top:0;padding-top:18px!important;margin-top:0!important}
 .order-simple-form .section-number{display:none}

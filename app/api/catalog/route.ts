@@ -82,6 +82,12 @@ export async function PATCH(request: Request) {
     if (body.name !== undefined && !body.document?.trim()) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
     if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.street?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !body.state?.trim() || !body.number?.trim())) return Response.json({ error: "Preencha o endereço obrigatório usando um CEP válido." }, { status: 400 });
     const changes: Partial<typeof customers.$inferInsert> = {};
+    if (body.document !== undefined) {
+      const document = body.document.trim();
+      const duplicate = await db.select().from(customers).where(eq(customers.document, document)).limit(1);
+      if (duplicate.some((customer) => customer.id !== id))
+        return Response.json({ error: "Este CPF/CNPJ já está cadastrado para outro cliente." }, { status: 409 });
+    }
     if (body.active !== undefined) changes.active = body.active;
     if (body.name) changes.name = body.name.trim();
     if (body.whatsapp) changes.whatsapp = body.whatsapp.trim();
