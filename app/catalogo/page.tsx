@@ -110,8 +110,15 @@ export default async function CatalogoPage({
       </section>
 
       <footer className="catalog-footer">
-        <a href={whatsapp} target="_blank" rel="noreferrer" aria-label="Falar no WhatsApp">
-          Faça seu pedido de forma rápida e fácil | (43) 99156-5317
+        <strong>Faça seu pedido de forma rápida e fácil | (43) 99156-5317</strong>
+        <a
+          className="catalog-whatsapp-link"
+          href={whatsapp}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Falar no WhatsApp"
+        >
+          Falar no WhatsApp
         </a>
       </footer>
     </main>
