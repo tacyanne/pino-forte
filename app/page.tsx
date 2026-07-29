@@ -2874,10 +2874,6 @@ export default function Home() {
               <div className={`payment-summary ${isDistributor(orderModal.customerType) ? "four-columns" : "two-columns"}`}>
                 {isDistributor(orderModal.customerType) && (
                   <>
-                    <span>
-                      Condição comercial
-                      <strong>Distribuidor</strong>
-                    </span>
                     <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
                     <span>
                       Desconto ({orderModal.discountRate || 0}%)
