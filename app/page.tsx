@@ -450,7 +450,7 @@ export default function Home() {
   const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
   const orderCustomer = customers.find((customer) => customer.name === selectedCustomer);
   const automaticDiscountRate =
-    isDistributor(selectedOrderCustomerType || orderCustomer?.customerType)
+    isDistributor(orderCustomer?.customerType || selectedOrderCustomerType)
       ? totalQuantity >= 20
         ? 10
         : totalQuantity >= 10
@@ -860,7 +860,7 @@ export default function Home() {
         body: JSON.stringify({
           id: editingOrder?.id,
           customerId: orderCustomer?.id,
-          customerType: selectedOrderCustomerType || orderCustomer?.customerType,
+          customerType: orderCustomer?.customerType || selectedOrderCustomerType,
           customerName: selectedCustomer,
           createdAt: toIsoDate(orderDate),
           deliveryDate: editingOrder?.deliveryDate || todayIso(),
@@ -922,8 +922,8 @@ export default function Home() {
     setEditOrderReturnTo(returnTo);
     setSelectedCustomer(order.customerName);
     setSelectedOrderCustomerType(
-      order.customerType ||
-        customers.find((customer) => customer.name === order.customerName)?.customerType ||
+      customers.find((customer) => customer.name === order.customerName)?.customerType ||
+        order.customerType ||
         "Cliente final",
     );
     setOrderItems(items);
@@ -1696,8 +1696,8 @@ export default function Home() {
                           readOnly
                           value={
                             selectedCustomer
-                              ? selectedOrderCustomerType ||
-                                orderCustomer?.customerType ||
+                              ? orderCustomer?.customerType ||
+                                selectedOrderCustomerType ||
                                 "Cliente final"
                               : ""
                           }
@@ -1818,7 +1818,7 @@ export default function Home() {
                     </button>
                     {orderCustomer && (
                       <div className="payment-summary distributor-discount-summary">
-                        <span>Condição comercial <strong>{isDistributor(selectedOrderCustomerType || orderCustomer.customerType) ? "Distribuidor" : "Cliente final"}</strong></span>
+                        <span>Condição comercial <strong>{isDistributor(orderCustomer.customerType || selectedOrderCustomerType) ? "Distribuidor" : "Cliente final"}</strong></span>
                         <span>Quantidade total <strong>{totalQuantity}</strong></span>
                         <span>Subtotal <strong>{money(subtotal)}</strong></span>
                         <span>Desconto aplicado <strong>{discountRate}% · - {money(discountAmount)}</strong></span>
@@ -1857,7 +1857,7 @@ export default function Home() {
                           }
                         />
                       </Field>
-                      {isDistributor(selectedOrderCustomerType || orderCustomer?.customerType) && auth.user?.role === "admin" && (
+                      {isDistributor(orderCustomer?.customerType || selectedOrderCustomerType) && auth.user?.role === "admin" && (
                         <Field label="Desconto autorizado (%)">
                           <input
                             type="number"
