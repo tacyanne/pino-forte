@@ -34,6 +34,7 @@ export const serviceOrders = sqliteTable("service_orders", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   number: text("number").notNull().unique(),
   customerName: text("customer_name").notNull(),
+  customerType: text("customer_type").notNull().default("Cliente final"),
   origin: text("origin").notNull(),
   productCode: text("product_code").notNull(),
   quantity: integer("quantity").notNull(),

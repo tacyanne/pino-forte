@@ -17,6 +17,7 @@ async function calculateTotals(
   auth: { role: string },
   customerId: number,
   customerName: string,
+  requestedCustomerType: unknown,
   items: OrderItem[],
   requestedDiscount: unknown,
 ) {
@@ -28,7 +29,11 @@ async function calculateTotals(
   const [customer] = customerId
     ? await db.select().from(customers).where(eq(customers.id, customerId)).limit(1)
     : await db.select().from(customers).where(eq(customers.name, customerName.trim())).limit(1);
-  const automatic = automaticDiscount(customer?.customerType || "Cliente final", quantity);
+  const customerType =
+    String(requestedCustomerType || "").trim() ||
+    customer?.customerType ||
+    "Cliente final";
+  const automatic = automaticDiscount(customerType, quantity);
   const requested = requestedDiscount === undefined || requestedDiscount === null || requestedDiscount === ""
     ? automatic
     : Number(requestedDiscount);
@@ -38,7 +43,7 @@ async function calculateTotals(
     throw new Error("Descontos acima de 10% exigem autorização do administrador.");
   const discountRate = auth.role === "admin" ? requested : automatic;
   const total = Math.round(subtotal * (1 - discountRate / 100) * 100) / 100;
-  return { quantity, subtotal, discountRate, total };
+  return { quantity, subtotal, customerType, discountRate, total };
 }
 
 export async function GET(request: Request) {
@@ -60,8 +65,9 @@ export async function GET(request: Request) {
     const repairedRows = await Promise.all(
       rows.map(async (order) => {
         const isDistributor =
+          order.customerType.trim().toLocaleLowerCase("pt-BR") === "distribuidor" ||
           customerTypes.get(order.customerName.trim().toLocaleLowerCase("pt-BR")) ===
-          "distribuidor";
+            "distribuidor";
         if (!isDistributor || order.discountRate > 0) return order;
         const subtotal = order.subtotal > 0 ? order.subtotal : order.total;
         const discountRate = automaticDiscount("Distribuidor", order.quantity);
@@ -70,6 +76,7 @@ export async function GET(request: Request) {
           .update(serviceOrders)
           .set({
             subtotal,
+            customerType: "Distribuidor",
             discountRate,
             total,
             received: Math.min(order.received, total),
@@ -137,7 +144,15 @@ export async function POST(request: Request) {
       );
     }
     const db = await getDb();
-    const totals = await calculateTotals(db, auth, Number(body.customerId || 0), String(body.customerName), normalizedItems, body.discountRate);
+    const totals = await calculateTotals(
+      db,
+      auth,
+      Number(body.customerId || 0),
+      String(body.customerName),
+      body.customerType,
+      normalizedItems,
+      body.discountRate,
+    );
     const [{ lastId }] = await db
       .select({ lastId: max(serviceOrders.id) })
       .from(serviceOrders);
@@ -147,6 +162,7 @@ export async function POST(request: Request) {
       .values({
         number,
         customerName: String(body.customerName),
+        customerType: totals.customerType,
         origin: String(body.origin || "WhatsApp"),
         createdAt: body.createdAt ? String(body.createdAt) : undefined,
         productCode: items.length
@@ -231,11 +247,20 @@ export async function PATCH(request: Request) {
         : [];
       if (items.length) {
         const customerName = String(body.customerName ?? current.customerName);
-        const totals = await calculateTotals(db, auth, Number(body.customerId || 0), customerName, items, body.discountRate);
+        const totals = await calculateTotals(
+          db,
+          auth,
+          Number(body.customerId || 0),
+          customerName,
+          body.customerType,
+          items,
+          body.discountRate,
+        );
         changes.productCode = JSON.stringify(items);
         changes.quantity = totals.quantity;
         changes.unitPrice = Math.max(0, Number(items[0].unitPrice));
         changes.subtotal = totals.subtotal;
+        changes.customerType = totals.customerType;
         changes.discountRate = totals.discountRate;
         changes.total = totals.total;
       } else {

@@ -50,6 +50,7 @@ type Order = {
   id: number;
   number: string;
   customerName: string;
+  customerType: string;
   origin: string;
   productCode: string;
   quantity: number;
@@ -857,6 +858,7 @@ export default function Home() {
         body: JSON.stringify({
           id: editingOrder?.id,
           customerId: orderCustomer?.id,
+          customerType: orderCustomer?.customerType,
           customerName: selectedCustomer,
           createdAt: toIsoDate(orderDate),
           deliveryDate: editingOrder?.deliveryDate || todayIso(),
@@ -2831,12 +2833,15 @@ export default function Home() {
               <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${paymentStatus(orderModal)}`} />
               <ReviewField label="Valor recebido" value={money(orderModal.received)} />
               <div className="payment-summary">
-                {orderModal.discountRate > 0 && (
-                  <>
-                    <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
-                    <span>Desconto distribuidor ({orderModal.discountRate}%) <strong>- {money((orderModal.subtotal || orderModal.total) - orderModal.total)}</strong></span>
-                  </>
-                )}
+                <span>
+                  Condição comercial
+                  <strong>{isDistributor(orderModal.customerType) ? "Distribuidor" : "Cliente final"}</strong>
+                </span>
+                <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
+                <span>
+                  Desconto ({orderModal.discountRate || 0}%)
+                  <strong>- {money((orderModal.subtotal || orderModal.total) - orderModal.total)}</strong>
+                </span>
                 <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
                 <span>Valor recebido <strong>{money(orderModal.received)}</strong></span>
                 {orderModal.received > orderModal.total ? (
