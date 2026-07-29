@@ -69,6 +69,8 @@ type Order = {
 
 const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const isDistributor = (customerType?: string) =>
+  customerType?.trim().toLocaleLowerCase("pt-BR") === "distribuidor";
 const brDate = (date: string) => {
   if (date && (date.includes("T") || date.includes(" "))) {
     const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -294,7 +296,7 @@ export default function Home() {
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [customerType, setCustomerType] = useState("Cliente final");
+  const [customerType, setCustomerType] = useState("");
   const [zipCode, setZipCode] = useState("");
   const [street, setStreet] = useState("");
   const [addressNumber, setAddressNumber] = useState("");
@@ -320,7 +322,7 @@ export default function Home() {
     items: Order[];
     customer: string;
   } | null>(null);
-  const [walletPayMethod, setWalletPayMethod] = useState("Pix");
+  const [walletPayMethod, setWalletPayMethod] = useState("");
   const [walletPayDate, setWalletPayDate] = useState("");
   const [walletPayAmount, setWalletPayAmount] = useState(0);
   const [docType, setDocType] = useState<"CPF" | "CNPJ">("CPF");
@@ -337,6 +339,8 @@ export default function Home() {
   const [selectedCode, setSelectedCode] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [received, setReceived] = useState(0);
+  const [selectedDeliveryType, setSelectedDeliveryType] = useState("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
   const [discountOverride, setDiscountOverride] = useState("");
   const [orderItems, setOrderItems] = useState<
     { code: string; quantity: number }[]
@@ -444,7 +448,7 @@ export default function Home() {
   const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
   const orderCustomer = customers.find((customer) => customer.name === selectedCustomer);
   const automaticDiscountRate =
-    orderCustomer?.customerType === "Distribuidor"
+    isDistributor(orderCustomer?.customerType)
       ? totalQuantity >= 20
         ? 10
         : totalQuantity >= 10
@@ -615,14 +619,15 @@ export default function Home() {
       setOrderPage(1);
     }
     if (next === "new-order") {
-      const first = products.find((p) => p.active)?.code || "";
       setEditingOrder(null);
       setSelectedCustomer("");
       setQuantity(1);
       setReceived(0);
+      setSelectedDeliveryType("");
+      setSelectedPaymentMethod("");
       setDiscountOverride("");
-      setSelectedCode(first);
-      setOrderItems(first ? [{ code: first, quantity: 1 }] : []);
+      setSelectedCode("");
+      setOrderItems([{ code: "", quantity: 1 }]);
     }
     setScreen(next);
     setMenu(false);
@@ -690,7 +695,7 @@ export default function Home() {
       setEditingCustomer(null);
       setCustomerName("");
       setCustomerEmail("");
-      setCustomerType("Cliente final");
+      setCustomerType("");
       setPhone("");
       setZipCode("");
       setStreet("");
@@ -741,6 +746,7 @@ export default function Home() {
         throw new Error("Consulte um CEP válido para preencher o endereço.");
       if (!addressNumber.trim()) throw new Error("Informe o número do endereço.");
       if (!doc) throw new Error("Informe o CPF ou CNPJ.");
+      if (!customerType) throw new Error("Selecione o tipo de cliente.");
       if (doc.replace(/\D/g, "").length !== (docType === "CPF" ? 11 : 14))
         throw new Error(`${docType} incompleto.`);
       const r = await fetch("/api/catalog", {
@@ -832,14 +838,19 @@ export default function Home() {
     try {
       if (!selectedCustomer) throw new Error("Selecione um cliente.");
       if (!orderItems.length) throw new Error("Adicione pelo menos um pino.");
+      if (orderItems.some((item) => !item.code)) throw new Error("Selecione todos os pinos da OS.");
       const items = orderItems.map((item) => ({
         ...item,
         unitPrice: products.find((p) => p.code === item.code)?.price || 0,
       }));
-      const paymentMethod = String(f.get("paymentMethod") || "Pix");
+      const paymentMethod = String(f.get("paymentMethod") || "");
+      const deliveryType = String(f.get("deliveryType") || "");
+      if (!deliveryType) throw new Error("Selecione a forma de entrega.");
+      if (!paymentMethod) throw new Error("Selecione a forma de pagamento.");
+      if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
+        throw new Error("Informe o valor recebido.");
       const orderDate = String(f.get("orderDate") || "");
       if (!isValidBrDate(orderDate)) throw new Error("Informe uma data do pedido válida.");
-      const paidOnCreation = ["Pix", "Dinheiro", "Cartão"].includes(paymentMethod);
       const r = await fetch("/api/orders", {
         method: editingOrder ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
@@ -854,8 +865,8 @@ export default function Home() {
           unitPrice: product.price,
           items,
           discountRate: auth.user?.role === "admin" && discountOverride !== "" ? discountRate : undefined,
-          received: paidOnCreation ? total : paymentMethod === "Boleto" ? 0 : received,
-          deliveryType: f.get("deliveryType"),
+          received,
+          deliveryType,
           paymentMethod,
           notes: f.get("notes"),
         }),
@@ -910,6 +921,8 @@ export default function Home() {
     setSelectedCode(items[0]?.code || "");
     setQuantity(items[0]?.quantity || 1);
     setReceived(order.received);
+    setSelectedDeliveryType(order.deliveryType);
+    setSelectedPaymentMethod(order.paymentMethod);
     setDiscountOverride(order.discountRate ? String(order.discountRate) : "");
     setOrderModal(null);
     setScreen("new-order");
@@ -931,6 +944,7 @@ export default function Home() {
   }
   async function settleWallet() {
     if (!walletPayment) return;
+    if (!walletPayMethod) return flash("Selecione a forma de pagamento.");
     if (!isValidBrDate(walletPayDate))
       return flash("Informe uma data de pagamento válida.");
     const balance = walletPayment.items.reduce(
@@ -1688,6 +1702,7 @@ export default function Home() {
                                   updateItem(index, { code: e.target.value })
                                 }
                               >
+                                <option value="">Selecione</option>
                                 {products
                                   .filter(
                                     (p) =>
@@ -1768,25 +1783,18 @@ export default function Home() {
                       onClick={() =>
                         setOrderItems((items) => [
                           ...items,
-                          {
-                            code:
-                              products.find(
-                                (p) =>
-                                  p.active &&
-                                  !items.some((item) => item.code === p.code),
-                              )?.code || "",
-                            quantity: 1,
-                          },
+                          { code: "", quantity: 1 },
                         ])
                       }
                     >
                       ＋ Adicionar outro pino
                     </button>
-                    {orderCustomer?.customerType === "Distribuidor" && (
+                    {orderCustomer && (
                       <div className="payment-summary distributor-discount-summary">
-                        <span>Condição comercial <strong>Distribuidor</strong></span>
+                        <span>Condição comercial <strong>{isDistributor(orderCustomer.customerType) ? "Distribuidor" : "Cliente final"}</strong></span>
+                        <span>Quantidade total <strong>{totalQuantity}</strong></span>
                         <span>Subtotal <strong>{money(subtotal)}</strong></span>
-                        <span>Desconto aplicado ({discountRate}%) <strong>- {money(discountAmount)}</strong></span>
+                        <span>Desconto aplicado <strong>{discountRate}% · - {money(discountAmount)}</strong></span>
                         <span>Total com desconto <strong>{money(total)}</strong></span>
                       </div>
                     )}
@@ -1794,13 +1802,15 @@ export default function Home() {
                   <Card n="3" title="Pagamento e observações">
                     <div className="form-grid order-payment-grid">
                       <Field label="Forma de entrega *">
-                        <select name="deliveryType" required defaultValue={editingOrder?.deliveryType || "Retirada no local"}>
+                        <select name="deliveryType" required value={selectedDeliveryType} onChange={(e) => setSelectedDeliveryType(e.target.value)}>
+                          <option value="">Selecione</option>
                           <option>Retirada no local</option>
                           <option>Entrega</option>
                         </select>
                       </Field>
                       <Field label="Forma de pagamento *">
-                        <select name="paymentMethod" required defaultValue={editingOrder?.paymentMethod || "Pix"}>
+                        <select name="paymentMethod" required value={selectedPaymentMethod} onChange={(e) => setSelectedPaymentMethod(e.target.value)}>
+                          <option value="">Selecione</option>
                           <option>Pix</option>
                           <option>Dinheiro</option>
                           <option>Cartão</option>
@@ -1808,8 +1818,9 @@ export default function Home() {
                           <option>Carteira</option>
                         </select>
                       </Field>
-                      <Field label="Valor recebido">
+                      <Field label={["Pix", "Dinheiro", "Cartão"].includes(selectedPaymentMethod) ? "Valor recebido *" : "Valor recebido"}>
                         <input
+                          required={["Pix", "Dinheiro", "Cartão"].includes(selectedPaymentMethod)}
                           inputMode="numeric"
                           value={money(received)}
                           onChange={(e) =>
@@ -1819,7 +1830,7 @@ export default function Home() {
                           }
                         />
                       </Field>
-                      {orderCustomer?.customerType === "Distribuidor" && auth.user?.role === "admin" && (
+                      {isDistributor(orderCustomer?.customerType) && auth.user?.role === "admin" && (
                         <Field label="Desconto autorizado (%)">
                           <input
                             type="number"
@@ -2295,6 +2306,7 @@ export default function Home() {
                                         className="primary-button wallet-pay"
                                         disabled={saving}
                                         onClick={() => {
+                                          setWalletPayMethod("");
                                           setWalletPayment({
                                             items: item.orders,
                                             customer: item.customer,
@@ -2632,7 +2644,8 @@ export default function Home() {
                 />
               </Field>
               <Field label="Tipo de cliente *">
-                <select value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
+                <select required value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
+                  <option value="">Selecione</option>
                   <option>Cliente final</option>
                   <option>Distribuidor</option>
                 </select>
@@ -2753,6 +2766,7 @@ export default function Home() {
                 value={walletPayMethod}
                 onChange={(e) => setWalletPayMethod(e.target.value)}
               >
+                <option value="">Selecione</option>
                 <option>Pix</option>
                 <option>Dinheiro</option>
                 <option>Cartão</option>

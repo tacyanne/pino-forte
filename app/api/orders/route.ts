@@ -6,7 +6,7 @@ import { requireUser } from "../../../lib/auth";
 type OrderItem = { code: string; quantity: number; unitPrice: number };
 
 function automaticDiscount(customerType: string, quantity: number) {
-  if (customerType !== "Distribuidor") return 0;
+  if (customerType.trim().toLocaleLowerCase("pt-BR") !== "distribuidor") return 0;
   if (quantity >= 20) return 10;
   if (quantity >= 10) return 8;
   return 5;
@@ -54,14 +54,14 @@ export async function GET(request: Request) {
     const customerTypes = new Map(
       customerRows.map((customer) => [
         customer.name.trim().toLocaleLowerCase("pt-BR"),
-        customer.customerType,
+        customer.customerType.trim().toLocaleLowerCase("pt-BR"),
       ]),
     );
     const repairedRows = await Promise.all(
       rows.map(async (order) => {
         const isDistributor =
           customerTypes.get(order.customerName.trim().toLocaleLowerCase("pt-BR")) ===
-          "Distribuidor";
+          "distribuidor";
         if (!isDistributor || order.discountRate > 0) return order;
         const subtotal = order.subtotal > 0 ? order.subtotal : order.total;
         const discountRate = automaticDiscount("Distribuidor", order.quantity);
@@ -118,6 +118,14 @@ export async function POST(request: Request) {
       ? Math.max(0, Number(items[0].unitPrice))
       : Math.max(0, Number(body.unitPrice || 0));
     const received = Math.max(0, Number(body.received || 0));
+    const paymentMethod = String(body.paymentMethod || "");
+    const deliveryType = String(body.deliveryType || "");
+    if (!["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(paymentMethod))
+      return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
+    if (!["Retirada no local", "Entrega"].includes(deliveryType))
+      return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
+    if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
+      return Response.json({ error: "Informe o valor recebido." }, { status: 400 });
     const requestedStatus = String(body.productionStatus || "Fila de produção");
     const productionStatus = ["Fila de produção", "Em produção", "Pronta", "Entregue"].includes(requestedStatus)
       ? requestedStatus
@@ -151,8 +159,8 @@ export async function POST(request: Request) {
         total: totals.total,
         received: Math.min(received, totals.total),
         deliveryDate: String(body.deliveryDate),
-        deliveryType: String(body.deliveryType || "Retirada no local"),
-        paymentMethod: String(body.paymentMethod || "Pix"),
+        deliveryType,
+        paymentMethod,
         productionStatus,
         notes: String(body.notes || ""),
       })
@@ -188,6 +196,20 @@ export async function PATCH(request: Request) {
     const db = await getDb();
     const [current] = await db.select().from(serviceOrders).where(eq(serviceOrders.id, id)).limit(1);
     if (!current) return Response.json({ error: "OS não encontrada." }, { status: 404 });
+    const effectivePaymentMethod = String(body.paymentMethod ?? current.paymentMethod);
+    const effectiveDeliveryType = String(body.deliveryType ?? current.deliveryType);
+    const effectiveReceived = Math.max(0, Number(body.received ?? current.received));
+    const validatesPayment =
+      body.paymentMethod !== undefined ||
+      body.deliveryType !== undefined ||
+      body.received !== undefined ||
+      body.productCode !== undefined;
+    if (validatesPayment && !["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(effectivePaymentMethod))
+      return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
+    if (validatesPayment && !["Retirada no local", "Entrega"].includes(effectiveDeliveryType))
+      return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
+    if (validatesPayment && ["Pix", "Dinheiro", "Cartão"].includes(effectivePaymentMethod) && effectiveReceived <= 0)
+      return Response.json({ error: "Informe o valor recebido." }, { status: 400 });
     const changes: Partial<typeof serviceOrders.$inferInsert> = {};
     if (
       body.productionStatus &&
