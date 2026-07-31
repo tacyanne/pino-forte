@@ -1,4 +1,5 @@
 import vinext from "vinext";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
@@ -10,6 +11,7 @@ const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
+const useLocalNodePostgres = process.env.PINO_LOCAL_NODE_POSTGRES === "1";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
@@ -44,6 +46,15 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    resolve: {
+      alias: useLocalNodePostgres
+        ? {
+            postgres: fileURLToPath(
+              new URL("./node_modules/postgres/src/index.js", import.meta.url),
+            ),
+          }
+        : {},
+    },
     server: {
       host: "0.0.0.0",
       allowedHosts: ["terminal.local"],
