@@ -1,13 +1,30 @@
-import { drizzle } from "drizzle-orm/d1";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "./schema";
 
-export async function getDb() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) {
-    throw new Error(
-      "Cloudflare D1 binding `DB` is unavailable. Set the `d1` field in .openai/hosting.json to `DB` or let your control plane inject the real binding values before using the database."
-    );
-  }
+let client: postgres.Sql | null = null;
+let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
-  return drizzle(env.DB, { schema });
+export function getDatabaseUrl() {
+  const url = process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL;
+  if (!url) {
+    throw new Error("Configure DATABASE_URL com a connection string Postgres do Supabase.");
+  }
+  return url;
+}
+
+export function getSql() {
+  if (!client) {
+    client = postgres(getDatabaseUrl(), {
+      max: 5,
+      prepare: false,
+      ssl: "require",
+    });
+  }
+  return client;
+}
+
+export async function getDb() {
+  if (!db) db = drizzle(getSql(), { schema });
+  return db;
 }

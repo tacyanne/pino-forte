@@ -5,20 +5,22 @@ const validNewPassword = (password: string) => password.length >= 8 && /[A-Z]/.t
 const passwordRuleError = "A senha deve ter no mínimo 8 caracteres, uma letra maiúscula, um número e um caractere especial.";
 
 export async function GET(request: Request) {
-  const db = await ensureAuthTables();
-  const count = await db.prepare("SELECT COUNT(*) total FROM app_users").first<{ total: number }>();
+  const sql = await ensureAuthTables();
+  const [count] = await sql<{ total: string }[]>`SELECT COUNT(*)::text total FROM app_users`;
   const user = await currentUser(request);
-  const users = user?.role === "admin" ? (await db.prepare("SELECT id,name,email,role,active,created_at createdAt FROM app_users ORDER BY name").all()).results : [];
+  const users = user?.role === "admin"
+    ? await sql`SELECT id, name, email, role, active, created_at "createdAt" FROM app_users ORDER BY name`
+    : [];
   return Response.json({ setupRequired: Number(count?.total || 0) === 0, user, users });
 }
 
 export async function POST(request: Request) {
   const body = await request.json() as Record<string, unknown>;
   const action = String(body.action || "login");
-  const db = await ensureAuthTables();
+  const sql = await ensureAuthTables();
 
   if (action === "setup") {
-    const count = await db.prepare("SELECT COUNT(*) total FROM app_users").first<{ total: number }>();
+    const [count] = await sql<{ total: string }[]>`SELECT COUNT(*)::text total FROM app_users`;
     if (Number(count?.total || 0) > 0) return Response.json({ error: "A conta administradora já foi criada." }, { status: 409 });
     const email = cleanEmail(body.email);
     const password = String(body.password || "");
@@ -28,10 +30,13 @@ export async function POST(request: Request) {
     if (!validNewPassword(password)) return Response.json({ error: passwordRuleError }, { status: 400 });
     try {
       const { hash, salt } = await passwordHash(password);
-      await db.prepare("INSERT INTO app_users(name,email,password_hash,salt,role) VALUES(?,?,?,?, 'admin')").bind(name, email, hash, salt).run();
-      const created = await db.prepare("SELECT id FROM app_users WHERE email=?").bind(email).first<{ id: number }>();
+      const [created] = await sql<{ id: number }[]>`
+        INSERT INTO app_users (name, email, password_hash, salt, role)
+        VALUES (${name}, ${email}, ${hash}, ${salt}, 'admin')
+        RETURNING id
+      `;
       if (!created?.id) throw new Error("Cadastro não localizado após a gravação.");
-      return createSession(db, created.id);
+      return createSession(created.id);
     } catch (error) {
       return Response.json({ error: `Não foi possível criar o acesso: ${error instanceof Error ? error.message : "erro interno"}.` }, { status: 500 });
     }
@@ -40,11 +45,16 @@ export async function POST(request: Request) {
   if (action === "login") {
     const email = cleanEmail(body.email);
     const password = String(body.password || "");
-    const row = await db.prepare("SELECT id,password_hash passwordHash,salt,active FROM app_users WHERE email=?").bind(email).first<{ id:number; passwordHash:string; salt:string; active:number }>();
+    const [row] = await sql<{ id: number; passwordHash: string; salt: string; active: boolean }[]>`
+      SELECT id, password_hash "passwordHash", salt, active
+      FROM app_users
+      WHERE email = ${email}
+      LIMIT 1
+    `;
     if (!row?.active) return Response.json({ error: "E-mail ou senha inválidos." }, { status: 401 });
     const { hash } = await passwordHash(password, row.salt);
     if (hash !== row.passwordHash) return Response.json({ error: "E-mail ou senha inválidos." }, { status: 401 });
-    return createSession(db, row.id);
+    return createSession(row.id);
   }
 
   const admin = await currentUser(request);
@@ -56,25 +66,38 @@ export async function POST(request: Request) {
     if (!name || !email.includes("@")) return Response.json({ error: "Informe nome e e-mail válidos." }, { status: 400 });
     if (!validNewPassword(password)) return Response.json({ error: passwordRuleError }, { status: 400 });
     const { hash, salt } = await passwordHash(password);
-    try { await db.prepare("INSERT INTO app_users(name,email,password_hash,salt,role) VALUES(?,?,?,?, 'user')").bind(name,email,hash,salt).run(); }
-    catch { return Response.json({ error: "Este e-mail já está cadastrado." }, { status: 409 }); }
+    try {
+      await sql`
+        INSERT INTO app_users (name, email, password_hash, salt, role)
+        VALUES (${name}, ${email}, ${hash}, ${salt}, 'user')
+      `;
+    } catch {
+      return Response.json({ error: "Este e-mail já está cadastrado." }, { status: 409 });
+    }
     return Response.json({ success: true });
   }
   if (action === "toggle-user") {
-    await db.prepare("UPDATE app_users SET active=? WHERE id=? AND role!='admin'").bind(body.active ? 1 : 0, Number(body.id)).run();
+    await sql`UPDATE app_users SET active = ${Boolean(body.active)} WHERE id = ${Number(body.id)} AND role != 'admin'`;
     return Response.json({ success: true });
   }
   return Response.json({ error: "Ação inválida." }, { status: 400 });
 }
 
-async function createSession(db: any, userId: number) {
+async function createSession(userId: number) {
+  const sql = await ensureAuthTables();
   const token = crypto.randomUUID() + crypto.randomUUID();
-  await db.prepare("INSERT INTO app_sessions(token,user_id,expires_at) VALUES(?,?,datetime('now','+30 days'))").bind(token,userId).run();
+  await sql`
+    INSERT INTO app_sessions (token, user_id, expires_at)
+    VALUES (${token}, ${userId}, (CURRENT_TIMESTAMP + INTERVAL '30 days')::text)
+  `;
   return Response.json({ success: true }, { headers: { "Set-Cookie": sessionCookie(token) } });
 }
 
 export async function DELETE(request: Request) {
   const token = request.headers.get("cookie")?.match(/(?:^|;\s*)pino_session=([^;]+)/)?.[1];
-  if (token) { const db = await ensureAuthTables(); await db.prepare("DELETE FROM app_sessions WHERE token=?").bind(token).run(); }
+  if (token) {
+    const sql = await ensureAuthTables();
+    await sql`DELETE FROM app_sessions WHERE token = ${token}`;
+  }
   return Response.json({ success: true }, { headers: { "Set-Cookie": sessionCookie("", 0) } });
 }

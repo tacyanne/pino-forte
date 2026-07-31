@@ -18,6 +18,7 @@ type Screen =
   | "customers"
   | "products"
   | "catalog"
+  | "financial"
   | "wallet"
   | "reports"
   | "settings";
@@ -322,6 +323,9 @@ export default function Home() {
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
+  const [financialMonth, setFinancialMonth] = useState("");
+  const [financialCustomer, setFinancialCustomer] = useState("");
+  const [financialStatus, setFinancialStatus] = useState("");
   const [walletQuery, setWalletQuery] = useState("");
   const [walletMonthFilter, setWalletMonthFilter] = useState("");
   const [walletStatusFilter, setWalletStatusFilter] = useState("");
@@ -557,6 +561,46 @@ export default function Home() {
   const reportMonths = Array.from(
     new Set(orders.filter((o) => o.productionStatus !== "Cancelada").map((o) => monthInSaoPaulo(o.createdAt))),
   ).filter(Boolean).sort((a, b) => b.localeCompare(a));
+  const financialRows = orders
+    .filter((order) => order.productionStatus !== "Cancelada")
+    .map((order) => {
+      const balance = Math.max(0, order.total - order.received);
+      const dueDate = order.deliveryDate || order.createdAt;
+      const status =
+        balance <= 0
+          ? "Pago"
+          : dateTimestamp(dueDate) < dateTimestamp(todayIso())
+            ? "Atrasado"
+            : "Em aberto";
+      return { order, balance, dueDate, status };
+    })
+    .filter(({ order, status }) => (
+      (!financialMonth || monthInSaoPaulo(order.createdAt) === financialMonth) &&
+      (!financialCustomer || order.customerName.toLowerCase().includes(financialCustomer.toLowerCase())) &&
+      (!financialStatus || status === financialStatus)
+    ))
+    .sort((a, b) => {
+      const statusWeight = { Atrasado: 0, "Em aberto": 1, Pago: 2 } as Record<string, number>;
+      const statusDifference = statusWeight[a.status] - statusWeight[b.status];
+      if (statusDifference !== 0) return statusDifference;
+      const dateDifference = dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
+      if (dateDifference !== 0) return dateDifference;
+      return b.order.number.localeCompare(a.order.number, "pt-BR", { numeric: true });
+    });
+  const financialTotals = financialRows.reduce(
+    (summary, row) => ({
+      forecast: summary.forecast + row.order.total,
+      received: summary.received + row.order.received,
+      pending: summary.pending + row.balance,
+      overdue: summary.overdue + (row.status === "Atrasado" ? row.balance : 0),
+    }),
+    { forecast: 0, received: 0, pending: 0, overdue: 0 },
+  );
+  const nextReceivables = financialRows
+    .filter((row) => row.balance > 0)
+    .slice()
+    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
+    .slice(0, 5);
   const walletMonths = useMemo(
     () =>
       Object.entries(
@@ -1706,6 +1750,7 @@ export default function Home() {
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Pinos"],
     ["catalog", "▦", "Catálogo"],
+    ["financial", "R$", "Financeiro"],
     ["wallet", "▣", "Carteira"],
     ["reports", "▥", "Relatórios"],
     ["settings", "⚙", "Configurações"],
@@ -2384,9 +2429,163 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {screen === "financial" && (
+              <div className="page">
+                <Heading
+                  eyebrow="FINANCEIRO"
+                  title="Financeiro"
+                  subtitle="Controle os valores recebidos, pendentes e atrasados."
+                />
+                <div className="filters operational-filters financial-filters">
+                  <Field label="Buscar cliente">
+                    <input
+                      value={financialCustomer}
+                      onChange={(event) => setFinancialCustomer(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Mes">
+                    <select
+                      value={financialMonth}
+                      onChange={(event) => setFinancialMonth(event.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      {reportMonths.map((month) => (
+                        <option key={month} value={month}>{monthLabel(month)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Status">
+                    <select
+                      value={financialStatus}
+                      onChange={(event) => setFinancialStatus(event.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      <option>Em aberto</option>
+                      <option>Atrasado</option>
+                      <option>Pago</option>
+                    </select>
+                  </Field>
+                  <button
+                    type="button"
+                    className="outline-button filter-clear"
+                    onClick={() => {
+                      setFinancialCustomer("");
+                      setFinancialMonth("");
+                      setFinancialStatus("");
+                    }}
+                  >
+                    Limpar
+                  </button>
+                </div>
+                <section className="metrics report-metrics financial-metrics">
+                  <Metric icon="R$" label="Previsto" value={money(financialTotals.forecast)} />
+                  <Metric icon="OK" label="Recebido" value={money(financialTotals.received)} />
+                  <Metric icon="!" label="Pendente" value={money(financialTotals.pending)} alert={financialTotals.pending > 0} tone="red" />
+                  <Metric icon="!!" label="Atrasado" value={money(financialTotals.overdue)} alert={financialTotals.overdue > 0} tone="red" />
+                </section>
+                <section className="financial-layout">
+                  <div className="panel financial-table-panel">
+                    <div className="panel-title">
+                      <div>
+                        <h2>Contas a receber</h2>
+                        <p>{financialRows.length} registros encontrados</p>
+                      </div>
+                    </div>
+                    <div className="table-wrap standardized-table financial-table">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>OS</th>
+                            <th>Cliente</th>
+                            <th>Emissao</th>
+                            <th>Previsao</th>
+                            <th>Forma</th>
+                            <th>Total</th>
+                            <th>Saldo</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!financialRows.length && (
+                            <tr className="orders-empty-row">
+                              <td colSpan={8}>Nenhum recebivel encontrado.</td>
+                            </tr>
+                          )}
+                          {financialRows.map(({ order, balance, dueDate, status }) => (
+                            <tr
+                              key={order.id}
+                              className="clickable-table-row"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Visualizar ${order.number}`}
+                              onClick={() => setOrderModal(order)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  setOrderModal(order);
+                                }
+                              }}
+                            >
+                              <td><b>{order.number}</b></td>
+                              <td><b>{order.customerName}</b></td>
+                              <td>{brDate(order.createdAt)}</td>
+                              <td>{brDate(dueDate)}</td>
+                              <td>{order.paymentMethod}</td>
+                              <td>{money(order.total)}</td>
+                              <td>{money(balance)}</td>
+                              <td>
+                                <span className={`status ${status === "Pago" ? "green" : status === "Atrasado" ? "red" : "amber"}`}>
+                                  {status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <aside className="financial-side">
+                    <div className="panel financial-next-card">
+                      <div className="panel-title">
+                        <div>
+                          <h2>Proximos recebimentos</h2>
+                        </div>
+                      </div>
+                      <div className="financial-next-list">
+                        {!nextReceivables.length ? (
+                          <p className="finance-history-empty">Nao ha valores em aberto no filtro atual.</p>
+                        ) : nextReceivables.map(({ order, balance, dueDate, status }) => (
+                          <div className="financial-next-row" key={order.id}>
+                            <span>
+                              <b>{order.customerName}</b>
+                              <small>{order.number} - {brDate(dueDate)}</small>
+                            </span>
+                            <strong>{money(balance)}</strong>
+                            <span className={`status ${status === "Atrasado" ? "red" : "amber"}`}>{status}</span>
+                            {order.paymentMethod === "Boleto" ? (
+                              <button className="boleto-pay" onClick={() => settleBoleto(order)}>
+                                Confirmar boleto
+                              </button>
+                            ) : order.paymentMethod === "Carteira" ? (
+                              <button className="outline-button" onClick={() => go("wallet")}>
+                                Abrir carteira
+                              </button>
+                            ) : (
+                              <button className="outline-button" onClick={() => setOrderModal(order)}>
+                                Abrir OS
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </aside>
+                </section>
+              </div>
+            )}
             {screen === "wallet" && (
               <div className="page">
-                <Heading title="Carteira" />
+                <Heading eyebrow="FINANCEIRO" title="Carteira" subtitle="Acompanhe recebimentos agrupados por cliente." />
                 <div className="filters operational-filters operational-filters-three">
                   <Field label="Buscar cliente">
                     <input

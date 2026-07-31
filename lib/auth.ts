@@ -1,15 +1,30 @@
-type AuthUser = { id: number; name: string; email: string; role: string; active: number };
+import { getSql } from "../db";
 
-async function d1() {
-  const { env } = await import("cloudflare:workers");
-  if (!env.DB) throw new Error("Banco de dados indisponível.");
-  return env.DB;
-}
+type AuthUser = { id: number; name: string; email: string; role: string; active: boolean };
 
 export async function ensureAuthTables() {
-  const db = await d1();
-  await db.exec(`CREATE TABLE IF NOT EXISTS app_users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS app_sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
-  return db;
+  const sql = getSql();
+  await sql`
+    CREATE TABLE IF NOT EXISTS app_users (
+      id serial PRIMARY KEY,
+      name text NOT NULL,
+      email text NOT NULL UNIQUE,
+      password_hash text NOT NULL,
+      salt text NOT NULL,
+      role text NOT NULL DEFAULT 'user',
+      active boolean NOT NULL DEFAULT true,
+      created_at text NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS app_sessions (
+      token text PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES app_users(id),
+      expires_at text NOT NULL,
+      created_at text NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+    )
+  `;
+  return sql;
 }
 
 const hex = (bytes: Uint8Array) => Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -25,8 +40,17 @@ export async function passwordHash(password: string, saltHex?: string) {
 export async function currentUser(request: Request): Promise<AuthUser | null> {
   const token = request.headers.get("cookie")?.match(/(?:^|;\s*)pino_session=([^;]+)/)?.[1];
   if (!token) return null;
-  const db = await ensureAuthTables();
-  return await db.prepare(`SELECT u.id,u.name,u.email,u.role,u.active FROM app_sessions s JOIN app_users u ON u.id=s.user_id WHERE s.token=? AND s.expires_at>CURRENT_TIMESTAMP AND u.active=1`).bind(token).first<AuthUser>();
+  const sql = await ensureAuthTables();
+  const rows = await sql<AuthUser[]>`
+    SELECT u.id, u.name, u.email, u.role, u.active
+    FROM app_sessions s
+    JOIN app_users u ON u.id = s.user_id
+    WHERE s.token = ${token}
+      AND s.expires_at::timestamp > CURRENT_TIMESTAMP
+      AND u.active = true
+    LIMIT 1
+  `;
+  return rows[0] || null;
 }
 
 export async function requireUser(request: Request) {
