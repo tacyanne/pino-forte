@@ -1,0 +1,378 @@
+import { desc, eq } from "drizzle-orm";
+import { getDb } from "../../../db";
+import {
+  accountsPayable,
+  accountsReceivable,
+  auditLogs,
+  cashMovements,
+  financialCategories,
+  receipts,
+  serviceOrders,
+} from "../../../db/schema";
+import { centsFromBody, currentMonth, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
+import { requireUser } from "../../../lib/auth";
+
+type Auth = { id: number; role: string };
+
+const isInMonth = (date: string | null | undefined, month: string) =>
+  String(date || "").slice(0, 7) === month;
+
+const jsonError = (message: string, status = 400) =>
+  Response.json({ error: message }, { status });
+
+async function audit(
+  db: Awaited<ReturnType<typeof getDb>>,
+  auth: Auth,
+  action: string,
+  entity: string,
+  entityId: number | null,
+  afterValues: unknown,
+) {
+  await db.insert(auditLogs).values({
+    userId: auth.id,
+    action,
+    entity,
+    entityId: entityId || undefined,
+    afterValues: JSON.stringify(afterValues),
+  });
+}
+
+export async function GET(request: Request) {
+  const auth = await requireUser(request);
+  if (auth instanceof Response) return auth;
+
+  try {
+    const db = await getDb();
+    await db.transaction((tx) => syncReceivablesFromOrders(tx, auth.id));
+
+    const url = new URL(request.url);
+    const month = url.searchParams.get("month") || currentMonth();
+    const today = todayIso();
+
+    const [categoryRows, receivableRows, payableRows, receiptRows, movementRows] =
+      await Promise.all([
+        db.select().from(financialCategories).orderBy(financialCategories.type, financialCategories.name),
+        db.select().from(accountsReceivable).orderBy(desc(accountsReceivable.dueDate)).limit(300),
+        db.select().from(accountsPayable).orderBy(desc(accountsPayable.dueDate)).limit(300),
+        db.select().from(receipts).orderBy(desc(receipts.receiptDate)).limit(300),
+        db.select().from(cashMovements).orderBy(desc(cashMovements.movementDate)).limit(300),
+      ]);
+
+    const monthReceipts = receiptRows.filter(
+      (receipt) => receipt.status === "Confirmado" && isInMonth(receipt.receiptDate, month),
+    );
+    const monthMovements = movementRows.filter(
+      (movement) => movement.status === "Confirmado" && isInMonth(movement.movementDate, month),
+    );
+    const openReceivables = receivableRows.filter((row) => row.status !== "Pago" && row.status !== "Cancelado");
+    const openPayables = payableRows.filter((row) => row.status !== "Pago" && row.status !== "Cancelado");
+
+    const summary = {
+      month,
+      receivableOpenCents: openReceivables.reduce((sum, row) => sum + row.balanceCents, 0),
+      receivableOverdueCents: openReceivables
+        .filter((row) => row.dueDate < today)
+        .reduce((sum, row) => sum + row.balanceCents, 0),
+      receivableReceivedCents: monthReceipts.reduce((sum, row) => sum + row.amountCents, 0),
+      payableOpenCents: openPayables.reduce((sum, row) => sum + row.amountCents, 0),
+      payableOverdueCents: openPayables
+        .filter((row) => row.dueDate < today)
+        .reduce((sum, row) => sum + row.amountCents, 0),
+      payablePaidCents: payableRows
+        .filter((row) => row.status === "Pago" && isInMonth(row.paidAt, month))
+        .reduce((sum, row) => sum + row.amountCents, 0),
+      cashInCents: monthMovements
+        .filter((row) => row.type === "Entrada")
+        .reduce((sum, row) => sum + row.amountCents, 0),
+      cashOutCents: monthMovements
+        .filter((row) => row.type === "Saida")
+        .reduce((sum, row) => sum + row.amountCents, 0),
+    };
+
+    return Response.json(
+      {
+        summary: {
+          ...summary,
+          cashNetCents: summary.cashInCents - summary.cashOutCents,
+        },
+        categories: categoryRows,
+        accountsReceivable: receivableRows,
+        accountsPayable: payableRows,
+        receipts: receiptRows,
+        cashMovements: movementRows,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Nao foi possivel carregar o financeiro." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  const auth = await requireUser(request);
+  if (auth instanceof Response) return auth;
+
+  try {
+    const body = (await request.json()) as Record<string, unknown>;
+    const db = await getDb();
+    const action = String(body.action || "");
+
+    if (action === "category") {
+      const name = String(body.name || "").trim();
+      const type = String(body.type || "").trim();
+      if (!name || !type) return jsonError("Informe nome e tipo da categoria.");
+      const [category] = await db
+        .insert(financialCategories)
+        .values({ name, type, parentId: Number(body.parentId) || undefined })
+        .returning();
+      await audit(db, auth, "create", "financial_categories", category.id, category);
+      return Response.json({ category }, { status: 201 });
+    }
+
+    if (action === "payable") {
+      const amountCents = centsFromBody(body);
+      const supplier = String(body.supplier || "").trim();
+      const description = String(body.description || "").trim();
+      const dueDate = String(body.dueDate || "").slice(0, 10);
+      if (!supplier || !description || !dueDate || amountCents <= 0)
+        return jsonError("Fornecedor, descricao, vencimento e valor sao obrigatorios.");
+
+      const payable = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(accountsPayable)
+          .values({
+            supplier,
+            description,
+            categoryId: Number(body.categoryId) || undefined,
+            competenceMonth: String(body.competenceMonth || dueDate.slice(0, 7)),
+            dueDate,
+            amountCents,
+            paymentMethod: String(body.paymentMethod || ""),
+            paidAt: body.status === "Pago" ? String(body.paidAt || todayIso()) : null,
+            status: body.status === "Pago" ? "Pago" : "Pendente",
+            notes: String(body.notes || ""),
+          })
+          .returning();
+
+        if (created.status === "Pago") {
+          await tx.insert(cashMovements).values({
+            type: "Saida",
+            origin: "Conta a pagar",
+            originId: created.id,
+            movementDate: created.paidAt || todayIso(),
+            amountCents: created.amountCents,
+            paymentMethod: created.paymentMethod || "Nao informado",
+            description: created.description,
+            legacySourceKey: `accounts_payable:${created.id}:payment`,
+            createdBy: auth.id,
+          });
+        }
+
+        await tx.insert(auditLogs).values({
+          userId: auth.id,
+          action: "create",
+          entity: "accounts_payable",
+          entityId: created.id,
+          afterValues: JSON.stringify(created),
+        });
+        return created;
+      });
+
+      return Response.json({ payable }, { status: 201 });
+    }
+
+    if (action === "cashMovement") {
+      const amountCents = centsFromBody(body);
+      const type = String(body.type || "");
+      const movementDate = String(body.movementDate || todayIso()).slice(0, 10);
+      const description = String(body.description || "").trim();
+      if (!["Entrada", "Saida"].includes(type) || amountCents <= 0 || !description)
+        return jsonError("Informe tipo, valor e descricao do movimento.");
+      const [movement] = await db
+        .insert(cashMovements)
+        .values({
+          type,
+          origin: "Manual",
+          movementDate,
+          amountCents,
+          paymentMethod: String(body.paymentMethod || "Nao informado"),
+          description,
+          createdBy: auth.id,
+        })
+        .returning();
+      await audit(db, auth, "create", "cash_movements", movement.id, movement);
+      return Response.json({ movement }, { status: 201 });
+    }
+
+    return jsonError("Acao financeira invalida.");
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Nao foi possivel salvar o lancamento financeiro." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  const auth = await requireUser(request);
+  if (auth instanceof Response) return auth;
+
+  try {
+    const body = (await request.json()) as Record<string, unknown>;
+    const db = await getDb();
+    const entity = String(body.entity || "");
+    const id = Number(body.id);
+    if (!id) return jsonError("Informe o registro financeiro.");
+
+    if (entity === "accountsReceivable") {
+      const amountCents = centsFromBody(body);
+      const paymentMethod = String(body.paymentMethod || "").trim();
+      const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
+      if (amountCents <= 0 || !paymentMethod)
+        return jsonError("Informe valor e forma de recebimento.");
+
+      const result = await db.transaction(async (tx) => {
+        const [current] = await tx.select().from(accountsReceivable).where(eq(accountsReceivable.id, id)).limit(1);
+        if (!current) throw new Error("Conta a receber nao encontrada.");
+        if (current.status === "Pago") throw new Error("Esta conta a receber ja esta paga.");
+        if (amountCents > current.balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
+
+        const newReceived = current.receivedAmountCents + amountCents;
+        const newBalance = Math.max(0, current.originalAmountCents - newReceived);
+        const status = receivableStatus(newBalance, current.dueDate);
+        const [receipt] = await tx
+          .insert(receipts)
+          .values({
+            accountReceivableId: current.id,
+            serviceOrderId: current.serviceOrderId,
+            receiptDate,
+            amountCents,
+            paymentMethod,
+            notes: String(body.notes || ""),
+            createdBy: auth.id,
+          })
+          .returning();
+
+        const [updated] = await tx
+          .update(accountsReceivable)
+          .set({
+            receivedAmountCents: newReceived,
+            balanceCents: newBalance,
+            status,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(accountsReceivable.id, id))
+          .returning();
+
+        await tx
+          .update(serviceOrders)
+          .set({
+            receivedCents: newReceived,
+            received: newReceived / 100,
+            balanceCents: newBalance,
+            financialStatus: status,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(serviceOrders.id, current.serviceOrderId));
+
+        await tx.insert(cashMovements).values({
+          type: "Entrada",
+          origin: "Recebimento",
+          originId: current.id,
+          movementDate: receiptDate,
+          amountCents,
+          paymentMethod,
+          description: `Recebimento da OS ${current.serviceOrderId}`,
+          legacySourceKey: `receipt:${receipt.id}`,
+          createdBy: auth.id,
+        });
+
+        await tx.insert(auditLogs).values({
+          userId: auth.id,
+          action: "receive",
+          entity: "accounts_receivable",
+          entityId: id,
+          afterValues: JSON.stringify({ updated, receipt }),
+        });
+
+        return { accountReceivable: updated, receipt };
+      });
+
+      return Response.json(result);
+    }
+
+    if (entity === "accountsPayable") {
+      const result = await db.transaction(async (tx) => {
+        const [current] = await tx.select().from(accountsPayable).where(eq(accountsPayable.id, id)).limit(1);
+        if (!current) throw new Error("Conta a pagar nao encontrada.");
+        const status = body.status ? String(body.status) : current.status;
+        const paidAt = status === "Pago" ? String(body.paidAt || current.paidAt || todayIso()).slice(0, 10) : current.paidAt;
+        const paymentMethod = String(body.paymentMethod ?? current.paymentMethod ?? "");
+        const [updated] = await tx
+          .update(accountsPayable)
+          .set({
+            supplier: body.supplier === undefined ? current.supplier : String(body.supplier).trim(),
+            description: body.description === undefined ? current.description : String(body.description).trim(),
+            categoryId: body.categoryId === undefined ? current.categoryId : Number(body.categoryId) || null,
+            competenceMonth: body.competenceMonth === undefined ? current.competenceMonth : String(body.competenceMonth),
+            dueDate: body.dueDate === undefined ? current.dueDate : String(body.dueDate).slice(0, 10),
+            amountCents: body.amountCents === undefined && body.amount === undefined ? current.amountCents : centsFromBody(body),
+            paymentMethod,
+            paidAt,
+            status,
+            notes: body.notes === undefined ? current.notes : String(body.notes),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(accountsPayable.id, id))
+          .returning();
+
+        if (updated.status === "Pago") {
+          await tx
+            .insert(cashMovements)
+            .values({
+              type: "Saida",
+              origin: "Conta a pagar",
+              originId: updated.id,
+              movementDate: updated.paidAt || todayIso(),
+              amountCents: updated.amountCents,
+              paymentMethod: updated.paymentMethod || "Nao informado",
+              description: updated.description,
+              legacySourceKey: `accounts_payable:${updated.id}:payment`,
+              createdBy: auth.id,
+            })
+            .onConflictDoUpdate({
+              target: cashMovements.legacySourceKey,
+              set: {
+                movementDate: updated.paidAt || todayIso(),
+                amountCents: updated.amountCents,
+                paymentMethod: updated.paymentMethod || "Nao informado",
+                description: updated.description,
+              },
+            });
+        }
+
+        await tx.insert(auditLogs).values({
+          userId: auth.id,
+          action: "update",
+          entity: "accounts_payable",
+          entityId: id,
+          afterValues: JSON.stringify(updated),
+        });
+
+        return updated;
+      });
+
+      return Response.json({ payable: result });
+    }
+
+    return jsonError("Entidade financeira invalida.");
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Nao foi possivel atualizar o financeiro." },
+      { status: 500 },
+    );
+  }
+}

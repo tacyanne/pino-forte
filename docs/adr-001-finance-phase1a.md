@@ -1,4 +1,4 @@
-# ADR-001: Supabase/Postgres como banco oficial do Pino Forte
+﻿# ADR-001: Supabase/Postgres como banco oficial do Pino Forte
 
 **Status:** Accepted
 **Date:** 2026-07-31
@@ -51,7 +51,7 @@ Manter a autenticacao existente do sistema em tabelas `app_users` e `app_session
 3. [x] Trocar schema Drizzle para `pg-core`.
 4. [x] Adaptar autenticacao propria para Postgres.
 5. [x] Criar migration inicial Supabase.
-6. [ ] Configurar `DATABASE_URL` segura no ambiente local e hospedagem.
-7. [ ] Aplicar migration em banco Supabase vazio/teste.
+6. [x] Configurar `DATABASE_URL` segura no ambiente local.
+7. [x] Aplicar migration em banco Supabase vazio/teste.
 8. [ ] Exportar dados legados e rodar importacao validada.
-9. [ ] Refatorar APIs financeiras para transacoes Postgres.
+9. [x] Criar APIs financeiras iniciais com transacoes Postgres.
