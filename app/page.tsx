@@ -70,6 +70,54 @@ type Order = {
   notes: string;
   createdAt: string;
 };
+type FinanceSummary = {
+  month: string;
+  receivableOpenCents: number;
+  receivableOverdueCents: number;
+  receivableReceivedCents: number;
+  payableOpenCents: number;
+  payableOverdueCents: number;
+  payablePaidCents: number;
+  cashInCents: number;
+  cashOutCents: number;
+  cashNetCents: number;
+};
+type AccountReceivable = {
+  id: number;
+  serviceOrderId: number;
+  customerId: number | null;
+  issuedAt: string;
+  dueDate: string;
+  originalAmountCents: number;
+  receivedAmountCents: number;
+  balanceCents: number;
+  status: string;
+  notes: string;
+};
+type AccountPayable = {
+  id: number;
+  supplier: string;
+  description: string;
+  dueDate: string;
+  amountCents: number;
+  paidAt: string | null;
+  status: string;
+};
+type CashMovement = {
+  id: number;
+  type: string;
+  movementDate: string;
+  amountCents: number;
+  paymentMethod: string;
+  description: string;
+  status: string;
+};
+type FinanceData = {
+  summary: FinanceSummary | null;
+  accountsReceivable: AccountReceivable[];
+  accountsPayable: AccountPayable[];
+  cashMovements: CashMovement[];
+};
 const catalogProductImages: Record<string, string> = {
   "RN 180": "/img-000.png",
   "RN 190": "/img-001.png",
@@ -326,6 +374,9 @@ export default function Home() {
   const [financialMonth, setFinancialMonth] = useState("");
   const [financialCustomer, setFinancialCustomer] = useState("");
   const [financialStatus, setFinancialStatus] = useState("");
+  const [financeData, setFinanceData] = useState<FinanceData>({ summary: null, accountsReceivable: [], accountsPayable: [], cashMovements: [] });
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeError, setFinanceError] = useState("");
   const [walletQuery, setWalletQuery] = useState("");
   const [walletMonthFilter, setWalletMonthFilter] = useState("");
   const [walletStatusFilter, setWalletStatusFilter] = useState("");
@@ -363,6 +414,26 @@ export default function Home() {
     { code: string; quantity: number }[]
   >([]);
 
+  async function refreshFinance(month = financialMonth) {
+    setFinanceLoading(true);
+    setFinanceError("");
+    try {
+      const response = await fetch(`/api/finance?month=${encodeURIComponent(month || todayIso().slice(0, 7))}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar o financeiro.");
+      setFinanceData({
+        summary: data.summary || null,
+        accountsReceivable: data.accountsReceivable || [],
+        accountsPayable: data.accountsPayable || [],
+        cashMovements: data.cashMovements || [],
+      });
+    } catch (error) {
+      setFinanceError(error instanceof Error ? error.message : "Nao foi possivel carregar o financeiro.");
+    } finally {
+      setFinanceLoading(false);
+    }
+  }
+
   async function loadAll() {
     setLoading(true);
     try {
@@ -374,6 +445,7 @@ export default function Home() {
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
       setOrders(ord.orders || []);
+      await refreshFinance();
       let settings = config.settings;
       try {
         const localSettings = JSON.parse(localStorage.getItem("pino-settings") || "null");
@@ -389,7 +461,7 @@ export default function Home() {
       } catch {}
       if (settings) {
         setCompanyName(settings.companyName);
-        setResponsible(settings.responsible || "Rogério Mendes");
+        setResponsible(settings.responsible || "Rogerio Mendes");
         setCompanyPhone(settings.companyPhone);
         setOrderFooter(settings.orderFooter);
       }
@@ -405,6 +477,9 @@ export default function Home() {
       if (data.user) loadAll(); else setLoading(false);
     }).catch(() => { setAuth((value) => ({ ...value, loading: false })); setLoading(false); });
   }, []);
+  useEffect(() => {
+    if (auth.user) refreshFinance(financialMonth);
+  }, [financialMonth, auth.user]);
   async function submitAuth(event: any) {
     event.preventDefault(); setAuthError("");
     const form = new FormData(event.currentTarget);
@@ -561,23 +636,41 @@ export default function Home() {
   const reportMonths = Array.from(
     new Set(orders.filter((o) => o.productionStatus !== "Cancelada").map((o) => monthInSaoPaulo(o.createdAt))),
   ).filter(Boolean).sort((a, b) => b.localeCompare(a));
-  const financialRows = orders
-    .filter((order) => order.productionStatus !== "Cancelada")
-    .map((order) => {
-      const balance = Math.max(0, order.total - order.received);
-      const dueDate = order.deliveryDate || order.createdAt;
+  const ordersById = useMemo(
+    () => new Map(orders.map((order) => [order.id, order])),
+    [orders],
+  );
+  const financialRows = financeData.accountsReceivable
+    .map((receivable) => {
+      const order = ordersById.get(receivable.serviceOrderId);
+      const customer = receivable.customerId
+        ? customers.find((item) => item.id === receivable.customerId)
+        : undefined;
+      const balance = receivable.balanceCents / 100;
       const status =
-        balance <= 0
+        receivable.status === "Pago"
           ? "Pago"
-          : dateTimestamp(dueDate) < dateTimestamp(todayIso())
+          : receivable.status === "Vencido" || dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso())
             ? "Atrasado"
             : "Em aberto";
-      return { order, balance, dueDate, status };
+      return {
+        receivable,
+        order,
+        orderNumber: order?.number || `CR-${String(receivable.id).padStart(5, "0")}`,
+        customerName: order?.customerName || customer?.name || "Cliente nao identificado",
+        paymentMethod: order?.paymentMethod || "Nao informado",
+        total: receivable.originalAmountCents / 100,
+        received: receivable.receivedAmountCents / 100,
+        balance,
+        dueDate: receivable.dueDate,
+        issuedAt: receivable.issuedAt,
+        status,
+      };
     })
-    .filter(({ order, status }) => (
-      (!financialMonth || monthInSaoPaulo(order.createdAt) === financialMonth) &&
-      (!financialCustomer || order.customerName.toLowerCase().includes(financialCustomer.toLowerCase())) &&
-      (!financialStatus || status === financialStatus)
+    .filter((row) => (
+      (!financialMonth || monthInSaoPaulo(row.issuedAt) === financialMonth || row.issuedAt.slice(0, 7) === financialMonth) &&
+      (!financialCustomer || row.customerName.toLowerCase().includes(financialCustomer.toLowerCase())) &&
+      (!financialStatus || row.status === financialStatus)
     ))
     .sort((a, b) => {
       const statusWeight = { Atrasado: 0, "Em aberto": 1, Pago: 2 } as Record<string, number>;
@@ -585,12 +678,12 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       const dateDifference = dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
       if (dateDifference !== 0) return dateDifference;
-      return b.order.number.localeCompare(a.order.number, "pt-BR", { numeric: true });
+      return b.orderNumber.localeCompare(a.orderNumber, "pt-BR", { numeric: true });
     });
   const financialTotals = financialRows.reduce(
     (summary, row) => ({
-      forecast: summary.forecast + row.order.total,
-      received: summary.received + row.order.received,
+      forecast: summary.forecast + row.total,
+      received: summary.received + row.received,
       pending: summary.pending + row.balance,
       overdue: summary.overdue + (row.status === "Atrasado" ? row.balance : 0),
     }),
@@ -598,6 +691,11 @@ export default function Home() {
   );
   const nextReceivables = financialRows
     .filter((row) => row.balance > 0)
+    .slice()
+    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
+    .slice(0, 5);
+  const nextPayables = financeData.accountsPayable
+    .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
     .slice()
     .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
     .slice(0, 5);
@@ -1026,18 +1124,45 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function settleBoleto(order: Order) {
-    if (!window.confirm(`Confirmar o recebimento de ${money(order.total)} referente ao boleto da ${order.number}?`)) return;
-    let history: { amount: number; method: string; date: string }[] = [];
+    const receivable = financeData.accountsReceivable.find((item) => item.serviceOrderId === order.id);
+    const balanceCents = receivable?.balanceCents ?? Math.max(0, Math.round((order.total - order.received) * 100));
+    if (balanceCents <= 0) return flash("Este boleto ja esta quitado.");
+    if (!window.confirm(`Confirmar o recebimento de ${money(balanceCents / 100)} referente ao boleto da ${order.number}?`)) return;
+    setSaving(true);
     try {
-      const value = JSON.parse(order.commercialStatus);
-      if (Array.isArray(value)) history = value;
-    } catch {}
-    history.push({ amount: order.total - order.received, method: "Boleto", date: todayIso() });
-    await updateOrder(order.id, {
-      received: order.total,
-      commercialStatus: JSON.stringify(history),
-    });
-    flash("Pagamento do boleto confirmado.");
+      if (receivable) {
+        const response = await fetch("/api/finance", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            entity: "accountsReceivable",
+            id: receivable.id,
+            amountCents: balanceCents,
+            paymentMethod: "Boleto",
+            receiptDate: todayIso(),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Nao foi possivel confirmar o boleto.");
+      } else {
+        let history: { amount: number; method: string; date: string }[] = [];
+        try {
+          const value = JSON.parse(order.commercialStatus);
+          if (Array.isArray(value)) history = value;
+        } catch {}
+        history.push({ amount: order.total - order.received, method: "Boleto", date: todayIso() });
+        await updateOrder(order.id, {
+          received: order.total,
+          commercialStatus: JSON.stringify(history),
+        });
+      }
+      await loadAll();
+      flash("Pagamento do boleto confirmado.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Nao foi possivel confirmar o boleto.", "error");
+    } finally {
+      setSaving(false);
+    }
   }
   async function settleWallet() {
     if (!walletPayment) return;
@@ -2477,6 +2602,8 @@ export default function Home() {
                     Limpar
                   </button>
                 </div>
+                {financeLoading && <div className="panel empty">Atualizando financeiro...</div>}
+                {financeError && <p className="modal-error">{financeError}</p>}
                 <section className="metrics report-metrics financial-metrics">
                   <Metric icon="R$" label="Previsto" value={money(financialTotals.forecast)} />
                   <Metric icon="OK" label="Recebido" value={money(financialTotals.received)} />
@@ -2511,31 +2638,31 @@ export default function Home() {
                               <td colSpan={8}>Nenhum recebivel encontrado.</td>
                             </tr>
                           )}
-                          {financialRows.map(({ order, balance, dueDate, status }) => (
+                          {financialRows.map((row) => (
                             <tr
-                              key={order.id}
-                              className="clickable-table-row"
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`Visualizar ${order.number}`}
-                              onClick={() => setOrderModal(order)}
+                              key={row.receivable.id}
+                              className={row.order ? "clickable-table-row" : ""}
+                              role={row.order ? "button" : undefined}
+                              tabIndex={row.order ? 0 : undefined}
+                              aria-label={row.order ? `Visualizar ${row.orderNumber}` : row.orderNumber}
+                              onClick={() => row.order && setOrderModal(row.order)}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
+                                if (row.order && (event.key === "Enter" || event.key === " ")) {
                                   event.preventDefault();
-                                  setOrderModal(order);
+                                  setOrderModal(row.order);
                                 }
                               }}
                             >
-                              <td><b>{order.number}</b></td>
-                              <td><b>{order.customerName}</b></td>
-                              <td>{brDate(order.createdAt)}</td>
-                              <td>{brDate(dueDate)}</td>
-                              <td>{order.paymentMethod}</td>
-                              <td>{money(order.total)}</td>
-                              <td>{money(balance)}</td>
+                              <td><b>{row.orderNumber}</b></td>
+                              <td><b>{row.customerName}</b></td>
+                              <td>{brDate(row.issuedAt)}</td>
+                              <td>{brDate(row.dueDate)}</td>
+                              <td>{row.paymentMethod}</td>
+                              <td>{money(row.total)}</td>
+                              <td>{money(row.balance)}</td>
                               <td>
-                                <span className={`status ${status === "Pago" ? "green" : status === "Atrasado" ? "red" : "amber"}`}>
-                                  {status}
+                                <span className={`status ${row.status === "Pago" ? "green" : row.status === "Atrasado" ? "red" : "amber"}`}>
+                                  {row.status}
                                 </span>
                               </td>
                             </tr>
@@ -2554,27 +2681,52 @@ export default function Home() {
                       <div className="financial-next-list">
                         {!nextReceivables.length ? (
                           <p className="finance-history-empty">Nao ha valores em aberto no filtro atual.</p>
-                        ) : nextReceivables.map(({ order, balance, dueDate, status }) => (
-                          <div className="financial-next-row" key={order.id}>
+                        ) : nextReceivables.map((row) => (
+                          <div className="financial-next-row" key={row.receivable.id}>
                             <span>
-                              <b>{order.customerName}</b>
-                              <small>{order.number} - {brDate(dueDate)}</small>
+                              <b>{row.customerName}</b>
+                              <small>{row.orderNumber} - {brDate(row.dueDate)}</small>
                             </span>
-                            <strong>{money(balance)}</strong>
-                            <span className={`status ${status === "Atrasado" ? "red" : "amber"}`}>{status}</span>
-                            {order.paymentMethod === "Boleto" ? (
-                              <button className="boleto-pay" onClick={() => settleBoleto(order)}>
+                            <strong>{money(row.balance)}</strong>
+                            <span className={`status ${row.status === "Atrasado" ? "red" : "amber"}`}>{row.status}</span>
+                            {row.order?.paymentMethod === "Boleto" ? (
+                              <button className="boleto-pay" onClick={() => settleBoleto(row.order!)} disabled={saving}>
                                 Confirmar boleto
                               </button>
-                            ) : order.paymentMethod === "Carteira" ? (
+                            ) : row.order?.paymentMethod === "Carteira" ? (
                               <button className="outline-button" onClick={() => go("wallet")}>
                                 Abrir carteira
                               </button>
-                            ) : (
-                              <button className="outline-button" onClick={() => setOrderModal(order)}>
+                            ) : row.order ? (
+                              <button className="outline-button" onClick={() => setOrderModal(row.order!)}>
                                 Abrir OS
                               </button>
+                            ) : (
+                              <span className="status amber">Sem OS vinculada</span>
                             )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="panel financial-next-card">
+                      <div className="panel-title">
+                        <div>
+                          <h2>Contas a pagar</h2>
+                        </div>
+                      </div>
+                      <div className="financial-next-list">
+                        {!nextPayables.length ? (
+                          <p className="finance-history-empty">Nao ha contas a pagar em aberto.</p>
+                        ) : nextPayables.map((payable) => (
+                          <div className="financial-next-row" key={payable.id}>
+                            <span>
+                              <b>{payable.supplier}</b>
+                              <small>{payable.description} - {brDate(payable.dueDate)}</small>
+                            </span>
+                            <strong>{money(payable.amountCents / 100)}</strong>
+                            <span className={`status ${payable.dueDate < todayIso() ? "red" : "amber"}`}>
+                              {payable.dueDate < todayIso() ? "Atrasado" : payable.status}
+                            </span>
                           </div>
                         ))}
                       </div>
