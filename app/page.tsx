@@ -158,6 +158,11 @@ const dateTimestamp = (date: string) => {
   const timestamp = new Date(normalized).getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
 };
+const compareOrdersDesc = (a: Order, b: Order) =>
+  b.number.localeCompare(a.number, "pt-BR", { numeric: true }) ||
+  dateTimestamp(b.createdAt) - dateTimestamp(a.createdAt) ||
+  b.id - a.id;
+const sortOrdersDesc = (list: Order[]) => list.slice().sort(compareOrdersDesc);
 const paymentObservationFor = (order: Order) => {
   if (order.paymentMethod !== "Carteira") return "";
   let registeredPayments: { amount: number; method: string; date: string }[] = [];
@@ -444,7 +449,7 @@ export default function Home() {
       ]);
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
-      setOrders(ord.orders || []);
+      setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
       let settings = config.settings;
       try {
@@ -589,15 +594,17 @@ export default function Home() {
         pending: Math.max(0, summary.sales - summary.received),
       }));
   }, [orders, dashboardMonth]);
-  const filteredOrders = orders.filter(
-    (o) =>
-      (!orderMonthFilter || monthInSaoPaulo(o.createdAt) === orderMonthFilter) &&
-      (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
-      (paymentMethodFilter === "Todos" || o.paymentMethod === paymentMethodFilter) &&
-      `${o.number} ${o.customerName} ${o.productCode}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
+  const filteredOrders = orders
+    .filter(
+      (o) =>
+        (!orderMonthFilter || monthInSaoPaulo(o.createdAt) === orderMonthFilter) &&
+        (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
+        (paymentMethodFilter === "Todos" || o.paymentMethod === paymentMethodFilter) &&
+        `${o.number} ${o.customerName} ${o.productCode}`
+          .toLowerCase()
+          .includes(query.toLowerCase()),
+    )
+    .sort(compareOrdersDesc);
   const ordersPerPage = 10;
   const orderPageCount = Math.max(1, Math.ceil(filteredOrders.length / ordersPerPage));
   const paginatedOrders = filteredOrders.slice(
@@ -1045,7 +1052,13 @@ export default function Home() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
-      setOrders((v) => editingOrder ? v.map((order) => order.id === j.order.id ? j.order : order) : [j.order, ...v]);
+      setOrders((currentOrders) =>
+        sortOrdersDesc(
+          editingOrder
+            ? currentOrders.map((order) => order.id === j.order.id ? j.order : order)
+            : [j.order, ...currentOrders],
+        ),
+      );
       setReceived(0);
       flash(editingOrder ? `${j.order.number} atualizada com sucesso.` : `${j.order.number} criada com sucesso.`);
       setEditingOrder(null);
@@ -1071,7 +1084,9 @@ export default function Home() {
       flash(j.error);
       return false;
     }
-    setOrders((v) => v.map((o) => (o.id === id ? j.order : o)));
+    setOrders((currentOrders) =>
+      sortOrdersDesc(currentOrders.map((order) => (order.id === id ? j.order : order))),
+    );
     setOrderModal(j.order);
     flash("OS atualizada.");
     return true;
@@ -1204,7 +1219,9 @@ export default function Home() {
         });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error);
-        setOrders((v) => v.map((o) => (o.id === order.id ? j.order : o)));
+        setOrders((currentOrders) =>
+          sortOrdersDesc(currentOrders.map((item) => (item.id === order.id ? j.order : item))),
+        );
         remaining -= portion;
       }
       setWalletPayment(null);
@@ -1980,14 +1997,7 @@ export default function Home() {
                       <button onClick={() => go("orders")}>Ver todas</button>
                     </div>
                     <OrderList
-                      orders={orders
-                        .slice()
-                        .sort(
-                          (a, b) =>
-                            dateTimestamp(b.createdAt) -
-                            dateTimestamp(a.createdAt),
-                        )
-                        .slice(0, 6)}
+                      orders={sortOrdersDesc(orders).slice(0, 6)}
                       onOpen={setOrderModal}
                     />
                   </div>
@@ -2811,7 +2821,7 @@ export default function Home() {
                                       <span>Data de emissão</span>
                                       <span>Valor</span>
                                     </div>
-                                    {item.orders.map((o) => (
+                                    {sortOrdersDesc(item.orders).map((o) => (
                                       <div
                                         className="wallet-order-row"
                                         key={o.id}
