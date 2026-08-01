@@ -2678,7 +2678,7 @@ export default function Home() {
                 {financeError && <p className="modal-error">{financeError}</p>}
                 <section className="metrics report-metrics financial-metrics">
                   <Metric icon="R$" label="Previsto" value={money(financialTotals.forecast)} />
-                  <Metric icon="OK" label="Recebido" value={money(financialTotals.received)} />
+                  <Metric icon="✓" label="Recebido" value={money(financialTotals.received)} />
                   <Metric icon="!" label="Pendente" value={money(financialTotals.pending)} alert={financialTotals.pending > 0} tone="red" />
                   <Metric icon="!!" label="Atrasado" value={money(financialTotals.overdue)} alert={financialTotals.overdue > 0} tone="red" />
                 </section>
