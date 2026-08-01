@@ -588,6 +588,9 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .operational-filters-three{
   grid-template-columns:minmax(300px,2fr) minmax(180px,1fr) minmax(180px,1fr) 110px;
 }
+.operational-filters-wallet{
+  grid-template-columns:minmax(320px,2fr) minmax(180px,1fr) 110px;
+}
 .operational-filters .field{
   display:block;
   width:100%;
@@ -626,11 +629,15 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .operational-filters-three{
     grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) 110px;
   }
+  .operational-filters-wallet{
+    grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 110px;
+  }
 }
 @media(max-width:760px){
   .operational-filters,
   .operational-filters-orders,
-  .operational-filters-three{
+  .operational-filters-three,
+  .operational-filters-wallet{
     grid-template-columns:1fr;
     gap:12px;
   }

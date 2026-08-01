@@ -415,7 +415,6 @@ export default function Home() {
   const [payableModal, setPayableModal] = useState(false);
   const [payableStatus, setPayableStatus] = useState("Pendente");
   const [walletQuery, setWalletQuery] = useState("");
-  const [walletMonthFilter, setWalletMonthFilter] = useState("");
   const [walletStatusFilter, setWalletStatusFilter] = useState("");
   const [dashboardMonth, setDashboardMonth] = useState(todayIso().slice(0, 7));
   const [orderModal, setOrderModal] = useState<Order | null>(null);
@@ -760,18 +759,16 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       return dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
     });
-  const walletMonths = useMemo(
+  const walletCustomers = useMemo(
     () =>
-      Object.entries(
+      Object.values(
         orders
           .filter(
             (o) =>
               o.paymentMethod === "Carteira",
           )
           .reduce(
-            (months, o) => {
-              const month = o.walletMonth || monthInSaoPaulo(o.createdAt);
-              const customers = months[month] || (months[month] = {});
+            (customers, o) => {
               const key = o.customerName;
               const current = customers[key] || {
                 customer: key,
@@ -783,37 +780,26 @@ export default function Home() {
               current.total += o.total;
               current.received += o.received;
               customers[key] = current;
-              return months;
+              return customers;
             },
-            {} as Record<
-              string,
-              Record<
-                string,
-                {
-                  customer: string;
-                  orders: Order[];
-                  total: number;
-                  received: number;
-                }
-              >
-            >,
+            {} as Record<string, {
+              customer: string;
+              orders: Order[];
+              total: number;
+              received: number;
+            }>,
           ),
-      ).sort(([a], [b]) => b.localeCompare(a)),
+      ).sort((a, b) => a.customer.localeCompare(b.customer, "pt-BR")),
     [orders],
   );
-  const walletRows = walletMonths
-    .flatMap(([month, customerMap]) =>
-      Object.values(customerMap).map((item) => ({ month, ...item })),
-    )
-    .filter((item) => {
-      const balance = item.total - item.received;
-      const status = balance > 0 ? "Em aberto" : "Pago";
-      return (
-        (!walletMonthFilter || item.month === walletMonthFilter) &&
-        (!walletStatusFilter || status === walletStatusFilter) &&
-        item.customer.toLowerCase().includes(walletQuery.toLowerCase())
-      );
-    });
+  const walletRows = walletCustomers.filter((item) => {
+    const balance = item.total - item.received;
+    const status = balance > 0 ? "Em aberto" : "Pago";
+    return (
+      (!walletStatusFilter || status === walletStatusFilter) &&
+      item.customer.toLowerCase().includes(walletQuery.toLowerCase())
+    );
+  });
   const walletTotals = walletRows.reduce(
     (summary, item) => ({
       total: summary.total + item.total,
@@ -1823,13 +1809,17 @@ export default function Home() {
       "_blank",
     );
   }
-  async function createWalletPdf(orders: Order[], customerName: string, month: string) {
+  async function createWalletPdf(orders: Order[], customerName: string, month = "geral") {
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
     const total = orders.reduce((sum, order) => sum + order.total, 0);
     const logo = await loadImageData("/logo-pdf.png");
     const [year, monthNumber] = month.split("-");
-    const periodMonth = new Date(+year, +monthNumber - 1, 1).toLocaleDateString("pt-BR", { month: "long" });
-    const period = `${periodMonth.charAt(0).toUpperCase()}${periodMonth.slice(1)}/${year}`;
+    const period = year && monthNumber
+      ? (() => {
+          const periodMonth = new Date(+year, +monthNumber - 1, 1).toLocaleDateString("pt-BR", { month: "long" });
+          return `${periodMonth.charAt(0).toUpperCase()}${periodMonth.slice(1)}/${year}`;
+        })()
+      : "Geral";
     const history = orders.flatMap((order) => {
       let payments: { amount: number; method: string; date: string }[] = [];
       try {
@@ -1934,11 +1924,11 @@ export default function Home() {
     pdf.text(orderFooter, 105, 288, { align: "center" });
     return pdf;
   }
-  async function downloadWalletPdf(orders: Order[], customerName: string, month: string) {
+  async function downloadWalletPdf(orders: Order[], customerName: string, month = "geral") {
     const pdf = await createWalletPdf(orders, customerName, month);
     pdf.save(`Carteira-${customerName.replace(/[^a-z0-9]+/gi, "-")}-${month}.pdf`);
   }
-  async function shareWallet(orders: Order[], customerName: string, month: string) {
+  async function shareWallet(orders: Order[], customerName: string, month = "geral") {
     let currentCustomers = customers;
     try {
       const catalog = await fetch("/api/catalog", { cache: "no-store" }).then((response) => response.json());
@@ -2894,24 +2884,13 @@ export default function Home() {
             )}
             {screen === "wallet" && (
               <div className="page">
-                <Heading eyebrow="FINANCEIRO" title="Carteira" subtitle="Acompanhe recebimentos agrupados por cliente." />
-                <div className="filters operational-filters operational-filters-three">
+                <Heading eyebrow="FINANCEIRO" title="Carteira" subtitle="Acompanhe recebimentos por empresa e situação da carteira." />
+                <div className="filters operational-filters operational-filters-wallet">
                   <Field label="Buscar cliente">
                     <input
                       value={walletQuery}
                       onChange={(event) => setWalletQuery(event.target.value)}
                     />
-                  </Field>
-                  <Field label="Mês">
-                    <select
-                      value={walletMonthFilter}
-                      onChange={(event) => setWalletMonthFilter(event.target.value)}
-                    >
-                      <option value="">Todos</option>
-                      {walletMonths.map(([month]) => (
-                        <option value={month} key={month}>{monthLabel(month)}</option>
-                      ))}
-                    </select>
                   </Field>
                   <Field label="Status">
                     <select
@@ -2928,7 +2907,6 @@ export default function Home() {
                     className="outline-button filter-clear"
                     onClick={() => {
                       setWalletQuery("");
-                      setWalletMonthFilter("");
                       setWalletStatusFilter("");
                     }}
                   >
@@ -2945,24 +2923,8 @@ export default function Home() {
                     Nenhum registro encontrado na Carteira.
                   </div>
                 ) : (
-                  <div className="month-stack">
-                    {walletMonths.map(([month, customerMap]) => {
-                      const visibleCustomers = walletRows.filter((item) => item.month === month);
-                      if (!visibleCustomers.length) return null;
-                      const [year, monthNumber] = month.split("-");
-                      const monthName = new Date(
-                        +year,
-                        +monthNumber - 1,
-                        1,
-                      ).toLocaleDateString("pt-BR", {
-                        month: "long",
-                      });
-                      const label = `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)}/${year}`;
-                      return (
-                        <section className="month-frame" key={month}>
-                          <h2>{label}</h2>
-                          <div className="wallet-grid">
-                            {visibleCustomers.map((item) => {
+                  <div className="wallet-grid">
+                            {walletRows.map((item) => {
                               const balance = item.total - item.received;
                               const history = item.orders.flatMap((o) => {
                                 let laterPayments: { amount: number; method: string; date: string }[] = [];
@@ -2989,6 +2951,7 @@ export default function Home() {
                                 >
                                   <div className="wallet-head">
                                     <div>
+                                      <span>Empresa</span>
                                       <h2>{item.customer}</h2>
                                     </div>
                                     <span
@@ -3068,13 +3031,13 @@ export default function Home() {
                                     <div className="wallet-card-actions">
                                       <button
                                         className="outline-button wallet-pay"
-                                        onClick={() => downloadWalletPdf(item.orders, item.customer, item.month)}
+                                        onClick={() => downloadWalletPdf(item.orders, item.customer)}
                                       >
                                         Baixar PDF
                                       </button>
                                       <button
                                         className="whatsapp-button wallet-pay"
-                                        onClick={() => shareWallet(item.orders, item.customer, item.month)}
+                                        onClick={() => shareWallet(item.orders, item.customer)}
                                       >
                                         Enviar ao cliente
                                       </button>
@@ -3083,10 +3046,6 @@ export default function Home() {
                                 </section>
                               );
                             })}
-                          </div>
-                        </section>
-                      );
-                    })}
                   </div>
                 )}
               </div>
