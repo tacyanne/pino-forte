@@ -142,7 +142,7 @@ export async function POST(request: Request) {
       : "Fila de produção";
     if (!String(body.customerName || "").trim() || !normalizedItems.length || normalizedItems.some((item) => !item.code)) {
       return Response.json(
-        { error: "Selecione o cliente e pelo menos um pino." },
+        { error: "Selecione o cliente e pelo menos uma peça." },
         { status: 400 },
       );
     }

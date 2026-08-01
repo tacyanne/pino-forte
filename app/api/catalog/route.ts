@@ -1,25 +1,54 @@
 import { asc, eq, like } from "drizzle-orm";
-import { getDb } from "../../../db";
+import { getDb, getSql } from "../../../db";
 import { customers, products } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
 
 const initialProducts = [
-  ["RN 180", "RN-180", "Pino de balança RN 180", "180 mm", 49],
-  ["RN 190", "RN-190", "Pino de balança RN 190", "190 mm", 55],
-  ["RN 205", "RN-205", "Pino de balança RN 205", "205 mm", 56],
-  ["RN 225", "RN-225", "Pino de balança RN 225", "225 mm", 57],
-  ["RO 215", "RO-215", "Pino de balança RO 215", "215 mm", 63],
-  ["RO 235", "RO-235", "Pino de balança RO 235", "235 mm", 68],
+  ["RN 180", "RN-180", "Pino de balança RN 180", "180 mm", 49, "Pino"],
+  ["RN 190", "RN-190", "Pino de balança RN 190", "190 mm", 55, "Pino"],
+  ["RN 205", "RN-205", "Pino de balança RN 205", "205 mm", 56, "Pino"],
+  ["RN 225", "RN-225", "Pino de balança RN 225", "225 mm", 57, "Pino"],
+  ["RO 215", "RO-215", "Pino de balança RO 215", "215 mm", 63, "Pino"],
+  ["RO 235", "RO-235", "Pino de balança RO 235", "235 mm", 68, "Pino"],
 ] as const;
+const normalizePieceType = (value?: string) =>
+  value?.trim().slice(0, 80) || "";
+
+async function selectProducts() {
+  const db = await getDb();
+  try {
+    return await db.select().from(products).orderBy(asc(products.code));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!/piece_type/i.test(message)) throw error;
+    const sql = getSql();
+    return sql<typeof products.$inferSelect[]>`
+      SELECT
+        id,
+        code,
+        sku,
+        'Pino' AS "pieceType",
+        name,
+        measure,
+        price,
+        price_cents AS "priceCents",
+        active,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM products
+      ORDER BY code
+    `;
+  }
+}
 
 export async function GET(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const db = await getDb();
-    let productRows = await db.select().from(products).orderBy(asc(products.code));
+    let productRows = await selectProducts();
     if (!productRows.length) {
-      await db.insert(products).values(initialProducts.map(([code, sku, name, measure, price]) => ({ code, sku, name, measure, price })));
-      productRows = await db.select().from(products).orderBy(asc(products.code));
+      await db.insert(products).values(initialProducts.map(([code, sku, name, measure, price, pieceType]) => ({ code, sku, name, measure, price, pieceType })));
+      productRows = await selectProducts();
     }
     const customerRows = await db.select().from(customers).orderBy(asc(customers.name));
     return Response.json(
@@ -34,15 +63,16 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number };
+    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string };
     const db = await getDb();
     if (body.type === "product") {
       const code = body.code?.trim().toUpperCase() || "";
       const name = body.name?.trim() || "";
+      const pieceType = normalizePieceType(body.pieceType);
       const measure = body.measure?.trim() || "";
       const price = Math.max(0, Number(body.price || 0));
-      if (!code || !name || !measure || !price) return Response.json({ error: "Código, descrição, medida e preço são obrigatórios." }, { status: 400 });
-      const [product] = await db.insert(products).values({ code, sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"), name, measure, price }).returning();
+      if (!code || !pieceType || !name || !measure || !price) return Response.json({ error: "Código, tipo de peça, descrição, aplicação e valor são obrigatórios." }, { status: 400 });
+      const [product] = await db.insert(products).values({ code, sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"), pieceType, name, measure, price }).returning();
       return Response.json({ product }, { status: 201 });
     }
     const name = body.name?.trim() || "";
@@ -64,7 +94,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string };
     const id = Number(body.id);
     if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
     const db = await getDb();
@@ -73,6 +103,11 @@ export async function PATCH(request: Request) {
       if (body.active !== undefined) changes.active = body.active;
       if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
       if (body.code) changes.code = body.code.trim().toUpperCase();
+      if (body.pieceType !== undefined) {
+        const pieceType = normalizePieceType(body.pieceType);
+        if (!pieceType) return Response.json({ error: "Selecione o tipo de peça." }, { status: 400 });
+        changes.pieceType = pieceType;
+      }
       if (body.name) changes.name = body.name.trim();
       if (body.measure) changes.measure = body.measure.trim();
       if (body.sku !== undefined) changes.sku = body.sku.trim().toUpperCase();

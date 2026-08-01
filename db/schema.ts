@@ -34,6 +34,7 @@ export const products = pgTable("products", {
   code: text("code").notNull().unique(),
   sku: text("sku").notNull().unique(),
   name: text("name").notNull(),
+  pieceType: text("piece_type").notNull().default("Pino"),
   measure: text("measure").notNull(),
   price: doublePrecision("price").notNull(),
   priceCents: integer("price_cents").notNull().default(0),

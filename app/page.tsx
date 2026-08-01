@@ -43,6 +43,7 @@ type Product = {
   id: number;
   code: string;
   sku: string;
+  pieceType: string;
   name: string;
   measure: string;
   price: number;
@@ -114,6 +115,14 @@ type CashMovement = {
   description: string;
   status: string;
 };
+type AuthUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+  createdAt?: string;
+};
 type FinanceData = {
   summary: FinanceSummary | null;
   accountsReceivable: AccountReceivable[];
@@ -128,6 +137,7 @@ const catalogProductImages: Record<string, string> = {
   "RO 215": "/img-004.png",
   "RO 235": "/img-005.png",
 };
+const basePieceTypes = ["Pino", "Bucha"];
 
 const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -325,6 +335,11 @@ const orderItemSummary = (order: Order) =>
   getOrderItems(order)
     .map((item) => `${item.code} — ${item.quantity} un.`)
     .join(" | ");
+const pieceLabel = (product?: Product, fallbackCode = "") => {
+  const type = product?.pieceType || "Peça";
+  const description = product?.name || fallbackCode;
+  return [type, description].filter(Boolean).join(" · ");
+};
 const normalizeCustomerName = (name: string) =>
   name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toUpperCase();
 const userInitials = (name: string) => {
@@ -345,7 +360,7 @@ const findBestCustomer = (list: Customer[], name: string) => {
 };
 
 export default function Home() {
-  const [auth, setAuth] = useState<{ loading: boolean; setupRequired: boolean; user: any; users: any[] }>({ loading: true, setupRequired: false, user: null, users: [] });
+  const [auth, setAuth] = useState<{ loading: boolean; setupRequired: boolean; user: AuthUser | null; users: AuthUser[] }>({ loading: true, setupRequired: false, user: null, users: [] });
   const [authError, setAuthError] = useState("");
   const [authSaving, setAuthSaving] = useState(false);
   const [showAuthPassword, setShowAuthPassword] = useState(false);
@@ -353,11 +368,13 @@ export default function Home() {
   const [userSaving, setUserSaving] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [menu, setMenu] = useState(false);
+  const [registrationsOpen, setRegistrationsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
+  const [productTypeFilter, setProductTypeFilter] = useState("Todos");
   const [orderMonthFilter, setOrderMonthFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("Todos");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState("Todos");
@@ -492,9 +509,13 @@ export default function Home() {
     }).catch(() => { setAuth((value) => ({ ...value, loading: false })); setLoading(false); });
   }, []);
   useEffect(() => {
-    if (auth.user) refreshFinance(financialMonth);
+    if (!auth.user) return;
+    const id = window.setTimeout(() => {
+      void refreshFinance(financialMonth);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [financialMonth, auth.user]);
-  async function submitAuth(event: any) {
+  async function submitAuth(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setAuthError("");
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name") || "").trim();
@@ -521,7 +542,7 @@ export default function Home() {
 
   async function logout() { await fetch("/api/auth", { method: "DELETE" }); location.reload(); }
 
-  async function createUser(event: any) {
+  async function createUser(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setAuthError("");
     const form = new FormData(event.currentTarget);
     setUserSaving(true);
@@ -620,14 +641,24 @@ export default function Home() {
     (orderPage - 1) * ordersPerPage,
     orderPage * ordersPerPage,
   );
-  useEffect(() => setOrderPage(1), [query, orderMonthFilter, paymentFilter, paymentMethodFilter]);
+  useEffect(() => {
+    const id = window.setTimeout(() => setOrderPage(1), 0);
+    return () => window.clearTimeout(id);
+  }, [query, orderMonthFilter, paymentFilter, paymentMethodFilter]);
   const filteredCustomers = customers.filter((c) =>
     `${c.name} ${c.document} ${c.whatsapp}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
+  const pieceTypeOptions = Array.from(
+    new Set([
+      ...basePieceTypes,
+      ...products.map((product) => product.pieceType).filter(Boolean),
+    ]),
+  );
   const filteredProducts = products.filter((product) =>
-    `${product.code} ${product.name} ${product.measure}`
+    (productTypeFilter === "Todos" || (product.pieceType || "Pino") === productTypeFilter) &&
+    `${product.code} ${product.pieceType || "Pino"} ${product.name} ${product.measure}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
@@ -977,10 +1008,11 @@ export default function Home() {
     try {
       if (
         !String(f.get("code") || "").trim() ||
+        !String(f.get("pieceType") || "").trim() ||
         !String(f.get("name") || "").trim() ||
         !String(f.get("measure") || "").trim()
       )
-        throw new Error("Preencha código, descrição e medida do pino.");
+        throw new Error("Preencha código, tipo de peça, descrição e aplicação.");
       const r = await fetch("/api/catalog", {
         method: editingProduct ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
@@ -988,6 +1020,7 @@ export default function Home() {
           type: "product",
           id: editingProduct?.id,
           code: f.get("code"),
+          pieceType: f.get("pieceType"),
           name: f.get("name"),
           measure: f.get("measure"),
           price: parseCurrency(String(f.get("price"))),
@@ -1003,7 +1036,7 @@ export default function Home() {
       );
       setProductModal(false);
       setEditingProduct(null);
-      flash(editingProduct ? "Pino atualizado com sucesso." : "Pino cadastrado com sucesso.");
+      flash(editingProduct ? "Peça atualizada com sucesso." : "Peça cadastrada com sucesso.");
     } catch (err) {
       flash(err instanceof Error ? err.message : "Erro ao cadastrar.");
     } finally {
@@ -1016,8 +1049,8 @@ export default function Home() {
     const f = new FormData(e.currentTarget);
     try {
       if (!selectedCustomer) throw new Error("Selecione um cliente.");
-      if (!orderItems.length) throw new Error("Adicione pelo menos um pino.");
-      if (orderItems.some((item) => !item.code)) throw new Error("Selecione todos os pinos da OS.");
+      if (!orderItems.length) throw new Error("Adicione pelo menos uma peça.");
+      if (orderItems.some((item) => !item.code)) throw new Error("Selecione todas as peças da OS.");
       const items = orderItems.map((item) => ({
         ...item,
         unitPrice: products.find((p) => p.code === item.code)?.price || 0,
@@ -1387,7 +1420,7 @@ export default function Home() {
       .filter((product) => product.active)
       .sort((a, b) => a.code.localeCompare(b.code, "pt-BR"));
     if (!activeProducts.length) {
-      flash("Nenhum pino ativo disponível para o catálogo.");
+      flash("Nenhuma peça ativa disponível para o catálogo.");
       return;
     }
     const distributor = audience === "distributor";
@@ -1579,7 +1612,7 @@ export default function Home() {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(8.5);
     pdf.text("CÓDIGO", 18, 86);
-    pdf.text("DESCRIÇÃO DO PRODUTO", 42, 86);
+    pdf.text("DESCRIÇÃO DA PEÇA", 42, 86);
     pdf.text("QTD.", 126.5, 86, { align: "center" });
     pdf.text("VALOR UNIT.", 148.5, 86, { align: "center" });
     pdf.text("VALOR TOTAL", 191, 86, { align: "right" });
@@ -1589,7 +1622,7 @@ export default function Home() {
     items.forEach((item) => {
       const p = products.find((x) => x.code === item.code);
       pdf.text(item.code, 18, y);
-      pdf.text(`${p?.name || "Pino de balança"} (COMUM) · ${p?.measure || ""}`, 42, y, { maxWidth: 72 });
+      pdf.text(`${pieceLabel(p, item.code)} · ${p?.measure || ""}`, 42, y, { maxWidth: 72 });
       pdf.text(String(item.quantity), 126.5, y, { align: "center" });
       pdf.text(money(item.unitPrice), 159, y, { align: "right" });
       pdf.text(money(item.unitPrice * item.quantity), 191, y, { align: "right" });
@@ -1694,7 +1727,7 @@ export default function Home() {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(7);
     pdf.text("CÓDIGO", 8, 60);
-    pdf.text("DESCRIÇÃO DO PRODUTO", 34, 60);
+    pdf.text("DESCRIÇÃO DA PEÇA", 34, 60);
     pdf.text("QTD.", 129, 60, { align: "center" });
     pdf.text("VALOR UNIT.", 155, 60, { align: "center" });
     pdf.text("VALOR TOTAL", 201, 60, { align: "right" });
@@ -1705,7 +1738,7 @@ export default function Home() {
     items.forEach((item) => {
       const product = products.find((value) => value.code === item.code);
       pdf.text(item.code, 8, y);
-      pdf.text(`${product?.name || "Pino de balança"} (COMUM) · ${product?.measure || ""}`, 34, y, { maxWidth: 82 });
+      pdf.text(`${pieceLabel(product, item.code)} · ${product?.measure || ""}`, 34, y, { maxWidth: 82 });
       pdf.text(String(item.quantity), 129, y, { align: "center" });
       pdf.text(money(item.unitPrice), 168, y, { align: "right" });
       pdf.text(money(item.unitPrice * item.quantity), 201, y, { align: "right" });
@@ -1906,7 +1939,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${p?.name || ""} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -1915,7 +1948,7 @@ export default function Home() {
       [
         "OS",
         "Cliente",
-        "Pino",
+        "Peça",
         "Quantidade",
         "Total",
         "Recebido",
@@ -1966,17 +1999,20 @@ export default function Home() {
     </main>
   );
 
-  const nav: [Screen, string, string][] = [
+  const primaryNav: [Screen, string, string][] = [
     ["dashboard", "⌂", "Início"],
-    ["orders", "▤", "OS"],
-    ["customers", "♙", "Clientes"],
-    ["products", "⬡", "Pinos"],
-    ["catalog", "▦", "Catálogo"],
-    ["financial", "$", "Financeiro"],
+    ["orders", "▤", "Ordens de Serviço"],
     ["wallet", "▣", "Carteira"],
+    ["financial", "$", "Financeiro"],
     ["reports", "▥", "Relatórios"],
-    ["settings", "⚙", "Configurações"],
   ];
+  const registrationNav: [Screen, string, string][] = [
+    ["customers", "♙", "Clientes"],
+    ["products", "⬡", "Peças"],
+    ["catalog", "▦", "Catálogo"],
+  ];
+  const isRegistrationScreen = registrationNav.some(([s]) => s === screen);
+  const showRegistrations = registrationsOpen || isRegistrationScreen;
   return (
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
@@ -1989,7 +2025,7 @@ export default function Home() {
           <img className="brand-logo" src="/logo-sistema.png" alt="Pino Forte — Fabricação de Peças para Suspensão" />
         </button>
         <nav>
-          {nav.map(([s, i, l]) => (
+          {primaryNav.map(([s, i, l]) => (
             <button
               key={s}
               className={`nav-item ${screen === s ? "active" : ""}`}
@@ -1999,6 +2035,30 @@ export default function Home() {
               {l}
             </button>
           ))}
+          <button
+            type="button"
+            className={`nav-item nav-group ${isRegistrationScreen ? "active" : ""}`}
+            aria-expanded={showRegistrations}
+            onClick={() => setRegistrationsOpen((value) => !value)}
+          >
+            <span>▧</span>
+            Cadastros
+            <b>{showRegistrations ? "⌃" : "⌄"}</b>
+          </button>
+          {showRegistrations && (
+            <div className="nav-submenu">
+              {registrationNav.map(([s, i, l]) => (
+                <button
+                  key={s}
+                  className={`nav-item nav-subitem ${screen === s ? "active" : ""}`}
+                  onClick={() => go(s)}
+                >
+                  <span>{i}</span>
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <div className="user-card">
@@ -2163,13 +2223,13 @@ export default function Home() {
                       </Field>
                     </div>
                   </Card>
-                  <Card n="2" title="Pinos do pedido">
+                  <Card n="2" title="Peças do pedido">
                     <div className="multi-items">
                       {orderItems.map((item, index) => {
                         const p = products.find((x) => x.code === item.code);
                         return (
                           <div className="item-row" key={index}>
-                            <Field label={`Pino ${index + 1} *`}>
+                            <Field label={`Peça ${index + 1} *`}>
                               <select
                                 required
                                 value={item.code}
@@ -2191,7 +2251,7 @@ export default function Home() {
                                   )
                                   .map((p) => (
                                     <option key={p.id} value={p.code}>
-                                      {p.name}
+                                      {pieceLabel(p)}
                                     </option>
                                   ))}
                               </select>
@@ -2244,7 +2304,7 @@ export default function Home() {
                                   ])
                                 }
                               >
-                                ＋ Pino
+                                ＋ Peça
                               </button>
                             )}
                             {orderItems.length > 1 && (
@@ -2252,7 +2312,7 @@ export default function Home() {
                                 type="button"
                                 className="remove-item"
                                 aria-label={`Excluir modelo ${index + 1}`}
-                                title="Excluir pino"
+                                title="Excluir peça"
                                 onClick={() =>
                                   setOrderItems((items) =>
                                     items.filter((_, i) => i !== index),
@@ -2535,31 +2595,44 @@ export default function Home() {
             {screen === "products" && (
               <div className="page">
                 <Heading
-                  eyebrow="CATÁLOGO"
-                  title="Pinos"
-                  subtitle="Mantenha os modelos disponíveis e seus valores."
+                  eyebrow="CADASTROS"
+                  title="Peças"
+                  subtitle="Mantenha as peças disponíveis e seus valores."
                   action={
                     <button
                       className="primary-button"
                       onClick={() => { setEditingProduct(null); setProductModal(true); }}
                     >
-                      ＋ Novo pino
+                      ＋ Nova peça
                     </button>
                   }
                 />
                 <Filters
                   query={query}
                   setQuery={setQuery}
-                  queryLabel="Buscar pino"
-                />
+                  queryLabel="Buscar peça"
+                >
+                  <label className="filter-field filter-type">
+                    <span>Tipo</span>
+                    <select value={productTypeFilter} onChange={(event) => setProductTypeFilter(event.target.value)}>
+                      <option>Todos</option>
+                      {pieceTypeOptions.map((type) => (
+                        <option key={type}>{type}</option>
+                      ))}
+                    </select>
+                  </label>
+                </Filters>
                 <div className="table-wrap standardized-table product-table">
                   <table>
                     <thead>
                       <tr>
                         <th>Código</th>
+                        <th>Tipo</th>
                         <th>Descrição</th>
-                        <th>Preço</th>
+                        <th>Aplicação</th>
+                        <th>Valor</th>
                         <th>Status</th>
+                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2569,7 +2642,7 @@ export default function Home() {
                           className="clickable-table-row"
                           role="button"
                           tabIndex={0}
-                          aria-label={`Visualizar pino ${p.code}`}
+                          aria-label={`Visualizar peça ${p.code}`}
                           onClick={() => setViewingProduct(p)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
@@ -2581,7 +2654,9 @@ export default function Home() {
                           <td>
                             <b>{p.code}</b>
                           </td>
+                          <td>{p.pieceType || "Pino"}</td>
                           <td>{p.name}</td>
+                          <td>{p.measure}</td>
                           <td>{money(p.price)}</td>
                           <td>
                             <span
@@ -2589,6 +2664,17 @@ export default function Home() {
                             >
                               {p.active ? "Ativo" : "Inativo"}
                             </span>
+                          </td>
+                          <td className="table-actions">
+                            <button
+                              className="link-button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setViewingProduct(p);
+                              }}
+                            >
+                              Visualizar
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -3205,7 +3291,7 @@ export default function Home() {
       )}
       {viewingProduct && (
         <Modal
-          title="Visualizar pino"
+          title="Visualizar peça"
           page
           pageLabel=""
           close={() => setViewingProduct(null)}
@@ -3214,9 +3300,10 @@ export default function Home() {
             <div className="record-view-grid">
               <div className="product-view-row">
                 <ReviewField label="Código" value={viewingProduct.code} />
+                <ReviewField label="Tipo" value={viewingProduct.pieceType || "Pino"} />
                 <ReviewField label="Descrição" value={viewingProduct.name} />
-                <ReviewField label="Medida" value={viewingProduct.measure} />
-                <ReviewField label="Preço" value={money(viewingProduct.price)} />
+                <ReviewField label="Aplicação" value={viewingProduct.measure} />
+                <ReviewField label="Valor" value={money(viewingProduct.price)} />
                 <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
               </div>
             </div>
@@ -3354,19 +3441,27 @@ export default function Home() {
         </Modal>
       )}
       {productModal && (
-        <Modal title={editingProduct ? "Editar pino" : "Cadastrar pino"} page pageLabel="" close={() => { setProductModal(false); setEditingProduct(null); }}>
+        <Modal title={editingProduct ? "Editar peça" : "Cadastrar peça"} page pageLabel="" close={() => { setProductModal(false); setEditingProduct(null); }}>
           <form className="customer-page-form" onSubmit={saveProduct} noValidate>
             <div className="form-grid product-single-row">
               <Field label="Código *">
                 <input name="code" required defaultValue={editingProduct?.code || ""} />
               </Field>
+              <Field label="Tipo de peça *">
+                <select name="pieceType" required defaultValue={editingProduct?.pieceType || ""}>
+                  <option value="">Selecione</option>
+                  {pieceTypeOptions.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Descrição *">
                 <input name="name" required defaultValue={editingProduct?.name || ""} />
               </Field>
-              <Field label="Medida *">
+              <Field label="Aplicação *">
                 <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
-              <Field label="Preço *">
+              <Field label="Valor *">
                 <input
                   name="price"
                   required
@@ -3548,7 +3643,7 @@ export default function Home() {
                 const unitPrice = item.unitPrice || selectedProduct?.price || 0;
                 return (
                   <div className="review-item-row" key={`${item.code}-${index}`}>
-                    <ReviewField label={`Pino ${index + 1}`} value={selectedProduct?.name || item.code} />
+                    <ReviewField label={`Peça ${index + 1}`} value={pieceLabel(selectedProduct, item.code)} />
                     <ReviewField label="Quantidade" value={String(item.quantity)} />
                     <ReviewField label="Valor unitário" value={money(unitPrice)} />
                     <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />

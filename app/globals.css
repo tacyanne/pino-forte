@@ -394,7 +394,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   }
 }
 
-/* Visualizações de Clientes e Pinos usam a mesma faixa de ações da OS. */
+/* Visualizações de Clientes e Peças usam a mesma faixa de ações da OS. */
 .record-view-footer.record-view-actions-row{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -416,6 +416,32 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
     gap:10px;
   }
 }
+
+.nav-group{position:relative}
+.nav-group b{margin-left:auto;font-size:13px;color:inherit}
+.nav-submenu{display:grid;gap:4px;margin:3px 0 8px 22px;padding-left:10px;border-left:1px solid #333}
+.nav-subitem{min-height:42px;padding-left:12px;font-size:13px}
+.nav-subitem span{font-size:15px}
+.product-single-row{grid-template-columns:minmax(115px,.7fr) minmax(150px,.9fr) minmax(240px,1.7fr) minmax(150px,1fr) minmax(140px,.8fr) minmax(120px,.7fr)!important}
+.product-view-row{grid-template-columns:minmax(115px,.7fr) minmax(150px,.9fr) minmax(240px,1.7fr) minmax(150px,1fr) minmax(140px,.8fr) minmax(120px,.7fr)}
+.product-table table{min-width:940px}
+.product-table .table-actions .link-button{width:96px;min-width:96px}
+@media(max-width:1100px){.product-single-row,.product-view-row{grid-template-columns:1fr 1fr!important}}
+@media(max-width:760px){
+  .nav-submenu{margin-left:16px}
+  .product-table table{min-width:0}
+  .product-table td:nth-child(1)::before{content:"Código"}
+  .product-table td:nth-child(2)::before{content:"Tipo"}
+  .product-table td:nth-child(3)::before{content:"Descrição"}
+  .product-table td:nth-child(4)::before{content:"Aplicação"}
+  .product-table td:nth-child(5)::before{content:"Valor"}
+  .product-table td:nth-child(6)::before{content:"Status"}
+  .product-table td:nth-child(7)::before{content:"Ações"}
+  .product-table td:nth-child(6) .status{justify-self:start}
+  .product-table .table-actions{grid-column:1/-1}
+  .product-table .table-actions .link-button{width:100%;min-width:0}
+}
+@media(max-width:560px){.product-single-row,.product-view-row{grid-template-columns:1fr!important}}
 .filters .filter-month{flex:0 0 190px;min-width:190px}
 .filters .filter-month input{width:100%;min-height:46px}
 .filters .filter-clear{flex:0 0 110px;width:110px;height:46px;min-height:46px;margin:0;align-self:flex-end}
