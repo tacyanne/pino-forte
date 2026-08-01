@@ -423,9 +423,9 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .nav-subitem{min-height:42px;padding-left:12px;font-size:13px}
 .nav-subitem span{font-size:15px}
 .product-single-row{grid-template-columns:minmax(115px,.7fr) minmax(150px,.9fr) minmax(240px,1.7fr) minmax(150px,1fr) minmax(140px,.8fr) minmax(120px,.7fr)!important}
-.product-view-row{grid-template-columns:minmax(115px,.7fr) minmax(150px,.9fr) minmax(240px,1.7fr) minmax(150px,1fr) minmax(140px,.8fr) minmax(120px,.7fr)}
-.product-table table{min-width:940px}
-.product-table .table-actions .link-button{width:96px;min-width:96px}
+.product-view-row{grid-template-columns:minmax(120px,.85fr) minmax(150px,1fr) minmax(120px,.85fr);align-items:start}
+.product-view-row .review-field:nth-child(3),.product-view-row .review-field:nth-child(4){grid-column:span 2}
+.product-table table{min-width:820px}
 @media(max-width:1100px){.product-single-row,.product-view-row{grid-template-columns:1fr 1fr!important}}
 @media(max-width:760px){
   .nav-submenu{margin-left:16px}
@@ -436,10 +436,8 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .product-table td:nth-child(4)::before{content:"Aplicação"}
   .product-table td:nth-child(5)::before{content:"Valor"}
   .product-table td:nth-child(6)::before{content:"Status"}
-  .product-table td:nth-child(7)::before{content:"Ações"}
   .product-table td:nth-child(6) .status{justify-self:start}
-  .product-table .table-actions{grid-column:1/-1}
-  .product-table .table-actions .link-button{width:100%;min-width:0}
+  .product-view-row .review-field:nth-child(3),.product-view-row .review-field:nth-child(4){grid-column:auto}
 }
 @media(max-width:560px){.product-single-row,.product-view-row{grid-template-columns:1fr!important}}
 .filters .filter-month{flex:0 0 190px;min-width:190px}

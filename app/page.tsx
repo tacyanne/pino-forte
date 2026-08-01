@@ -2640,7 +2640,6 @@ export default function Home() {
                         <th>Aplicação</th>
                         <th>Valor</th>
                         <th>Status</th>
-                        <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2672,17 +2671,6 @@ export default function Home() {
                             >
                               {p.active ? "Ativo" : "Inativo"}
                             </span>
-                          </td>
-                          <td className="table-actions">
-                            <button
-                              className="link-button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setViewingProduct(p);
-                              }}
-                            >
-                              Visualizar
-                            </button>
                           </td>
                         </tr>
                       ))}

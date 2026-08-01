@@ -34,6 +34,7 @@ test("piece registration has required type, listing column, and migration defaul
   assert.ok(page.includes('name="pieceType" required'));
   assert.ok(catalogApi.includes("Selecione o tipo de peça"));
   assert.ok(page.includes("<th>Tipo</th>"));
+  assert.equal(page.includes("<th>Ações</th>"), false, "Pieces should open by row click without a visual action button");
   assert.ok(page.includes("productTypeFilter"));
   assert.ok(schema.includes('pieceType: text("piece_type").notNull().default("Pino")'));
   assert.ok(migration.includes("ADD COLUMN IF NOT EXISTS piece_type"));
