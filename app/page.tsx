@@ -23,14 +23,10 @@ type Screen =
   | "reports"
   | "settings";
 type SettingsSection =
-  | "users"
   | "customers"
-  | "company"
   | "products"
-  | "piece-types"
-  | "order-status"
-  | "payment-status"
-  | "payment-methods";
+  | "company"
+  | "users";
 type Customer = {
   id: number;
   name: string;
@@ -2032,14 +2028,10 @@ export default function Home() {
     ["catalog", "▦", "Catálogo"],
   ];
   const settingsNav: [SettingsSection, string, string][] = [
-    ["users", "◉", "Usuários"],
     ["customers", "♙", "Clientes"],
-    ["company", "⌂", "Empresa"],
     ["products", "⬡", "Peças"],
-    ["piece-types", "▧", "Tipo de peça"],
-    ["order-status", "▤", "Status OS"],
-    ["payment-status", "$", "Status Pagamento"],
-    ["payment-methods", "▦", "Formas de pagamento"],
+    ["company", "⌂", "Empresa"],
+    ["users", "◉", "Usuários"],
   ];
   const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products";
   const showSettings = settingsOpen || isSettingsScreen;
@@ -3250,16 +3242,6 @@ export default function Home() {
                 {settingsSection === "users" && auth.user.role !== "admin" && (
                   <div className="panel settings-page-panel">
                     <p className="finance-history-empty">Acesso restrito ao administrador.</p>
-                  </div>
-                )}
-                {["piece-types", "order-status", "payment-status", "payment-methods"].includes(settingsSection) && (
-                  <div className="panel settings-page-panel settings-options-panel">
-                    {(settingsSection === "piece-types" ? basePieceTypes :
-                      settingsSection === "order-status" ? ["Fila de produção", "Em produção", "Pronta", "Entregue", "Cancelada"] :
-                      settingsSection === "payment-status" ? ["Aguardando pagamento", "Pagamento parcial", "Pago", "Cancelada"] :
-                      ["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"]).map((option) => (
-                      <span key={option}>{option}</span>
-                    ))}
                   </div>
                 )}
               </div>

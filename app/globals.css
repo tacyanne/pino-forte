@@ -694,9 +694,6 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .panel-title .payable-add-button{border:0;border-radius:10px;background:var(--orange);color:#fff;padding:0 16px;min-height:40px;font-size:12px;font-weight:850;box-shadow:0 10px 24px #ff5c0028}
 .panel-title .payable-add-button:hover{background:var(--orange-dark)}
 .settings-page-panel{max-width:900px}
-.settings-options-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:20px}
-.settings-options-panel span{display:flex;align-items:center;min-height:46px;border:1px solid var(--border);border-radius:10px;background:#fff;padding:0 14px;color:var(--ink);font-size:13px;font-weight:800}
-@media(max-width:760px){.settings-options-panel{grid-template-columns:1fr;padding:16px 14px}}
 .financial-next-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px}
 .financial-next-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;background:#f7f9f8;padding:12px}
 .financial-next-row>span:first-child{display:grid;gap:4px;min-width:0}

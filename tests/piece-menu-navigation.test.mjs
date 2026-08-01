@@ -25,10 +25,11 @@ test("sidebar keeps operational entries first and support records under Configur
   assert.ok(page.includes('["customers", "♙", "Clientes"]'));
   assert.ok(page.includes('["products", "⬡", "Peças"]'));
   assert.ok(page.includes('["company", "⌂", "Empresa"]'));
-  assert.ok(page.includes('["piece-types", "▧", "Tipo de peça"]'));
-  assert.ok(page.includes('["order-status", "▤", "Status OS"]'));
-  assert.ok(page.includes('["payment-status", "$", "Status Pagamento"]'));
-  assert.ok(page.includes('["payment-methods", "▦", "Formas de pagamento"]'));
+  assert.ok(page.includes('["users", "◉", "Usuários"]'));
+  assert.equal(page.includes('["piece-types",'), false);
+  assert.equal(page.includes('["order-status",'), false);
+  assert.equal(page.includes('["payment-status",'), false);
+  assert.equal(page.includes('["payment-methods",'), false);
   assert.ok(page.includes("showSettings = settingsOpen || isSettingsScreen"));
   assert.ok(page.includes("nav-submenu"));
   assert.equal(page.includes("Cadastros"), false);
