@@ -645,7 +645,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 
 .financial-filters{
   display:grid;
-  grid-template-columns:minmax(260px,1fr) minmax(170px,.5fr) minmax(170px,.5fr) 110px;
+  grid-template-columns:minmax(420px,1fr) 220px 110px;
   align-items:end;
   gap:14px;
 }
@@ -656,6 +656,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .financial-filters .field input,
 .financial-filters .field select,
 .financial-filters .filter-clear{height:46px;min-height:46px}
+.financial-filters .filter-clear{justify-self:end;width:110px}
 .financial-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important}
 .financial-layout{display:grid;grid-template-columns:1fr;gap:18px;align-items:start}
 .financial-table-panel{overflow:hidden}

@@ -2662,7 +2662,6 @@ export default function Home() {
                       <option value="">Todos</option>
                       <option>Em aberto</option>
                       <option>Atrasado</option>
-                      <option>Pago</option>
                     </select>
                   </Field>
                   <button
