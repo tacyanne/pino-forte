@@ -2056,7 +2056,7 @@ export default function Home() {
                     value={money(dashboardFinance.sales)}
                   />
                   <Metric
-                    icon="OK"
+                    icon="✓"
                     label="Recebido"
                     value={money(dashboardFinance.received)}
                   />
@@ -2831,7 +2831,7 @@ export default function Home() {
                 </div>
                 <section className="metrics report-metrics wallet-metrics">
                   <Metric icon="R$" label="Total em Carteira" value={money(walletTotals.total)} />
-                  <Metric icon="OK" label="Recebido" value={money(walletTotals.received)} />
+                  <Metric icon="✓" label="Recebido" value={money(walletTotals.received)} />
                   <Metric icon="!" label="Pendente" value={money(walletTotals.pending)} alert={walletTotals.pending > 0} tone="red" />
                 </section>
                 {!walletRows.length ? (
