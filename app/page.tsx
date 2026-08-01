@@ -22,6 +22,15 @@ type Screen =
   | "wallet"
   | "reports"
   | "settings";
+type SettingsSection =
+  | "users"
+  | "customers"
+  | "company"
+  | "products"
+  | "piece-types"
+  | "order-status"
+  | "payment-status"
+  | "payment-methods";
 type Customer = {
   id: number;
   name: string;
@@ -368,7 +377,8 @@ export default function Home() {
   const [userSaving, setUserSaving] = useState(false);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [menu, setMenu] = useState(false);
-  const [registrationsOpen, setRegistrationsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("company");
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -849,6 +859,13 @@ export default function Home() {
     setQuery("");
     setNotice(null);
     window.scrollTo({ top: 0 });
+  }
+  function goSettings(section: SettingsSection) {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+    if (section === "customers") return go("customers");
+    if (section === "products") return go("products");
+    return go("settings");
   }
   function flash(text: string, tone?: "success" | "error" | "warning" | "info") {
     const normalized = text.toLocaleLowerCase("pt-BR");
@@ -2008,19 +2025,24 @@ export default function Home() {
 
   const primaryNav: [Screen, string, string][] = [
     ["dashboard", "⌂", "Início"],
-    ["orders", "▤", "Ordens de Serviço"],
+    ["orders", "▤", "OS"],
     ["wallet", "▣", "Carteira"],
     ["financial", "$", "Financeiro"],
     ["reports", "▥", "Relatórios"],
-    ["settings", "⚙", "Configurações"],
-  ];
-  const registrationNav: [Screen, string, string][] = [
-    ["customers", "♙", "Clientes"],
-    ["products", "⬡", "Peças"],
     ["catalog", "▦", "Catálogo"],
   ];
-  const isRegistrationScreen = registrationNav.some(([s]) => s === screen);
-  const showRegistrations = registrationsOpen || isRegistrationScreen;
+  const settingsNav: [SettingsSection, string, string][] = [
+    ["users", "◉", "Usuários"],
+    ["customers", "♙", "Clientes"],
+    ["company", "⌂", "Empresa"],
+    ["products", "⬡", "Peças"],
+    ["piece-types", "▧", "Tipo de peça"],
+    ["order-status", "▤", "Status OS"],
+    ["payment-status", "$", "Status Pagamento"],
+    ["payment-methods", "▦", "Formas de pagamento"],
+  ];
+  const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products";
+  const showSettings = settingsOpen || isSettingsScreen;
   return (
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
@@ -2045,26 +2067,31 @@ export default function Home() {
           ))}
           <button
             type="button"
-            className={`nav-item nav-group ${isRegistrationScreen ? "active" : ""}`}
-            aria-expanded={showRegistrations}
-            onClick={() => setRegistrationsOpen((value) => !value)}
+            className={`nav-item nav-group ${isSettingsScreen ? "active" : ""}`}
+            aria-expanded={showSettings}
+            onClick={() => setSettingsOpen((value) => !value)}
           >
-            <span>▧</span>
-            Cadastros
-            <b>{showRegistrations ? "⌃" : "⌄"}</b>
+            <span>⚙</span>
+            Configurações
+            <b>{showSettings ? "⌃" : "⌄"}</b>
           </button>
-          {showRegistrations && (
+          {showSettings && (
             <div className="nav-submenu">
-              {registrationNav.map(([s, i, l]) => (
+              {settingsNav.map(([section, i, l]) => {
+                const active =
+                  (section === "customers" && screen === "customers") ||
+                  (section === "products" && screen === "products") ||
+                  (screen === "settings" && settingsSection === section);
+                return (
                 <button
-                  key={s}
-                  className={`nav-item nav-subitem ${screen === s ? "active" : ""}`}
-                  onClick={() => go(s)}
+                  key={section}
+                  className={`nav-item nav-subitem ${active ? "active" : ""}`}
+                  onClick={() => goSettings(section)}
                 >
                   <span>{i}</span>
                   {l}
                 </button>
-              ))}
+              );})}
             </div>
           )}
         </nav>
@@ -2785,7 +2812,7 @@ export default function Home() {
                           }}
                           className="payable-add-button"
                         >
-                          + Conta
+                          + Nova conta
                         </button>
                       </div>
                       <div className="financial-next-list">
@@ -3163,59 +3190,78 @@ export default function Home() {
               <div className="page">
                 <Heading
                   eyebrow=""
-                  title="Configurações"
+                  title={settingsNav.find(([section]) => section === settingsSection)?.[2] || "Configurações"}
                   subtitle=""
                 />
-                <div className="customer-page-form settings-card">
-                  <div className="settings-section-title"><h2>Dados da empresa</h2></div>
-                  <Field label="Nome da empresa *">
-                    <input
-                      required
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Responsável *">
-                    <input
-                      required
-                      value={responsible}
-                      onChange={(e) => setResponsible(e.target.value)}
-                    />
-                  </Field>
-                  <Field label="WhatsApp da empresa *">
-                    <input
-                      required
-                      inputMode="tel"
-                      value={companyPhone}
-                      onChange={(e) =>
-                        setCompanyPhone(maskPhone(e.target.value))
-                      }
-                    />
-                  </Field>
-                  <Field label="Rodapé da OS *">
-                    <input
-                      required
-                      value={orderFooter}
-                      onChange={(e) => setOrderFooter(e.target.value)}
-                    />
-                  </Field>
-                  <div className="settings-actions">
-                    <button className="primary-button settings-submit-button" onClick={saveSettings}>
-                      Salvar
-                    </button>
+                {settingsSection === "company" && (
+                  <div className="customer-page-form settings-card">
+                    <div className="settings-section-title"><h2>Dados da empresa</h2></div>
+                    <Field label="Nome da empresa *">
+                      <input
+                        required
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Responsável *">
+                      <input
+                        required
+                        value={responsible}
+                        onChange={(e) => setResponsible(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="WhatsApp da empresa *">
+                      <input
+                        required
+                        inputMode="tel"
+                        value={companyPhone}
+                        onChange={(e) =>
+                          setCompanyPhone(maskPhone(e.target.value))
+                        }
+                      />
+                    </Field>
+                    <Field label="Rodapé da OS *">
+                      <input
+                        required
+                        value={orderFooter}
+                        onChange={(e) => setOrderFooter(e.target.value)}
+                      />
+                    </Field>
+                    <div className="settings-actions">
+                      <button className="primary-button settings-submit-button" onClick={saveSettings}>
+                        Salvar
+                      </button>
+                    </div>
                   </div>
-                </div>
-                {auth.user.role === "admin" && <div className="customer-page-form user-admin">
-                  <div className="settings-section-title"><h2>Acesso ao sistema</h2></div>
-                  <form className="user-create" onSubmit={createUser} noValidate>
-                    <Field label="Nome *"><input name="name" required /></Field>
-                    <Field label="E-mail *"><input name="email" type="email" required autoComplete="off" /></Field>
-                    <Field label="Senha temporária *"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
-                    <button className="primary-button settings-submit-button" disabled={userSaving}>{userSaving ? "Salvando..." : "Salvar"}</button>
-                  </form>
-                  {authError && <p className="modal-error user-error">{authError}</p>}
-                  <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className={`link-button ${user.active ? "danger-action" : "success-action"}`} onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
-                </div>}
+                )}
+                {settingsSection === "users" && auth.user.role === "admin" && (
+                  <div className="customer-page-form user-admin settings-page-panel">
+                    <div className="settings-section-title"><h2>Acesso ao sistema</h2></div>
+                    <form className="user-create" onSubmit={createUser} noValidate>
+                      <Field label="Nome *"><input name="name" required /></Field>
+                      <Field label="E-mail *"><input name="email" type="email" required autoComplete="off" /></Field>
+                      <Field label="Senha temporária *"><div className="password-input"><input name="password" type={showTempPassword ? "text" : "password"} minLength={8} required /><button type="button" onClick={() => setShowTempPassword((value) => !value)} aria-label={showTempPassword ? "Ocultar senha" : "Mostrar senha"}><EyeIcon open={showTempPassword} /></button></div></Field>
+                      <button className="primary-button settings-submit-button" disabled={userSaving}>{userSaving ? "Salvando..." : "Salvar"}</button>
+                    </form>
+                    {authError && <p className="modal-error user-error">{authError}</p>}
+                    <div className="user-list">{auth.users.map((user) => <div key={user.id}><span><b>{user.name}</b><small>{user.email} · {user.role === "admin" ? "Administrador" : "Usuário"}</small></span>{user.role !== "admin" && <button className={`link-button ${user.active ? "danger-action" : "success-action"}`} onClick={() => toggleUser(user.id, !user.active)}>{user.active ? "Bloquear" : "Ativar"}</button>}</div>)}</div>
+                  </div>
+                )}
+                {settingsSection === "users" && auth.user.role !== "admin" && (
+                  <div className="panel settings-page-panel">
+                    <p className="finance-history-empty">Acesso restrito ao administrador.</p>
+                  </div>
+                )}
+                {["piece-types", "order-status", "payment-status", "payment-methods"].includes(settingsSection) && (
+                  <div className="panel settings-page-panel settings-options-panel">
+                    {(settingsSection === "piece-types" ? basePieceTypes :
+                      settingsSection === "order-status" ? ["Fila de produção", "Em produção", "Pronta", "Entregue", "Cancelada"] :
+                      settingsSection === "payment-status" ? ["Aguardando pagamento", "Pagamento parcial", "Pago", "Cancelada"] :
+                      ["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"]).map((option) => (
+                      <span key={option}>{option}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>

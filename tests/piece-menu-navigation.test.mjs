@@ -10,23 +10,28 @@ const migration = readFileSync(
   "utf8",
 );
 
-test("sidebar keeps operational entries first and support records under Cadastros", () => {
+test("sidebar keeps operational entries first and support records under Configurações", () => {
   const primaryStart = page.indexOf("const primaryNav");
-  const registrationsStart = page.indexOf("const registrationNav");
+  const settingsStart = page.indexOf("const settingsNav");
 
   assert.ok(primaryStart > 0, "primaryNav should exist");
-  assert.ok(registrationsStart > primaryStart, "registrationNav should follow primaryNav");
+  assert.ok(settingsStart > primaryStart, "settingsNav should follow primaryNav");
   assert.ok(page.includes('["dashboard", "⌂", "Início"]'));
-  assert.ok(page.includes('["orders", "▤", "Ordens de Serviço"]'));
+  assert.ok(page.includes('["orders", "▤", "OS"]'));
   assert.ok(page.includes('["wallet", "▣", "Carteira"]'));
   assert.ok(page.includes('["financial", "$", "Financeiro"]'));
   assert.ok(page.includes('["reports", "▥", "Relatórios"]'));
-  assert.ok(page.includes('["settings", "⚙", "Configurações"]'));
+  assert.ok(page.includes('["catalog", "▦", "Catálogo"]'));
   assert.ok(page.includes('["customers", "♙", "Clientes"]'));
   assert.ok(page.includes('["products", "⬡", "Peças"]'));
-  assert.ok(page.includes('["catalog", "▦", "Catálogo"]'));
-  assert.ok(page.includes("showRegistrations = registrationsOpen || isRegistrationScreen"));
+  assert.ok(page.includes('["company", "⌂", "Empresa"]'));
+  assert.ok(page.includes('["piece-types", "▧", "Tipo de peça"]'));
+  assert.ok(page.includes('["order-status", "▤", "Status OS"]'));
+  assert.ok(page.includes('["payment-status", "$", "Status Pagamento"]'));
+  assert.ok(page.includes('["payment-methods", "▦", "Formas de pagamento"]'));
+  assert.ok(page.includes("showSettings = settingsOpen || isSettingsScreen"));
   assert.ok(page.includes("nav-submenu"));
+  assert.equal(page.includes("Cadastros"), false);
 });
 
 test("piece registration has required type, listing column, and migration default", () => {
