@@ -21,7 +21,7 @@ async function selectProducts() {
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (!/piece_type/i.test(message)) throw error;
-    const sql = getSql();
+    const sql = await getSql();
     return sql<typeof products.$inferSelect[]>`
       SELECT
         id,

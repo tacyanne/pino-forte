@@ -3,7 +3,7 @@ import { getSql } from "../db";
 type AuthUser = { id: number; name: string; email: string; role: string; active: boolean };
 
 export async function ensureAuthTables() {
-  const sql = getSql();
+  const sql = await getSql();
   await sql`
     CREATE TABLE IF NOT EXISTS app_users (
       id serial PRIMARY KEY,

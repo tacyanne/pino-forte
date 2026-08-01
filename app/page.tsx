@@ -531,7 +531,14 @@ export default function Home() {
     try {
       const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: auth.setupRequired ? "setup" : "login", name, email, password }) });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) return setAuthError(data.error || "Não foi possível criar o acesso. Tente novamente.");
+      if (!response.ok) {
+        return setAuthError(
+          data.error ||
+            (auth.setupRequired
+              ? "Não foi possível criar o acesso. Tente novamente."
+              : "Não foi possível entrar. Verifique o e-mail e a senha."),
+        );
+      }
       location.reload();
     } catch {
       setAuthError("Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.");

@@ -2,6 +2,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
+type PostgresFactory = typeof postgres;
+
 let client: postgres.Sql | null = null;
 let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
@@ -13,9 +15,16 @@ export function getDatabaseUrl() {
   return url;
 }
 
-export function getSql() {
+async function getPostgresFactory(): Promise<PostgresFactory> {
+  if (process.env.PINO_LOCAL_NODE_POSTGRES !== "1") return postgres;
+  const { createRequire } = await import("node:module");
+  return createRequire(import.meta.url)("postgres");
+}
+
+export async function getSql() {
   if (!client) {
-    client = postgres(getDatabaseUrl(), {
+    const postgresFactory = await getPostgresFactory();
+    client = postgresFactory(getDatabaseUrl(), {
       max: 5,
       prepare: false,
       ssl: "require",
@@ -25,6 +34,6 @@ export function getSql() {
 }
 
 export async function getDb() {
-  if (!db) db = drizzle(getSql(), { schema });
+  if (!db) db = drizzle(await getSql(), { schema });
   return db;
 }
