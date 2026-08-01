@@ -3325,10 +3325,10 @@ export default function Home() {
               <div className="product-view-row">
                 <ReviewField label="Código" value={viewingProduct.code} />
                 <ReviewField label="Tipo" value={viewingProduct.pieceType || "Pino"} />
-                <ReviewField label="Descrição" value={viewingProduct.name} />
-                <ReviewField label="Aplicação" value={viewingProduct.measure} />
                 <ReviewField label="Valor" value={money(viewingProduct.price)} />
                 <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
+                <ReviewField label="Descrição" value={viewingProduct.name} />
+                <ReviewField label="Aplicação" value={viewingProduct.measure} />
               </div>
             </div>
             <div className="record-view-footer record-view-actions-row">
@@ -3479,12 +3479,6 @@ export default function Home() {
                   ))}
                 </select>
               </Field>
-              <Field label="Descrição *">
-                <input name="name" required defaultValue={editingProduct?.name || ""} />
-              </Field>
-              <Field label="Aplicação *">
-                <input name="measure" required defaultValue={editingProduct?.measure || ""} />
-              </Field>
               <Field label="Valor *">
                 <input
                   name="price"
@@ -3498,6 +3492,12 @@ export default function Home() {
               </Field>
               <Field label="Status">
                 <input value={editingProduct?.active === false ? "Inativo" : "Ativo"} readOnly />
+              </Field>
+              <Field label="Descrição *">
+                <input name="name" required defaultValue={editingProduct?.name || ""} />
+              </Field>
+              <Field label="Aplicação *">
+                <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
             </div>
             <div className="form-actions registration-actions">
