@@ -689,11 +689,6 @@ export default function Home() {
     }),
     { forecast: 0, received: 0, pending: 0, overdue: 0 },
   );
-  const nextReceivables = financialRows
-    .filter((row) => row.balance > 0)
-    .slice()
-    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
-    .slice(0, 5);
   const nextPayables = financeData.accountsPayable
     .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
     .slice()
@@ -2624,8 +2619,8 @@ export default function Home() {
                           <tr>
                             <th>OS</th>
                             <th>Cliente</th>
-                            <th>Emissao</th>
-                            <th>Previsao</th>
+                            <th>{"Emiss\u00e3o"}</th>
+                            <th>{"Previs\u00e3o"}</th>
                             <th>Forma</th>
                             <th>Total</th>
                             <th>Saldo</th>
@@ -2672,42 +2667,6 @@ export default function Home() {
                     </div>
                   </div>
                   <aside className="financial-side">
-                    <div className="panel financial-next-card">
-                      <div className="panel-title">
-                        <div>
-                          <h2>Proximos recebimentos</h2>
-                        </div>
-                      </div>
-                      <div className="financial-next-list">
-                        {!nextReceivables.length ? (
-                          <p className="finance-history-empty">Nao ha valores em aberto no filtro atual.</p>
-                        ) : nextReceivables.map((row) => (
-                          <div className="financial-next-row" key={row.receivable.id}>
-                            <span>
-                              <b>{row.customerName}</b>
-                              <small>{row.orderNumber} - {brDate(row.dueDate)}</small>
-                            </span>
-                            <strong>{money(row.balance)}</strong>
-                            <span className={`status ${row.status === "Atrasado" ? "red" : "amber"}`}>{row.status}</span>
-                            {row.order?.paymentMethod === "Boleto" ? (
-                              <button className="boleto-pay" onClick={() => settleBoleto(row.order!)} disabled={saving}>
-                                Confirmar boleto
-                              </button>
-                            ) : row.order?.paymentMethod === "Carteira" ? (
-                              <button className="outline-button" onClick={() => go("wallet")}>
-                                Abrir carteira
-                              </button>
-                            ) : row.order ? (
-                              <button className="outline-button" onClick={() => setOrderModal(row.order!)}>
-                                Abrir OS
-                              </button>
-                            ) : (
-                              <span className="status amber">Sem OS vinculada</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                     <div className="panel financial-next-card">
                       <div className="panel-title">
                         <div>

@@ -656,7 +656,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .financial-filters .field input,
 .financial-filters .field select,
 .financial-filters .filter-clear{height:46px;min-height:46px}
-.financial-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+.financial-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important}
 .financial-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
 .financial-table-panel{overflow:hidden}
 .financial-table{border:0;box-shadow:none;border-radius:0}
@@ -677,11 +677,11 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .financial-next-row>button{grid-column:1/-1;width:100%;min-width:0;margin-top:2px}
 @media(max-width:1100px){
   .financial-layout{grid-template-columns:1fr}
-  .financial-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .financial-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 }
 @media(max-width:760px){
   .financial-filters{grid-template-columns:1fr;gap:12px}
-  .financial-metrics{grid-template-columns:1fr}
+  .financial-metrics{grid-template-columns:1fr!important}
   .financial-table{overflow:visible;background:transparent}
   .financial-table table,.financial-table tbody{display:block;width:100%;min-width:0}
   .financial-table thead{display:none}
@@ -690,8 +690,8 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .financial-table td::before{font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.03em}
   .financial-table td:nth-child(1){grid-column:1/-1}.financial-table td:nth-child(1)::before{content:"OS"}
   .financial-table td:nth-child(2){grid-column:1/-1}.financial-table td:nth-child(2)::before{content:"Cliente"}
-  .financial-table td:nth-child(3)::before{content:"Emissao"}
-  .financial-table td:nth-child(4)::before{content:"Previsao"}
+  .financial-table td:nth-child(3)::before{content:"Emiss\00e3o"}
+  .financial-table td:nth-child(4)::before{content:"Previs\00e3o"}
   .financial-table td:nth-child(5)::before{content:"Forma"}
   .financial-table td:nth-child(6)::before{content:"Total"}
   .financial-table td:nth-child(7)::before{content:"Saldo"}
