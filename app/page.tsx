@@ -2654,17 +2654,6 @@ export default function Home() {
                       onChange={(event) => setFinancialCustomer(event.target.value)}
                     />
                   </Field>
-                  <Field label="Mês">
-                    <select
-                      value={financialMonth}
-                      onChange={(event) => setFinancialMonth(event.target.value)}
-                    >
-                      <option value="">Todos</option>
-                      {reportMonths.map((month) => (
-                        <option key={month} value={month}>{monthLabel(month)}</option>
-                      ))}
-                    </select>
-                  </Field>
                   <Field label="Status">
                     <select
                       value={financialStatus}
@@ -2681,7 +2670,6 @@ export default function Home() {
                     className="outline-button filter-clear"
                     onClick={() => {
                       setFinancialCustomer("");
-                      setFinancialMonth("");
                       setFinancialStatus("");
                     }}
                   >
@@ -2710,8 +2698,9 @@ export default function Home() {
                             setPayableStatus("Pendente");
                             setPayableModal(true);
                           }}
+                          className="payable-add-button"
                         >
-                          Nova conta
+                          + Conta
                         </button>
                       </div>
                       <div className="financial-next-list">
@@ -2755,18 +2744,15 @@ export default function Home() {
                           <tr>
                             <th>OS</th>
                             <th>Cliente</th>
-                            <th>{"Emiss\u00e3o"}</th>
                             <th>{"Previs\u00e3o"}</th>
-                            <th>Forma</th>
-                            <th>Total</th>
-                            <th>Saldo</th>
+                            <th>Saldo Devedor</th>
                             <th>Status</th>
                           </tr>
                         </thead>
                         <tbody>
                           {!financialRows.length && (
                             <tr className="orders-empty-row">
-                              <td colSpan={8}>Nenhum recebivel encontrado.</td>
+                              <td colSpan={5}>Nenhum recebivel encontrado.</td>
                             </tr>
                           )}
                           {financialRows.map((row) => (
@@ -2786,10 +2772,7 @@ export default function Home() {
                             >
                               <td><b>{row.orderNumber}</b></td>
                               <td><b>{row.customerName}</b></td>
-                              <td>{brDate(row.issuedAt)}</td>
                               <td>{brDate(row.dueDate)}</td>
-                              <td>{row.paymentMethod}</td>
-                              <td>{money(row.total)}</td>
                               <td>{money(row.balance)}</td>
                               <td>
                                 <span className={`status ${row.status === "Pago" ? "green" : row.status === "Atrasado" ? "red" : "amber"}`}>
@@ -3422,7 +3405,7 @@ export default function Home() {
               <Field label="Fornecedor *">
                 <input name="supplier" required />
               </Field>
-              <Field label="Descricao *">
+              <Field label="Descrição *">
                 <input name="description" required />
               </Field>
               <Field label="Vencimento *">
@@ -3457,7 +3440,6 @@ export default function Home() {
                   <option>Dinheiro</option>
                   <option>Cartão</option>
                   <option>Boleto</option>
-                  <option>Transferência</option>
                 </select>
               </Field>
               {payableStatus === "Pago" && (
@@ -3480,7 +3462,7 @@ export default function Home() {
                 Cancelar
               </button>
               <button className="primary-button" disabled={saving}>
-                {saving ? "Salvando..." : "Salvar conta"}
+                {saving ? "Salvando..." : "Adicionar"}
               </button>
             </div>
           </form>

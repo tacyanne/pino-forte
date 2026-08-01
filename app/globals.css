@@ -660,13 +660,14 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .financial-layout{display:grid;grid-template-columns:1fr;gap:18px;align-items:start}
 .financial-table-panel{overflow:hidden}
 .financial-table{border:0;box-shadow:none;border-radius:0}
-.financial-table table{min-width:980px}
+.financial-table table{min-width:720px}
 .financial-table th:nth-child(1),.financial-table td:nth-child(1){width:130px;white-space:nowrap}
-.financial-table th:nth-child(6),.financial-table td:nth-child(6),
-.financial-table th:nth-child(7),.financial-table td:nth-child(7){text-align:right;white-space:nowrap}
-.financial-table th:nth-child(8),.financial-table td:nth-child(8){text-align:center;width:120px}
+.financial-table th:nth-child(4),.financial-table td:nth-child(4){text-align:right;white-space:nowrap}
+.financial-table th:nth-child(5),.financial-table td:nth-child(5){text-align:center;width:120px}
 .financial-side{display:grid;gap:18px;order:-1}
 .financial-next-card{overflow:hidden}
+.panel-title .payable-add-button{border:0;border-radius:10px;background:#23775f;color:#fff;padding:0 16px;min-height:40px;font-size:12px;font-weight:850;box-shadow:0 10px 24px #23775f24}
+.panel-title .payable-add-button:hover{background:#1d624f}
 .financial-next-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px}
 .financial-next-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;background:#f7f9f8;padding:12px}
 .financial-next-row>span:first-child{display:grid;gap:4px;min-width:0}
@@ -692,11 +693,8 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .financial-table td::before{font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.03em}
   .financial-table td:nth-child(1){grid-column:1/-1}.financial-table td:nth-child(1)::before{content:"OS"}
   .financial-table td:nth-child(2){grid-column:1/-1}.financial-table td:nth-child(2)::before{content:"Cliente"}
-  .financial-table td:nth-child(3)::before{content:"Emiss\00e3o"}
-  .financial-table td:nth-child(4)::before{content:"Previs\00e3o"}
-  .financial-table td:nth-child(5)::before{content:"Forma"}
-  .financial-table td:nth-child(6)::before{content:"Total"}
-  .financial-table td:nth-child(7)::before{content:"Saldo"}
-  .financial-table td:nth-child(8)::before{content:"Status"}
-  .financial-table td:nth-child(8) .status{justify-self:start}
+  .financial-table td:nth-child(3)::before{content:"Previs\00e3o"}
+  .financial-table td:nth-child(4)::before{content:"Saldo Devedor"}
+  .financial-table td:nth-child(5)::before{content:"Status"}
+  .financial-table td:nth-child(5) .status{justify-self:start}
 }
