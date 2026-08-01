@@ -2654,7 +2654,7 @@ export default function Home() {
                       onChange={(event) => setFinancialCustomer(event.target.value)}
                     />
                   </Field>
-                  <Field label="Mes">
+                  <Field label="Mês">
                     <select
                       value={financialMonth}
                       onChange={(event) => setFinancialMonth(event.target.value)}
