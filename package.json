@@ -15,7 +15,8 @@
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
-    "db:supabase:apply": "node scripts/apply-supabase-migration.mjs"
+    "db:supabase:apply": "node scripts/apply-supabase-migration.mjs",
+    "preview:local": "node scripts/start-local-preview.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
