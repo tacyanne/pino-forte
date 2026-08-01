@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import postgres from "postgres";
 
+function addDaysIso(date, days) {
+  const value = String(date || new Date().toISOString()).slice(0, 10);
+  const parsed = new Date(`${value}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString().slice(0, 10);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
 function loadEnvFile(path) {
   if (!fs.existsSync(path)) return;
   for (const line of fs.readFileSync(path, "utf8").split(/\r?\n/)) {
@@ -118,7 +125,9 @@ try {
       const received = Math.min(asNumber(order.received), total);
       const subtotal = asNumber(order.subtotal, total);
       const createdAt = asText(order.createdAt, new Date().toISOString().slice(0, 10));
-      const deliveryDate = asText(order.deliveryDate, createdAt.slice(0, 10));
+      const issuedAt = createdAt.slice(0, 10);
+      const dueDate = addDaysIso(issuedAt, 30);
+      const deliveryDate = asText(order.deliveryDate, issuedAt);
       const customerName = asText(order.customerName);
       await tx`
         insert into service_orders (
@@ -132,7 +141,7 @@ try {
           ${customerName}, ${asText(order.customerType, "Cliente final")}, ${asText(order.origin, "WhatsApp")}, ${asText(order.productCode)},
           ${asNumber(order.quantity, 1)}, ${asNumber(order.unitPrice)}, ${subtotal}, ${asNumber(order.discountRate)}, ${total}, ${received},
           ${toCents(subtotal)}, ${toCents(total)}, ${toCents(received)}, ${Math.max(0, toCents(total) - toCents(received))},
-          ${createdAt.slice(0, 10)}, ${deliveryDate.slice(0, 10)}, ${deliveryDate.slice(0, 10)}, ${asText(order.deliveryType)}, ${asText(order.paymentMethod)}, ${asText(order.walletMonth)},
+          ${issuedAt}, ${dueDate}, ${deliveryDate.slice(0, 10)}, ${asText(order.deliveryType)}, ${asText(order.paymentMethod)}, ${asText(order.walletMonth)},
           ${asText(order.productionStatus, "Fila de producao")}, ${received >= total ? "Pago" : "Pendente"}, ${asText(order.commercialStatus, "Pedido confirmado")},
           ${asText(order.notes)}, ${createdAt}, ${new Date().toISOString()}
         )

@@ -657,7 +657,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .financial-filters .field select,
 .financial-filters .filter-clear{height:46px;min-height:46px}
 .financial-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important}
-.financial-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+.financial-layout{display:grid;grid-template-columns:1fr;gap:18px;align-items:start}
 .financial-table-panel{overflow:hidden}
 .financial-table{border:0;box-shadow:none;border-radius:0}
 .financial-table table{min-width:980px}
@@ -665,9 +665,9 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .financial-table th:nth-child(6),.financial-table td:nth-child(6),
 .financial-table th:nth-child(7),.financial-table td:nth-child(7){text-align:right;white-space:nowrap}
 .financial-table th:nth-child(8),.financial-table td:nth-child(8){text-align:center;width:120px}
-.financial-side{display:grid;gap:18px}
+.financial-side{display:grid;gap:18px;order:-1}
 .financial-next-card{overflow:hidden}
-.financial-next-list{display:grid;gap:10px;padding:14px}
+.financial-next-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px}
 .financial-next-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:10px;background:#f7f9f8;padding:12px}
 .financial-next-row>span:first-child{display:grid;gap:4px;min-width:0}
 .financial-next-row b{font-size:12px;color:var(--ink);overflow-wrap:anywhere}
@@ -677,11 +677,13 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .financial-next-row>button{grid-column:1/-1;width:100%;min-width:0;margin-top:2px}
 @media(max-width:1100px){
   .financial-layout{grid-template-columns:1fr}
+  .financial-next-list{grid-template-columns:repeat(2,minmax(0,1fr))}
   .financial-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 }
 @media(max-width:760px){
   .financial-filters{grid-template-columns:1fr;gap:12px}
   .financial-metrics{grid-template-columns:1fr!important}
+  .financial-next-list{grid-template-columns:1fr}
   .financial-table{overflow:visible;background:transparent}
   .financial-table table,.financial-table tbody{display:block;width:100%;min-width:0}
   .financial-table thead{display:none}

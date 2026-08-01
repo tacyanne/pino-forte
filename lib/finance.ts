@@ -21,6 +21,16 @@ export const todayIso = () =>
 
 export const currentMonth = () => todayIso().slice(0, 7);
 
+export function addDaysIso(date: string, days: number) {
+  const value = date?.slice(0, 10) || todayIso();
+  const parsed = new Date(`${value}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return todayIso();
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+export const receivableDueDateFromIssuedAt = (issuedAt: string) => addDaysIso(issuedAt, 30);
+
 export function toCents(value: unknown) {
   if (typeof value === "number") return Math.round(value * 100);
   const normalized = String(value || "")
@@ -55,7 +65,7 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
     const receivedCents = order.receivedCents || toCents(order.received);
     const balanceCents = Math.max(0, totalCents - receivedCents);
     const issuedAt = order.issuedAt || order.createdAt.slice(0, 10);
-    const dueDate = order.dueDate || order.deliveryDate || issuedAt;
+    const dueDate = receivableDueDateFromIssuedAt(issuedAt);
     const status = receivableStatus(balanceCents, dueDate);
 
     const [receivable] = await db
