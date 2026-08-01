@@ -238,6 +238,11 @@ const monthLabel = (month: string) => {
   }).format(new Date(year, monthNumber - 1, 1));
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
+const monthYearLabel = (month: string) => {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return month;
+  return `${String(monthNumber).padStart(2, "0")}/${year}`;
+};
 const maskDate = (value: string) =>
   value
     .replace(/\D/g, "")
@@ -2052,17 +2057,17 @@ export default function Home() {
                 <section className="metrics report-metrics">
                   <Metric
                     icon="R$"
-                    label="Vendas do mês"
+                    label={`Vendas ${monthYearLabel(dashboardMonth)}`}
                     value={money(dashboardFinance.sales)}
                   />
                   <Metric
                     icon="✓"
-                    label="Recebido"
+                    label={`Recebido ${monthYearLabel(dashboardMonth)}`}
                     value={money(dashboardFinance.received)}
                   />
                   <Metric
                     icon="!"
-                    label="Pendente"
+                    label={`Pendente ${monthYearLabel(dashboardMonth)}`}
                     value={money(dashboardFinance.pending)}
                     alert={dashboardFinance.pending > 0}
                     tone="red"
