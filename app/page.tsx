@@ -2012,6 +2012,7 @@ export default function Home() {
     ["wallet", "▣", "Carteira"],
     ["financial", "$", "Financeiro"],
     ["reports", "▥", "Relatórios"],
+    ["settings", "⚙", "Configurações"],
   ];
   const registrationNav: [Screen, string, string][] = [
     ["customers", "♙", "Clientes"],

@@ -21,12 +21,12 @@ test("sidebar keeps operational entries first and support records under Cadastro
   assert.ok(page.includes('["wallet", "▣", "Carteira"]'));
   assert.ok(page.includes('["financial", "$", "Financeiro"]'));
   assert.ok(page.includes('["reports", "▥", "Relatórios"]'));
+  assert.ok(page.includes('["settings", "⚙", "Configurações"]'));
   assert.ok(page.includes('["customers", "♙", "Clientes"]'));
   assert.ok(page.includes('["products", "⬡", "Peças"]'));
   assert.ok(page.includes('["catalog", "▦", "Catálogo"]'));
   assert.ok(page.includes("showRegistrations = registrationsOpen || isRegistrationScreen"));
   assert.ok(page.includes("nav-submenu"));
-  assert.equal(page.includes('["settings",'), false, "Configurações should not appear in the menu");
 });
 
 test("piece registration has required type, listing column, and migration default", () => {
