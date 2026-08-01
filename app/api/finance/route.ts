@@ -82,10 +82,10 @@ export async function GET(request: Request) {
         .filter((row) => row.status === "Pago" && isInMonth(row.paidAt, month))
         .reduce((sum, row) => sum + row.amountCents, 0),
       cashInCents: monthMovements
-        .filter((row) => row.type === "Entrada")
+        .filter((row) => row.type === "entrada")
         .reduce((sum, row) => sum + row.amountCents, 0),
       cashOutCents: monthMovements
-        .filter((row) => row.type === "Saida")
+        .filter((row) => row.type === "saida")
         .reduce((sum, row) => sum + row.amountCents, 0),
     };
 
@@ -159,7 +159,7 @@ export async function POST(request: Request) {
 
         if (created.status === "Pago") {
           await tx.insert(cashMovements).values({
-            type: "Saida",
+            type: "saida",
             origin: "Conta a pagar",
             originId: created.id,
             movementDate: created.paidAt || todayIso(),
@@ -189,12 +189,13 @@ export async function POST(request: Request) {
       const type = String(body.type || "");
       const movementDate = String(body.movementDate || todayIso()).slice(0, 10);
       const description = String(body.description || "").trim();
-      if (!["Entrada", "Saida"].includes(type) || amountCents <= 0 || !description)
+      const normalizedType = type.toLowerCase();
+      if (!["entrada", "saida"].includes(normalizedType) || amountCents <= 0 || !description)
         return jsonError("Informe tipo, valor e descricao do movimento.");
       const [movement] = await db
         .insert(cashMovements)
         .values({
-          type,
+          type: normalizedType,
           origin: "Manual",
           movementDate,
           amountCents,
@@ -279,7 +280,7 @@ export async function PATCH(request: Request) {
           .where(eq(serviceOrders.id, current.serviceOrderId));
 
         await tx.insert(cashMovements).values({
-          type: "Entrada",
+          type: "entrada",
           origin: "Recebimento",
           originId: current.id,
           movementDate: receiptDate,
@@ -333,7 +334,7 @@ export async function PATCH(request: Request) {
           await tx
             .insert(cashMovements)
             .values({
-              type: "Saida",
+              type: "saida",
               origin: "Conta a pagar",
               originId: updated.id,
               movementDate: updated.paidAt || todayIso(),

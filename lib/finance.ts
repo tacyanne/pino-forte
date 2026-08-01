@@ -130,7 +130,7 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
       await db
         .insert(cashMovements)
         .values({
-          type: "Entrada",
+          type: "entrada",
           origin: "Recebimento",
           originId: receivable.id,
           movementDate: order.createdAt.slice(0, 10),

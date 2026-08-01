@@ -111,6 +111,16 @@ type AccountPayable = {
   notes: string;
   status: string;
 };
+type Receipt = {
+  id: number;
+  accountReceivableId: number;
+  serviceOrderId: number;
+  receiptDate: string;
+  amountCents: number;
+  paymentMethod: string;
+  notes: string;
+  status: string;
+};
 type CashMovement = {
   id: number;
   type: string;
@@ -132,7 +142,17 @@ type FinanceData = {
   summary: FinanceSummary | null;
   accountsReceivable: AccountReceivable[];
   accountsPayable: AccountPayable[];
+  receipts: Receipt[];
   cashMovements: CashMovement[];
+};
+type WalletEntry = {
+  receivable: AccountReceivable;
+  order?: Order;
+  orderNumber: string;
+  issuedAt: string;
+  total: number;
+  received: number;
+  balance: number;
 };
 const catalogProductImages: Record<string, string> = {
   "RN 180": "/img-000.png",
@@ -409,7 +429,13 @@ export default function Home() {
   const [financialMonth, setFinancialMonth] = useState("");
   const [financialCustomer, setFinancialCustomer] = useState("");
   const [financialStatus, setFinancialStatus] = useState("");
-  const [financeData, setFinanceData] = useState<FinanceData>({ summary: null, accountsReceivable: [], accountsPayable: [], cashMovements: [] });
+  const [financeData, setFinanceData] = useState<FinanceData>({
+    summary: null,
+    accountsReceivable: [],
+    accountsPayable: [],
+    receipts: [],
+    cashMovements: [],
+  });
   const [financeLoading, setFinanceLoading] = useState(false);
   const [financeError, setFinanceError] = useState("");
   const [payableModal, setPayableModal] = useState(false);
@@ -421,7 +447,7 @@ export default function Home() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editOrderReturnTo, setEditOrderReturnTo] = useState<"orders" | "review">("review");
   const [walletPayment, setWalletPayment] = useState<{
-    items: Order[];
+    items: WalletEntry[];
     customer: string;
   } | null>(null);
   const [walletPayMethod, setWalletPayMethod] = useState("");
@@ -461,6 +487,7 @@ export default function Home() {
         summary: data.summary || null,
         accountsReceivable: data.accountsReceivable || [],
         accountsPayable: data.accountsPayable || [],
+        receipts: data.receipts || [],
         cashMovements: data.cashMovements || [],
       });
     } catch (error) {
@@ -759,39 +786,46 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       return dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
     });
-  const walletCustomers = useMemo(
-    () =>
-      Object.values(
-        orders
-          .filter(
-            (o) =>
-              o.paymentMethod === "Carteira",
-          )
-          .reduce(
-            (customers, o) => {
-              const key = o.customerName;
-              const current = customers[key] || {
-                customer: key,
-                orders: [] as Order[],
-                total: 0,
-                received: 0,
-              };
-              current.orders.push(o);
-              current.total += o.total;
-              current.received += o.received;
-              customers[key] = current;
-              return customers;
-            },
-            {} as Record<string, {
-              customer: string;
-              orders: Order[];
-              total: number;
-              received: number;
-            }>,
-          ),
-      ).sort((a, b) => a.customer.localeCompare(b.customer, "pt-BR")),
-    [orders],
-  );
+  const walletCustomers = useMemo(() => {
+    const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
+    return Object.values(
+      financeData.accountsReceivable
+        .filter((receivable) => receivable.status !== "Cancelado")
+        .reduce(
+          (grouped, receivable) => {
+            const order = ordersById.get(receivable.serviceOrderId);
+            const customer = receivable.customerId ? customerMap.get(receivable.customerId) : undefined;
+            const key = order?.customerName || customer?.name || "Cliente nao identificado";
+            const current = grouped[key] || {
+              customer: key,
+              items: [] as WalletEntry[],
+              total: 0,
+              received: 0,
+            };
+            const entry = {
+              receivable,
+              order,
+              orderNumber: order?.number || `CR-${String(receivable.id).padStart(5, "0")}`,
+              issuedAt: receivable.issuedAt,
+              total: receivable.originalAmountCents / 100,
+              received: receivable.receivedAmountCents / 100,
+              balance: receivable.balanceCents / 100,
+            };
+            current.items.push(entry);
+            current.total += entry.total;
+            current.received += entry.received;
+            grouped[key] = current;
+            return grouped;
+          },
+          {} as Record<string, {
+            customer: string;
+            items: WalletEntry[];
+            total: number;
+            received: number;
+          }>,
+        ),
+    ).sort((a, b) => a.customer.localeCompare(b.customer, "pt-BR"));
+  }, [customers, financeData.accountsReceivable, ordersById]);
   const walletRows = walletCustomers.filter((item) => {
     const balance = item.total - item.received;
     const status = balance > 0 ? "Em aberto" : "Pago";
@@ -1303,51 +1337,43 @@ export default function Home() {
     if (!walletPayMethod) return flash("Selecione a forma de pagamento.");
     if (!isValidBrDate(walletPayDate))
       return flash("Informe uma data de pagamento válida.");
-    const balance = walletPayment.items.reduce(
-      (s, o) => s + o.total - o.received,
-      0,
-    );
+    const balance = walletPayment.items.reduce((sum, item) => sum + item.balance, 0);
     if (walletPayAmount <= 0 || walletPayAmount > balance)
       return flash("Informe um valor pago válido, até o limite do saldo.");
     setSaving(true);
     let remaining = walletPayAmount;
     try {
-      const oldestOpenOrders = walletPayment.items
-        .filter((o) => o.received < o.total)
+      const oldestOpenReceivables = walletPayment.items
+        .filter((item) => item.balance > 0)
         .sort((a, b) => {
-          const dateDifference = dateTimestamp(a.createdAt) - dateTimestamp(b.createdAt);
+          const dateDifference = dateTimestamp(a.issuedAt) - dateTimestamp(b.issuedAt);
           if (dateDifference !== 0) return dateDifference;
-          return a.number.localeCompare(b.number, "pt-BR", { numeric: true });
+          return a.orderNumber.localeCompare(b.orderNumber, "pt-BR", { numeric: true });
         });
-      for (const order of oldestOpenOrders) {
+      for (const item of oldestOpenReceivables) {
         if (remaining <= 0) break;
-        const portion = Math.min(remaining, order.total - order.received);
-        let history: { amount: number; method: string; date: string }[] = [];
-        try {
-          const parsed = JSON.parse(order.commercialStatus);
-          if (Array.isArray(parsed)) history = parsed;
-        } catch {}
-        history.push({
-          amount: portion,
-          method: walletPayMethod,
-          date: toIsoDate(walletPayDate),
-        });
-        const r = await fetch("/api/orders", {
+        const portion = Math.min(remaining, item.balance);
+        const r = await fetch("/api/finance", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            id: order.id,
-            received: order.received + portion,
-            commercialStatus: JSON.stringify(history),
+            entity: "accountsReceivable",
+            id: item.receivable.id,
+            amount: portion,
+            paymentMethod: walletPayMethod,
+            receiptDate: toIsoDate(walletPayDate),
+            notes: "Recebimento registrado pela Carteira.",
           }),
         });
         const j = await r.json();
-        if (!r.ok) throw new Error(j.error);
-        setOrders((currentOrders) =>
-          sortOrdersDesc(currentOrders.map((item) => (item.id === order.id ? j.order : item))),
-        );
+        if (!r.ok) throw new Error(j.error || "Nao foi possivel registrar o recebimento.");
         remaining -= portion;
       }
+      const [ordersResponse] = await Promise.all([
+        fetch("/api/orders", { cache: "no-store" }).then((response) => response.json()),
+        refreshFinance(),
+      ]);
+      setOrders(sortOrdersDesc(ordersResponse.orders || []));
       setWalletPayment(null);
       setWalletPayDate("");
       setWalletPayAmount(0);
@@ -1809,9 +1835,9 @@ export default function Home() {
       "_blank",
     );
   }
-  async function createWalletPdf(orders: Order[], customerName: string, month = "geral") {
+  async function createWalletPdf(items: WalletEntry[], customerName: string, month = "geral") {
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
-    const total = orders.reduce((sum, order) => sum + order.total, 0);
+    const total = items.reduce((sum, item) => sum + item.total, 0);
     const logo = await loadImageData("/logo-pdf.png");
     const [year, monthNumber] = month.split("-");
     const period = year && monthNumber
@@ -1820,19 +1846,16 @@ export default function Home() {
           return `${periodMonth.charAt(0).toUpperCase()}${periodMonth.slice(1)}/${year}`;
         })()
       : "Geral";
-    const history = orders.flatMap((order) => {
-      let payments: { amount: number; method: string; date: string }[] = [];
-      try {
-        const parsed = JSON.parse(order.commercialStatus);
-        if (Array.isArray(parsed)) payments = parsed;
-      } catch {}
-      const registered = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-      const initial = Math.max(0, order.received - registered);
-      return [
-        ...(initial > 0 ? [{ amount: initial, method: "Pagamento inicial", date: order.createdAt, orderNumber: order.number }] : []),
-        ...payments.map((payment) => ({ ...payment, orderNumber: order.number })),
-      ];
-    }).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date));
+    const history = items.flatMap((item) =>
+      financeData.receipts
+        .filter((receipt) => receipt.accountReceivableId === item.receivable.id && receipt.status === "Confirmado")
+        .map((receipt) => ({
+          amount: receipt.amountCents / 100,
+          method: receipt.paymentMethod,
+          date: receipt.receiptDate,
+          orderNumber: item.orderNumber,
+        })),
+    ).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date));
 
     const left = 15;
     const right = 195;
@@ -1892,10 +1915,10 @@ export default function Home() {
     drawHeader([{ text: "OS", x: 18 }, { text: "DATA DE EMISSÃO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(25);
-    orders.slice().sort((a, b) => dateTimestamp(a.createdAt) - dateTimestamp(b.createdAt)).forEach((order) => {
-      pdf.text(order.number, 18, y);
-      pdf.text(brDate(order.createdAt), 105, y, { align: "center" });
-      pdf.text(money(order.total), 192, y, { align: "right" });
+    items.slice().sort((a, b) => dateTimestamp(a.issuedAt) - dateTimestamp(b.issuedAt)).forEach((item) => {
+      pdf.text(item.orderNumber, 18, y);
+      pdf.text(brDate(item.issuedAt), 105, y, { align: "center" });
+      pdf.text(money(item.total), 192, y, { align: "right" });
       pdf.setDrawColor(224, 230, 228);
       pdf.setLineWidth(0.2);
       pdf.line(left, y + 3, right, y + 3);
@@ -1924,11 +1947,11 @@ export default function Home() {
     pdf.text(orderFooter, 105, 288, { align: "center" });
     return pdf;
   }
-  async function downloadWalletPdf(orders: Order[], customerName: string, month = "geral") {
-    const pdf = await createWalletPdf(orders, customerName, month);
+  async function downloadWalletPdf(items: WalletEntry[], customerName: string, month = "geral") {
+    const pdf = await createWalletPdf(items, customerName, month);
     pdf.save(`Carteira-${customerName.replace(/[^a-z0-9]+/gi, "-")}-${month}.pdf`);
   }
-  async function shareWallet(orders: Order[], customerName: string, month = "geral") {
+  async function shareWallet(items: WalletEntry[], customerName: string, month = "geral") {
     let currentCustomers = customers;
     try {
       const catalog = await fetch("/api/catalog", { cache: "no-store" }).then((response) => response.json());
@@ -1936,7 +1959,7 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
-    await downloadWalletPdf(orders, customerName, month);
+    await downloadWalletPdf(items, customerName, month);
     const text = `Olá, ${customer.name}! Segue o comprovante da Carteira paga.`;
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
@@ -2926,19 +2949,16 @@ export default function Home() {
                   <div className="wallet-grid">
                             {walletRows.map((item) => {
                               const balance = item.total - item.received;
-                              const history = item.orders.flatMap((o) => {
-                                let laterPayments: { amount: number; method: string; date: string }[] = [];
-                                try {
-                                  const value = JSON.parse(o.commercialStatus);
-                                  laterPayments = Array.isArray(value) ? value : [];
-                                } catch {}
-                                const laterTotal = laterPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-                                const initialPayment = Math.max(0, o.received - laterTotal);
-                                return [
-                                  ...(initialPayment > 0 ? [{ amount: initialPayment, method: "Pagamento inicial", date: o.createdAt, orderNumber: o.number }] : []),
-                                  ...laterPayments.map((payment) => ({ ...payment, orderNumber: o.number })),
-                                ];
-                              }).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date)) as {
+                              const history = item.items.flatMap((entry) =>
+                                financeData.receipts
+                                  .filter((receipt) => receipt.accountReceivableId === entry.receivable.id && receipt.status === "Confirmado")
+                                  .map((receipt) => ({
+                                    amount: receipt.amountCents / 100,
+                                    method: receipt.paymentMethod,
+                                    date: receipt.receiptDate,
+                                    orderNumber: entry.orderNumber,
+                                  })),
+                              ).sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date)) as {
                                 amount: number;
                                 method: string;
                                 date: string;
@@ -2972,21 +2992,24 @@ export default function Home() {
                                       <span>Data de emissão</span>
                                       <span>Valor</span>
                                     </div>
-                                    {sortOrdersDesc(item.orders).map((o) => (
+                                    {item.items
+                                      .slice()
+                                      .sort((a, b) => b.orderNumber.localeCompare(a.orderNumber, "pt-BR", { numeric: true }))
+                                      .map((entry) => (
                                       <div
                                         className="wallet-order-row"
-                                        key={o.id}
+                                        key={entry.receivable.id}
                                         role="button"
-                                        tabIndex={0}
-                                        aria-label={`Visualizar ${o.number}`}
-                                        onClick={() => setOrderModal(o)}
+                                        tabIndex={entry.order ? 0 : -1}
+                                        aria-label={`Visualizar ${entry.orderNumber}`}
+                                        onClick={() => entry.order && setOrderModal(entry.order)}
                                         onKeyDown={(event) => {
-                                          if (event.key === "Enter" || event.key === " ") setOrderModal(o);
+                                          if (entry.order && (event.key === "Enter" || event.key === " ")) setOrderModal(entry.order);
                                         }}
                                       >
-                                        <b>{o.number}</b>
-                                        <span>{brDate(o.createdAt)}</span>
-                                        <strong>{money(o.total)}</strong>
+                                        <b>{entry.orderNumber}</b>
+                                        <span>{brDate(entry.issuedAt)}</span>
+                                        <strong>{money(entry.total)}</strong>
                                       </div>
                                     ))}
                                   </div>
@@ -3017,7 +3040,7 @@ export default function Home() {
                                         onClick={() => {
                                           setWalletPayMethod("");
                                           setWalletPayment({
-                                            items: item.orders,
+                                            items: item.items,
                                             customer: item.customer,
                                           });
                                           setWalletPayDate(brDate(todayIso()));
@@ -3031,13 +3054,13 @@ export default function Home() {
                                     <div className="wallet-card-actions">
                                       <button
                                         className="outline-button wallet-pay"
-                                        onClick={() => downloadWalletPdf(item.orders, item.customer)}
+                                        onClick={() => downloadWalletPdf(item.items, item.customer)}
                                       >
                                         Baixar PDF
                                       </button>
                                       <button
                                         className="whatsapp-button wallet-pay"
-                                        onClick={() => shareWallet(item.orders, item.customer)}
+                                        onClick={() => shareWallet(item.items, item.customer)}
                                       >
                                         Enviar ao cliente
                                       </button>
