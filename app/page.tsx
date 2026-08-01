@@ -684,12 +684,11 @@ export default function Home() {
       (!financialStatus || row.status === financialStatus)
     ))
     .sort((a, b) => {
-      const statusWeight = { Atrasado: 0, "Em aberto": 1, Pago: 2 } as Record<string, number>;
-      const statusDifference = statusWeight[a.status] - statusWeight[b.status];
-      if (statusDifference !== 0) return statusDifference;
-      const dateDifference = dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
+      const orderDifference = b.orderNumber.localeCompare(a.orderNumber, "pt-BR", { numeric: true });
+      if (orderDifference !== 0) return orderDifference;
+      const dateDifference = dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
       if (dateDifference !== 0) return dateDifference;
-      return b.orderNumber.localeCompare(a.orderNumber, "pt-BR", { numeric: true });
+      return b.receivable.id - a.receivable.id;
     });
   const financialTotals = financialRows.reduce(
     (summary, row) => ({
@@ -1968,7 +1967,7 @@ export default function Home() {
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Pinos"],
     ["catalog", "▦", "Catálogo"],
-    ["financial", "R$", "Financeiro"],
+    ["financial", "$", "Financeiro"],
     ["wallet", "▣", "Carteira"],
     ["reports", "▥", "Relatórios"],
     ["settings", "⚙", "Configurações"],
@@ -2057,7 +2056,7 @@ export default function Home() {
                     value={money(dashboardFinance.sales)}
                   />
                   <Metric
-                    icon="✓"
+                    icon="OK"
                     label="Recebido"
                     value={money(dashboardFinance.received)}
                   />
@@ -2832,7 +2831,7 @@ export default function Home() {
                 </div>
                 <section className="metrics report-metrics wallet-metrics">
                   <Metric icon="R$" label="Total em Carteira" value={money(walletTotals.total)} />
-                  <Metric icon="✓" label="Recebido" value={money(walletTotals.received)} />
+                  <Metric icon="OK" label="Recebido" value={money(walletTotals.received)} />
                   <Metric icon="!" label="Pendente" value={money(walletTotals.pending)} alert={walletTotals.pending > 0} tone="red" />
                 </section>
                 {!walletRows.length ? (
