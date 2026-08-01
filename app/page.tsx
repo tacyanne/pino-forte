@@ -101,6 +101,8 @@ type AccountPayable = {
   dueDate: string;
   amountCents: number;
   paidAt: string | null;
+  paymentMethod: string;
+  notes: string;
   status: string;
 };
 type CashMovement = {
@@ -382,6 +384,8 @@ export default function Home() {
   const [financeData, setFinanceData] = useState<FinanceData>({ summary: null, accountsReceivable: [], accountsPayable: [], cashMovements: [] });
   const [financeLoading, setFinanceLoading] = useState(false);
   const [financeError, setFinanceError] = useState("");
+  const [payableModal, setPayableModal] = useState(false);
+  const [payableStatus, setPayableStatus] = useState("Pendente");
   const [walletQuery, setWalletQuery] = useState("");
   const [walletMonthFilter, setWalletMonthFilter] = useState("");
   const [walletStatusFilter, setWalletStatusFilter] = useState("");
@@ -691,16 +695,23 @@ export default function Home() {
     (summary, row) => ({
       forecast: summary.forecast + row.total,
       received: summary.received + row.received,
-      pending: summary.pending + row.balance,
+      pending: summary.pending + (row.status === "Em aberto" ? row.balance : 0),
       overdue: summary.overdue + (row.status === "Atrasado" ? row.balance : 0),
     }),
     { forecast: 0, received: 0, pending: 0, overdue: 0 },
   );
-  const nextPayables = financeData.accountsPayable
-    .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
+  const payableRows = financeData.accountsPayable
+    .filter((payable) =>
+      payable.status !== "Cancelado" &&
+      (!financialMonth || payable.dueDate.slice(0, 7) === financialMonth),
+    )
     .slice()
-    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
-    .slice(0, 5);
+    .sort((a, b) => {
+      const statusWeight = { Pendente: 0, Vencido: 0, Pago: 1 } as Record<string, number>;
+      const statusDifference = (statusWeight[a.status] ?? 0) - (statusWeight[b.status] ?? 0);
+      if (statusDifference !== 0) return statusDifference;
+      return dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
+    });
   const walletMonths = useMemo(
     () =>
       Object.entries(
@@ -1174,6 +1185,76 @@ export default function Home() {
       setSaving(false);
     }
   }
+  async function savePayable(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const supplier = String(form.get("supplier") || "").trim();
+    const description = String(form.get("description") || "").trim();
+    const dueDateInput = String(form.get("dueDate") || "").trim();
+    const paidAtInput = String(form.get("paidAt") || "").trim();
+    const amountCents = Math.round(parseCurrency(String(form.get("amount") || "")) * 100);
+    const paymentMethod = String(form.get("paymentMethod") || "").trim();
+    if (!supplier || !description || !isValidBrDate(dueDateInput) || amountCents <= 0)
+      return flash("Informe fornecedor, descricao, vencimento e valor.", "error");
+    if (payableStatus === "Pago" && (!paymentMethod || !isValidBrDate(paidAtInput)))
+      return flash("Informe forma e data de pagamento para conta ja paga.", "error");
+    setSaving(true);
+    try {
+      const response = await fetch("/api/finance", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "payable",
+          supplier,
+          description,
+          dueDate: toIsoDate(dueDateInput),
+          amountCents,
+          paymentMethod,
+          status: payableStatus,
+          paidAt: payableStatus === "Pago" ? toIsoDate(paidAtInput) : undefined,
+          notes: String(form.get("notes") || ""),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Nao foi possivel cadastrar a conta a pagar.");
+      setPayableModal(false);
+      setPayableStatus("Pendente");
+      await refreshFinance();
+      flash(payableStatus === "Pago" ? "Conta paga cadastrada." : "Conta a pagar cadastrada.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Nao foi possivel cadastrar a conta a pagar.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function settlePayable(payable: AccountPayable) {
+    if (payable.status === "Pago") return;
+    if (!window.confirm("Marcar " + payable.description + " como paga?")) return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/finance", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          entity: "accountsPayable",
+          id: payable.id,
+          status: "Pago",
+          paidAt: todayIso(),
+          paymentMethod: payable.paymentMethod || "Nao informado",
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Nao foi possivel marcar a conta como paga.");
+      await refreshFinance();
+      flash("Conta marcada como paga.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Nao foi possivel marcar a conta como paga.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function settleWallet() {
     if (!walletPayment) return;
     if (!walletPayMethod) return flash("Selecione a forma de pagamento.");
@@ -2616,6 +2697,51 @@ export default function Home() {
                   <Metric icon="!!" label="Atrasado" value={money(financialTotals.overdue)} alert={financialTotals.overdue > 0} tone="red" />
                 </section>
                 <section className="financial-layout">
+                  <aside className="financial-side">
+                    <div className="panel financial-next-card">
+                      <div className="panel-title">
+                        <div>
+                          <h2>Contas a pagar</h2>
+                          <p>{payableRows.length} registros encontrados</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPayableStatus("Pendente");
+                            setPayableModal(true);
+                          }}
+                        >
+                          Nova conta
+                        </button>
+                      </div>
+                      <div className="financial-next-list">
+                        {!payableRows.length ? (
+                          <p className="finance-history-empty">Nenhuma conta a pagar cadastrada no filtro atual.</p>
+                        ) : payableRows.map((payable) => {
+                          const isOverdue = payable.status !== "Pago" && payable.dueDate < todayIso();
+                          const statusLabel = payable.status === "Pago" ? "Pago" : isOverdue ? "Atrasado" : payable.status;
+                          return (
+                            <div className="financial-next-row" key={payable.id}>
+                              <span>
+                                <b>{payable.supplier}</b>
+                                <small>{payable.description} - {brDate(payable.dueDate)}</small>
+                                {payable.paidAt && <small>Pago em {brDate(payable.paidAt)}</small>}
+                              </span>
+                              <strong>{money(payable.amountCents / 100)}</strong>
+                              <span className={`status ${statusLabel === "Pago" ? "green" : statusLabel === "Atrasado" ? "red" : "amber"}`}>
+                                {statusLabel}
+                              </span>
+                              {payable.status !== "Pago" && (
+                                <button className="outline-button" onClick={() => settlePayable(payable)} disabled={saving}>
+                                  Marcar paga
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </aside>
                   <div className="panel financial-table-panel">
                     <div className="panel-title">
                       <div>
@@ -2676,31 +2802,6 @@ export default function Home() {
                       </table>
                     </div>
                   </div>
-                  <aside className="financial-side">
-                    <div className="panel financial-next-card">
-                      <div className="panel-title">
-                        <div>
-                          <h2>Contas a pagar</h2>
-                        </div>
-                      </div>
-                      <div className="financial-next-list">
-                        {!nextPayables.length ? (
-                          <p className="finance-history-empty">Nao ha contas a pagar em aberto.</p>
-                        ) : nextPayables.map((payable) => (
-                          <div className="financial-next-row" key={payable.id}>
-                            <span>
-                              <b>{payable.supplier}</b>
-                              <small>{payable.description} - {brDate(payable.dueDate)}</small>
-                            </span>
-                            <strong>{money(payable.amountCents / 100)}</strong>
-                            <span className={`status ${payable.dueDate < todayIso() ? "red" : "amber"}`}>
-                              {payable.dueDate < todayIso() ? "Atrasado" : payable.status}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </aside>
                 </section>
               </div>
             )}
@@ -3309,6 +3410,77 @@ export default function Home() {
               </button>
               <button className="primary-button" disabled={saving}>
                 {saving ? "Salvando..." : "Salvar"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {payableModal && (
+        <Modal title="Cadastrar conta a pagar" close={() => { setPayableModal(false); setPayableStatus("Pendente"); }}>
+          <form onSubmit={savePayable} noValidate>
+            <div className="form-grid">
+              <Field label="Fornecedor *">
+                <input name="supplier" required />
+              </Field>
+              <Field label="Descricao *">
+                <input name="description" required />
+              </Field>
+              <Field label="Vencimento *">
+                <input
+                  name="dueDate"
+                  inputMode="numeric"
+                  maxLength={10}
+                  defaultValue={brDate(todayIso())}
+                  onInput={(e) => { e.currentTarget.value = maskDate(e.currentTarget.value); }}
+                  required
+                />
+              </Field>
+              <Field label="Valor *">
+                <input
+                  name="amount"
+                  inputMode="numeric"
+                  defaultValue="R$ 0,00"
+                  onChange={(e) => { e.currentTarget.value = maskCurrency(e.currentTarget.value); }}
+                  required
+                />
+              </Field>
+              <Field label="Status">
+                <select value={payableStatus} onChange={(e) => setPayableStatus(e.target.value)}>
+                  <option>Pendente</option>
+                  <option>Pago</option>
+                </select>
+              </Field>
+              <Field label="Forma de pagamento">
+                <select name="paymentMethod">
+                  <option value="">Selecione</option>
+                  <option>Pix</option>
+                  <option>Dinheiro</option>
+                  <option>Cartão</option>
+                  <option>Boleto</option>
+                  <option>Transferência</option>
+                </select>
+              </Field>
+              {payableStatus === "Pago" && (
+                <Field label="Data do pagamento *">
+                  <input
+                    name="paidAt"
+                    inputMode="numeric"
+                    maxLength={10}
+                    defaultValue={brDate(todayIso())}
+                    onInput={(e) => { e.currentTarget.value = maskDate(e.currentTarget.value); }}
+                  />
+                </Field>
+              )}
+              <Field label="Observações">
+                <input name="notes" />
+              </Field>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="cancel-button" onClick={() => { setPayableModal(false); setPayableStatus("Pendente"); }}>
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={saving}>
+                {saving ? "Salvando..." : "Salvar conta"}
               </button>
             </div>
           </form>
