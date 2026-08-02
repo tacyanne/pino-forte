@@ -4,6 +4,15 @@ const cleanEmail = (value: unknown) => String(value || "").trim().toLowerCase();
 const validNewPassword = (password: string) => password.length >= 8 && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
 const passwordRuleError = "A senha deve ter no mínimo 8 caracteres, uma letra maiúscula, um número e um caractere especial.";
 
+async function readJsonBody(request: Request): Promise<Record<string, unknown> | Response> {
+  try {
+    const text = await request.text();
+    return text ? JSON.parse(text) as Record<string, unknown> : {};
+  } catch {
+    return Response.json({ error: "Requisicao invalida." }, { status: 400 });
+  }
+}
+
 export async function GET(request: Request) {
   const sql = await ensureAuthTables();
   const [count] = await sql<{ total: string }[]>`SELECT COUNT(*)::text total FROM app_users`;
@@ -15,7 +24,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json() as Record<string, unknown>;
+  const body = await readJsonBody(request);
+  if (body instanceof Response) return body;
   const action = String(body.action || "login");
   const sql = await ensureAuthTables();
 
