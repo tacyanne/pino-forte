@@ -3,28 +3,7 @@ import { getSql } from "../db";
 type AuthUser = { id: number; name: string; email: string; role: string; active: boolean };
 
 export async function ensureAuthTables() {
-  const sql = await getSql();
-  await sql`
-    CREATE TABLE IF NOT EXISTS app_users (
-      id serial PRIMARY KEY,
-      name text NOT NULL,
-      email text NOT NULL UNIQUE,
-      password_hash text NOT NULL,
-      salt text NOT NULL,
-      role text NOT NULL DEFAULT 'user',
-      active boolean NOT NULL DEFAULT true,
-      created_at text NOT NULL DEFAULT CURRENT_TIMESTAMP::text
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS app_sessions (
-      token text PRIMARY KEY,
-      user_id integer NOT NULL REFERENCES app_users(id),
-      expires_at text NOT NULL,
-      created_at text NOT NULL DEFAULT CURRENT_TIMESTAMP::text
-    )
-  `;
-  return sql;
+  return getSql();
 }
 
 const hex = (bytes: Uint8Array) => Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
