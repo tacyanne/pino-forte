@@ -11,6 +11,8 @@ import {
 } from "../../../db/schema";
 import { centsFromBody, currentMonth, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
 import { requireUser } from "../../../lib/auth";
+import { camelizeRows } from "../../../lib/supabase-mappers";
+import { hasSupabaseRest, supabaseSelect } from "../../../lib/supabase-rest";
 
 type Auth = { id: number; role: string };
 
@@ -40,6 +42,7 @@ async function audit(
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
+  if (hasSupabaseRest()) return getFinanceFromRest(request);
 
   try {
     const db = await getDb();
@@ -87,6 +90,107 @@ export async function GET(request: Request) {
       cashOutCents: monthMovements
         .filter((row) => row.type === "saida")
         .reduce((sum, row) => sum + row.amountCents, 0),
+    };
+
+    return Response.json(
+      {
+        summary: {
+          ...summary,
+          cashNetCents: summary.cashInCents - summary.cashOutCents,
+        },
+        categories: categoryRows,
+        accountsReceivable: receivableRows,
+        accountsPayable: payableRows,
+        receipts: receiptRows,
+        cashMovements: movementRows,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Nao foi possivel carregar o financeiro." },
+      { status: 500 },
+    );
+  }
+}
+
+async function getFinanceFromRest(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const month = url.searchParams.get("month") || currentMonth();
+    const today = todayIso();
+    const [
+      categoryRowsRaw,
+      receivableRowsRaw,
+      payableRowsRaw,
+      receiptRowsRaw,
+      movementRowsRaw,
+    ] = await Promise.all([
+      supabaseSelect<Record<string, unknown>>("financial_categories", {
+        select: "*",
+        order: "type.asc,name.asc",
+      }),
+      supabaseSelect<Record<string, unknown>>("accounts_receivable", {
+        select: "*",
+        order: "due_date.desc",
+        limit: "300",
+      }),
+      supabaseSelect<Record<string, unknown>>("accounts_payable", {
+        select: "*",
+        order: "due_date.desc",
+        limit: "300",
+      }),
+      supabaseSelect<Record<string, unknown>>("receipts", {
+        select: "*",
+        order: "receipt_date.desc",
+        limit: "300",
+      }),
+      supabaseSelect<Record<string, unknown>>("cash_movements", {
+        select: "*",
+        order: "movement_date.desc",
+        limit: "300",
+      }),
+    ]);
+
+    const categoryRows = camelizeRows<Record<string, unknown>>(categoryRowsRaw);
+    const receivableRows = camelizeRows<Record<string, unknown>>(receivableRowsRaw);
+    const payableRows = camelizeRows<Record<string, unknown>>(payableRowsRaw);
+    const receiptRows = camelizeRows<Record<string, unknown>>(receiptRowsRaw);
+    const movementRows = camelizeRows<Record<string, unknown>>(movementRowsRaw);
+
+    const amount = (row: Record<string, unknown>, key: string) => Number(row[key] || 0);
+    const date = (row: Record<string, unknown>, key: string) => String(row[key] || "");
+    const status = (row: Record<string, unknown>) => String(row.status || "");
+
+    const monthReceipts = receiptRows.filter(
+      (receipt) => status(receipt) === "Confirmado" && isInMonth(date(receipt, "receiptDate"), month),
+    );
+    const monthMovements = movementRows.filter(
+      (movement) => status(movement) === "Confirmado" && isInMonth(date(movement, "movementDate"), month),
+    );
+    const openReceivables = receivableRows.filter((row) => status(row) !== "Pago" && status(row) !== "Cancelado");
+    const openPayables = payableRows.filter((row) => status(row) !== "Pago" && status(row) !== "Cancelado");
+
+    const summary = {
+      month,
+      receivableOpenCents: openReceivables.reduce((sum, row) => sum + amount(row, "balanceCents"), 0),
+      receivableOverdueCents: openReceivables
+        .filter((row) => date(row, "dueDate") < today)
+        .reduce((sum, row) => sum + amount(row, "balanceCents"), 0),
+      receivableReceivedCents: monthReceipts.reduce((sum, row) => sum + amount(row, "amountCents"), 0),
+      payableOpenCents: openPayables.reduce((sum, row) => sum + amount(row, "amountCents"), 0),
+      payableOverdueCents: openPayables
+        .filter((row) => date(row, "dueDate") < today)
+        .reduce((sum, row) => sum + amount(row, "amountCents"), 0),
+      payablePaidCents: payableRows
+        .filter((row) => status(row) === "Pago" && isInMonth(date(row, "paidAt"), month))
+        .reduce((sum, row) => sum + amount(row, "amountCents"), 0),
+      cashInCents: monthMovements
+        .filter((row) => row.type === "entrada")
+        .reduce((sum, row) => sum + amount(row, "amountCents"), 0),
+      cashOutCents: monthMovements
+        .filter((row) => row.type === "saida")
+        .reduce((sum, row) => sum + amount(row, "amountCents"), 0),
     };
 
     return Response.json(

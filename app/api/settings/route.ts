@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appSettings } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
+import { camelizeRow } from "../../../lib/supabase-mappers";
+import { hasSupabaseRest, supabaseGetOne, supabaseInsert, supabasePatch } from "../../../lib/supabase-rest";
 
 const defaults = {
   id: 1,
@@ -13,6 +15,7 @@ const defaults = {
 
 export async function GET(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
+  if (hasSupabaseRest()) return getSettingsFromRest();
   const db = await getDb();
   const [settings] = await db.select().from(appSettings).where(eq(appSettings.id, 1)).limit(1);
   if (settings) {
@@ -47,10 +50,39 @@ export async function PUT(request: Request) {
     companyPhone: String(body.companyPhone || "").trim(),
     orderFooter: String(body.orderFooter || defaults.orderFooter).trim(),
   };
+  if (hasSupabaseRest()) {
+    const saved = await saveSettingsWithRest(settings);
+    return Response.json({ settings: saved });
+  }
   const db = await getDb();
   const [saved] = await db.insert(appSettings).values(settings).onConflictDoUpdate({
     target: appSettings.id,
     set: settings,
   }).returning();
   return Response.json({ settings: saved });
+}
+
+async function getSettingsFromRest() {
+  const settings = await supabaseGetOne<Record<string, unknown>>("app_settings", {
+    select: "*",
+    id: "eq.1",
+  });
+  if (settings) return Response.json({ settings: camelizeRow(settings) });
+  const created = await saveSettingsWithRest(defaults);
+  return Response.json({ settings: created });
+}
+
+async function saveSettingsWithRest(settings: typeof defaults) {
+  const values = {
+    id: 1,
+    company_name: settings.companyName,
+    responsible: settings.responsible,
+    company_phone: settings.companyPhone,
+    order_footer: settings.orderFooter,
+  };
+  const existing = await supabaseGetOne("app_settings", { select: "id", id: "eq.1" });
+  const saved = existing
+    ? await supabasePatch<Record<string, unknown>>("app_settings", { id: "eq.1" }, values)
+    : await supabaseInsert<Record<string, unknown>>("app_settings", values);
+  return camelizeRow(saved);
 }

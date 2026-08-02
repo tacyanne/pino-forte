@@ -50,6 +50,14 @@ export async function supabaseSelect<T>(
   return parseResponse<T[]>(response);
 }
 
+export async function supabaseGetOne<T>(
+  table: string,
+  query?: Record<string, string>,
+) {
+  const rows = await supabaseSelect<T>(table, { ...query, limit: query?.limit || "1" });
+  return rows[0] || null;
+}
+
 export async function supabaseInsert<T>(
   table: string,
   values: Record<string, QueryValue>,
@@ -57,6 +65,20 @@ export async function supabaseInsert<T>(
   const response = await fetch(restUrl(table), {
     method: "POST",
     headers: headers({ prefer: "return=representation" }),
+    body: JSON.stringify(values),
+  });
+  const rows = await parseResponse<T[]>(response);
+  return rows[0];
+}
+
+export async function supabaseUpsert<T>(
+  table: string,
+  values: Record<string, QueryValue>,
+  onConflict: string,
+) {
+  const response = await fetch(restUrl(table, { on_conflict: onConflict }), {
+    method: "POST",
+    headers: headers({ prefer: "resolution=merge-duplicates,return=representation" }),
     body: JSON.stringify(values),
   });
   const rows = await parseResponse<T[]>(response);

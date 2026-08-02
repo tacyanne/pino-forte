@@ -3,6 +3,8 @@ import { getDb } from "../../../db";
 import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
 import { receivableDueDateFromIssuedAt } from "../../../lib/finance";
+import { camelizeRows } from "../../../lib/supabase-mappers";
+import { hasSupabaseRest, supabaseSelect } from "../../../lib/supabase-rest";
 
 type OrderItem = { code: string; quantity: number; unitPrice: number };
 
@@ -51,6 +53,7 @@ async function calculateTotals(
 
 export async function GET(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
+  if (hasSupabaseRest()) return getOrdersFromRest();
   try {
     const db = await getDb();
     const rows = await db
@@ -109,6 +112,23 @@ export async function GET(request: Request) {
       { status: 500 },
     );
   }
+}
+
+async function getOrdersFromRest() {
+  const rows = await supabaseSelect<Record<string, unknown>>("service_orders", {
+    select: "*",
+    order: "id.desc",
+    limit: "100",
+  });
+  return Response.json({
+    orders: camelizeRows<Record<string, unknown>>(rows).map((order) => ({
+      ...order,
+      productionStatus:
+        order.productionStatus === "Aguardando"
+          ? "Fila de producao"
+          : order.productionStatus,
+    })),
+  }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function POST(request: Request) {

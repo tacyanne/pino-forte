@@ -2,6 +2,8 @@ import { asc, eq, like } from "drizzle-orm";
 import { getDb, getSql } from "../../../db";
 import { customers, products } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
+import { camelizeRows, camelizeRow } from "../../../lib/supabase-mappers";
+import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
 const initialProducts = [
   ["RN 180", "RN-180", "Pino de balança RN 180", "180 mm", 49, "Pino"],
@@ -43,6 +45,7 @@ async function selectProducts() {
 
 export async function GET(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
+  if (hasSupabaseRest()) return getCatalogFromRest();
   try {
     const db = await getDb();
     let productRows = await selectProducts();
@@ -64,6 +67,7 @@ export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string };
+    if (hasSupabaseRest()) return postCatalogWithRest(body);
     const db = await getDb();
     if (body.type === "product") {
       const code = body.code?.trim().toUpperCase() || "";
@@ -95,6 +99,7 @@ export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string };
+    if (hasSupabaseRest()) return patchCatalogWithRest(body);
     const id = Number(body.id);
     if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
     const db = await getDb();
@@ -147,6 +152,7 @@ export async function DELETE(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = await request.json() as { type?: string; id?: number; name?: string };
+    if (hasSupabaseRest()) return deleteCatalogWithRest(body);
     if (body.type !== "customer") {
       return Response.json({ error: "Tipo de cadastro inválido." }, { status: 400 });
     }
@@ -169,4 +175,112 @@ export async function DELETE(request: Request) {
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível excluir o cliente." }, { status: 500 });
   }
+}
+
+async function getCatalogFromRest() {
+  const productRows = await supabaseSelect<Record<string, unknown>>("products", {
+    select: "*",
+    order: "code.asc",
+  });
+  const customerRows = await supabaseSelect<Record<string, unknown>>("customers", {
+    select: "*",
+    order: "name.asc",
+  });
+  return Response.json(
+    { products: camelizeRows(productRows), customers: camelizeRows(customerRows) },
+    { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
+  );
+}
+
+async function postCatalogWithRest(body: { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string }) {
+  if (body.type === "product") {
+    const code = body.code?.trim().toUpperCase() || "";
+    const name = body.name?.trim() || "";
+    const pieceType = normalizePieceType(body.pieceType);
+    const measure = body.measure?.trim() || "";
+    const price = Math.max(0, Number(body.price || 0));
+    if (!code || !pieceType || !name || !measure || !price)
+      return Response.json({ error: "Codigo, tipo de peca, descricao, aplicacao e valor sao obrigatorios." }, { status: 400 });
+    const product = await supabaseInsert<Record<string, unknown>>("products", {
+      code,
+      sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"),
+      piece_type: pieceType,
+      name,
+      measure,
+      price,
+    });
+    return Response.json({ product: camelizeRow(product) }, { status: 201 });
+  }
+
+  const name = body.name?.trim() || "";
+  const whatsapp = body.whatsapp?.trim() || "";
+  if (!name || !whatsapp) return Response.json({ error: "Nome e WhatsApp sao obrigatorios." }, { status: 400 });
+  if ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.street?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !body.state?.trim() || !body.number?.trim())
+    return Response.json({ error: "Preencha o endereco obrigatorio usando um CEP valido." }, { status: 400 });
+  const document = body.document?.trim() || "";
+  if (!document) return Response.json({ error: "CPF ou CNPJ e obrigatorio." }, { status: 400 });
+  const existing = await supabaseGetOne("customers", { select: "id", document: `eq.${document}` });
+  if (existing) return Response.json({ error: "Este CPF/CNPJ ja esta cadastrado." }, { status: 409 });
+  const customer = await supabaseInsert<Record<string, unknown>>("customers", {
+    name,
+    whatsapp,
+    document,
+    email: body.email?.trim() || "",
+    zip_code: body.zipCode?.trim() || "",
+    street: body.street?.trim() || "",
+    number: body.number?.trim() || "",
+    complement: body.complement?.trim() || "",
+    neighborhood: body.neighborhood?.trim() || "",
+    city: body.city?.trim() || "",
+    state: body.state?.trim() || "",
+    customer_type: body.customerType === "Distribuidor" ? "Distribuidor" : "Cliente final",
+  });
+  return Response.json({ customer: camelizeRow(customer) }, { status: 201 });
+}
+
+async function patchCatalogWithRest(body: { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string }) {
+  const id = Number(body.id);
+  if (!id) return Response.json({ error: "Cadastro invalido." }, { status: 400 });
+  if (body.type === "product") {
+    const changes: Record<string, string | number | boolean> = {};
+    if (body.active !== undefined) changes.active = body.active;
+    if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
+    if (body.code) changes.code = body.code.trim().toUpperCase();
+    if (body.pieceType !== undefined) {
+      const pieceType = normalizePieceType(body.pieceType);
+      if (!pieceType) return Response.json({ error: "Selecione o tipo de peca." }, { status: 400 });
+      changes.piece_type = pieceType;
+    }
+    if (body.name) changes.name = body.name.trim();
+    if (body.measure) changes.measure = body.measure.trim();
+    if (body.sku !== undefined) changes.sku = body.sku.trim().toUpperCase();
+    const product = await supabasePatch<Record<string, unknown>>("products", { id: `eq.${id}` }, changes);
+    return Response.json({ product: camelizeRow(product) });
+  }
+
+  const changes: Record<string, string | boolean> = {};
+  if (body.active !== undefined) changes.active = body.active;
+  if (body.name) changes.name = body.name.trim();
+  if (body.whatsapp) changes.whatsapp = body.whatsapp.trim();
+  if (body.email !== undefined) changes.email = body.email.trim();
+  if (body.document !== undefined) changes.document = body.document.trim();
+  if (body.zipCode !== undefined) changes.zip_code = body.zipCode.trim();
+  if (body.street !== undefined) changes.street = body.street.trim();
+  if (body.number !== undefined) changes.number = body.number.trim();
+  if (body.complement !== undefined) changes.complement = body.complement.trim();
+  if (body.neighborhood !== undefined) changes.neighborhood = body.neighborhood.trim();
+  if (body.city !== undefined) changes.city = body.city.trim();
+  if (body.state !== undefined) changes.state = body.state.trim();
+  if (body.customerType !== undefined) changes.customer_type = body.customerType === "Distribuidor" ? "Distribuidor" : "Cliente final";
+  const customer = await supabasePatch<Record<string, unknown>>("customers", { id: `eq.${id}` }, changes);
+  return Response.json({ customer: camelizeRow(customer) });
+}
+
+async function deleteCatalogWithRest(body: { type?: string; id?: number; name?: string }) {
+  if (body.type !== "customer") return Response.json({ error: "Tipo de cadastro invalido." }, { status: 400 });
+  const id = Number(body.id);
+  const name = body.name?.trim() || "";
+  if (!id && !name) return Response.json({ error: "Informe o cliente que sera excluido." }, { status: 400 });
+  await supabaseDelete("customers", id ? { id: `eq.${id}` } : { name: `eq.${name}` });
+  return Response.json({ success: true, deleted: 1 });
 }
