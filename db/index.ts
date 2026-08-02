@@ -25,9 +25,11 @@ export async function getSql() {
   if (!client) {
     const postgresFactory = await getPostgresFactory();
     client = postgresFactory(getDatabaseUrl(), {
-      max: 5,
+      max: 1,
       prepare: false,
       ssl: "require",
+      connect_timeout: 10,
+      idle_timeout: 20,
     });
   }
   return client;
