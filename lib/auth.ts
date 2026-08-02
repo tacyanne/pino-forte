@@ -1,6 +1,15 @@
 import { getSql } from "../db";
+import {
+  hasSupabaseRest,
+  supabaseDelete,
+  supabaseInsert,
+  supabasePatch,
+  supabaseSelect,
+} from "./supabase-rest";
 
 type AuthUser = { id: number; name: string; email: string; role: string; active: boolean };
+type StoredAuthUser = AuthUser & { passwordHash: string; salt: string; createdAt?: string };
+type StoredSession = { token: string; userId: number; expiresAt: string };
 
 export async function ensureAuthTables() {
   return getSql();
@@ -19,6 +28,7 @@ export async function passwordHash(password: string, saltHex?: string) {
 export async function currentUser(request: Request): Promise<AuthUser | null> {
   const token = request.headers.get("cookie")?.match(/(?:^|;\s*)pino_session=([^;]+)/)?.[1];
   if (!token) return null;
+  if (hasSupabaseRest()) return currentUserFromRest(token);
   const sql = await ensureAuthTables();
   const rows = await sql<AuthUser[]>`
     SELECT u.id, u.name, u.email, u.role, u.active
@@ -30,6 +40,128 @@ export async function currentUser(request: Request): Promise<AuthUser | null> {
     LIMIT 1
   `;
   return rows[0] || null;
+}
+
+async function currentUserFromRest(token: string): Promise<AuthUser | null> {
+  const [session] = await supabaseSelect<StoredSession>("app_sessions", {
+    select: "token,userId:user_id,expiresAt:expires_at",
+    token: `eq.${token}`,
+    limit: "1",
+  });
+  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) return null;
+  const [user] = await supabaseSelect<AuthUser>("app_users", {
+    select: "id,name,email,role,active",
+    id: `eq.${session.userId}`,
+    active: "eq.true",
+    limit: "1",
+  });
+  return user || null;
+}
+
+export async function hasUsers() {
+  if (hasSupabaseRest()) {
+    const rows = await supabaseSelect<{ id: number }>("app_users", {
+      select: "id",
+      limit: "1",
+    });
+    return rows.length > 0;
+  }
+  const sql = await ensureAuthTables();
+  const [count] = await sql<{ total: string }[]>`SELECT COUNT(*)::text total FROM app_users`;
+  return Number(count?.total || 0) > 0;
+}
+
+export async function listUsersForAdmin(admin: AuthUser | null) {
+  if (admin?.role !== "admin") return [];
+  if (hasSupabaseRest()) {
+    return supabaseSelect<AuthUser & { createdAt: string }>("app_users", {
+      select: "id,name,email,role,active,createdAt:created_at",
+      order: "name.asc",
+    });
+  }
+  const sql = await ensureAuthTables();
+  return sql`SELECT id, name, email, role, active, created_at "createdAt" FROM app_users ORDER BY name`;
+}
+
+export async function createAppUser(user: {
+  name: string;
+  email: string;
+  passwordHash: string;
+  salt: string;
+  role: string;
+}) {
+  if (hasSupabaseRest()) {
+    return supabaseInsert<{ id: number }>("app_users", {
+      name: user.name,
+      email: user.email,
+      password_hash: user.passwordHash,
+      salt: user.salt,
+      role: user.role,
+    });
+  }
+  const sql = await ensureAuthTables();
+  const [created] = await sql<{ id: number }[]>`
+    INSERT INTO app_users (name, email, password_hash, salt, role)
+    VALUES (${user.name}, ${user.email}, ${user.passwordHash}, ${user.salt}, ${user.role})
+    RETURNING id
+  `;
+  return created;
+}
+
+export async function findUserByEmail(email: string) {
+  if (hasSupabaseRest()) {
+    const [user] = await supabaseSelect<StoredAuthUser>("app_users", {
+      select: "id,passwordHash:password_hash,salt,active,name,email,role",
+      email: `eq.${email}`,
+      limit: "1",
+    });
+    return user || null;
+  }
+  const sql = await ensureAuthTables();
+  const [row] = await sql<StoredAuthUser[]>`
+    SELECT id, password_hash "passwordHash", salt, active, name, email, role
+    FROM app_users
+    WHERE email = ${email}
+    LIMIT 1
+  `;
+  return row || null;
+}
+
+export async function createAppSession(userId: number) {
+  const token = crypto.randomUUID() + crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 60 * 60 * 24 * 30 * 1000).toISOString();
+  if (hasSupabaseRest()) {
+    await supabaseInsert("app_sessions", {
+      token,
+      user_id: userId,
+      expires_at: expiresAt,
+    });
+    return token;
+  }
+  const sql = await ensureAuthTables();
+  await sql`
+    INSERT INTO app_sessions (token, user_id, expires_at)
+    VALUES (${token}, ${userId}, ${expiresAt})
+  `;
+  return token;
+}
+
+export async function deleteAppSession(token: string) {
+  if (hasSupabaseRest()) {
+    await supabaseDelete("app_sessions", { token: `eq.${token}` });
+    return;
+  }
+  const sql = await ensureAuthTables();
+  await sql`DELETE FROM app_sessions WHERE token = ${token}`;
+}
+
+export async function setAppUserActive(id: number, active: boolean) {
+  if (hasSupabaseRest()) {
+    await supabasePatch("app_users", { id: `eq.${id}`, role: "neq.admin" }, { active });
+    return;
+  }
+  const sql = await ensureAuthTables();
+  await sql`UPDATE app_users SET active = ${active} WHERE id = ${id} AND role != 'admin'`;
 }
 
 export async function requireUser(request: Request) {
