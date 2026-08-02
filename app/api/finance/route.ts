@@ -12,7 +12,7 @@ import {
 import { centsFromBody, currentMonth, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
 import { requireUser } from "../../../lib/auth";
 import { camelizeRows } from "../../../lib/supabase-mappers";
-import { hasSupabaseRest, supabaseSelect } from "../../../lib/supabase-rest";
+import { hasSupabaseRest, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
 type Auth = { id: number; role: string };
 
@@ -221,6 +221,7 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    if (hasSupabaseRest()) return postFinanceWithRest(auth, body);
     const db = await getDb();
     const action = String(body.action || "");
 
@@ -327,6 +328,7 @@ export async function PATCH(request: Request) {
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    if (hasSupabaseRest()) return patchFinanceWithRest(auth, body);
     const db = await getDb();
     const entity = String(body.entity || "");
     const id = Number(body.id);
@@ -480,4 +482,202 @@ export async function PATCH(request: Request) {
       { status: 500 },
     );
   }
+}
+
+async function auditRest(auth: Auth, action: string, entity: string, entityId: number | null, afterValues: unknown) {
+  await supabaseInsert("audit_logs", {
+    user_id: auth.id,
+    action,
+    entity,
+    entity_id: entityId,
+    after_values: JSON.stringify(afterValues),
+  });
+}
+
+async function postFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
+  const action = String(body.action || "");
+
+  if (action === "category") {
+    const name = String(body.name || "").trim();
+    const type = String(body.type || "").trim();
+    if (!name || !type) return jsonError("Informe nome e tipo da categoria.");
+    const category = await supabaseInsert<Record<string, unknown>>("financial_categories", {
+      name,
+      type,
+      parent_id: Number(body.parentId) || null,
+    });
+    await auditRest(auth, "create", "financial_categories", Number(category.id || 0), category);
+    return Response.json({ category: camelizeRows([category])[0] }, { status: 201 });
+  }
+
+  if (action === "payable") {
+    const amountCents = centsFromBody(body);
+    const supplier = String(body.supplier || "").trim();
+    const description = String(body.description || "").trim();
+    const dueDate = String(body.dueDate || "").slice(0, 10);
+    if (!supplier || !description || !dueDate || amountCents <= 0)
+      return jsonError("Fornecedor, descricao, vencimento e valor sao obrigatorios.");
+    const status = body.status === "Pago" ? "Pago" : "Pendente";
+    const paidAt = status === "Pago" ? String(body.paidAt || todayIso()).slice(0, 10) : null;
+    const payable = await supabaseInsert<Record<string, unknown>>("accounts_payable", {
+      supplier,
+      description,
+      category_id: Number(body.categoryId) || null,
+      competence_month: String(body.competenceMonth || dueDate.slice(0, 7)),
+      due_date: dueDate,
+      amount_cents: amountCents,
+      payment_method: String(body.paymentMethod || ""),
+      paid_at: paidAt,
+      status,
+      notes: String(body.notes || ""),
+    });
+    if (status === "Pago") {
+      await supabaseInsert("cash_movements", {
+        type: "saida",
+        origin: "Conta a pagar",
+        origin_id: Number(payable.id || 0),
+        movement_date: paidAt || todayIso(),
+        amount_cents: amountCents,
+        payment_method: String(body.paymentMethod || "Nao informado"),
+        description,
+        legacy_source_key: `accounts_payable:${payable.id}:payment`,
+        created_by: auth.id,
+      });
+    }
+    await auditRest(auth, "create", "accounts_payable", Number(payable.id || 0), payable);
+    return Response.json({ payable: camelizeRows([payable])[0] }, { status: 201 });
+  }
+
+  if (action === "cashMovement") {
+    const amountCents = centsFromBody(body);
+    const type = String(body.type || "").toLowerCase();
+    const movementDate = String(body.movementDate || todayIso()).slice(0, 10);
+    const description = String(body.description || "").trim();
+    if (!["entrada", "saida"].includes(type) || amountCents <= 0 || !description)
+      return jsonError("Informe tipo, valor e descricao do movimento.");
+    const movement = await supabaseInsert<Record<string, unknown>>("cash_movements", {
+      type,
+      origin: "Manual",
+      movement_date: movementDate,
+      amount_cents: amountCents,
+      payment_method: String(body.paymentMethod || "Nao informado"),
+      description,
+      created_by: auth.id,
+    });
+    await auditRest(auth, "create", "cash_movements", Number(movement.id || 0), movement);
+    return Response.json({ movement: camelizeRows([movement])[0] }, { status: 201 });
+  }
+
+  return jsonError("Acao financeira invalida.");
+}
+
+async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
+  const entity = String(body.entity || "");
+  const id = Number(body.id);
+  if (!id) return jsonError("Informe o registro financeiro.");
+
+  if (entity === "accountsReceivable") {
+    const amountCents = centsFromBody(body);
+    const paymentMethod = String(body.paymentMethod || "").trim();
+    const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
+    if (amountCents <= 0 || !paymentMethod) return jsonError("Informe valor e forma de recebimento.");
+    const current = await supabaseGetOne<Record<string, unknown>>("accounts_receivable", {
+      select: "*",
+      id: `eq.${id}`,
+    });
+    if (!current) throw new Error("Conta a receber nao encontrada.");
+    if (current.status === "Pago") throw new Error("Esta conta a receber ja esta paga.");
+    const balanceCents = Number(current.balance_cents || 0);
+    if (amountCents > balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
+    const originalAmountCents = Number(current.original_amount_cents || 0);
+    const newReceived = Number(current.received_amount_cents || 0) + amountCents;
+    const newBalance = Math.max(0, originalAmountCents - newReceived);
+    const status = receivableStatus(newBalance, String(current.due_date || ""));
+    const receipt = await supabaseInsert<Record<string, unknown>>("receipts", {
+      account_receivable_id: id,
+      service_order_id: Number(current.service_order_id || 0),
+      receipt_date: receiptDate,
+      amount_cents: amountCents,
+      payment_method: paymentMethod,
+      notes: String(body.notes || ""),
+      created_by: auth.id,
+    });
+    const updated = await supabasePatch<Record<string, unknown>>("accounts_receivable", { id: `eq.${id}` }, {
+      received_amount_cents: newReceived,
+      balance_cents: newBalance,
+      status,
+      updated_at: new Date().toISOString(),
+    });
+    await supabasePatch("service_orders", { id: `eq.${Number(current.service_order_id || 0)}` }, {
+      received_cents: newReceived,
+      received: newReceived / 100,
+      balance_cents: newBalance,
+      financial_status: status,
+      updated_at: new Date().toISOString(),
+    });
+    await supabaseInsert("cash_movements", {
+      type: "entrada",
+      origin: "Recebimento",
+      origin_id: id,
+      movement_date: receiptDate,
+      amount_cents: amountCents,
+      payment_method: paymentMethod,
+      description: `Recebimento da OS ${current.service_order_id}`,
+      legacy_source_key: `receipt:${receipt.id}`,
+      created_by: auth.id,
+    });
+    await auditRest(auth, "receive", "accounts_receivable", id, { updated, receipt });
+    return Response.json({ accountReceivable: camelizeRows([updated])[0], receipt: camelizeRows([receipt])[0] });
+  }
+
+  if (entity === "accountsPayable") {
+    const current = await supabaseGetOne<Record<string, unknown>>("accounts_payable", {
+      select: "*",
+      id: `eq.${id}`,
+    });
+    if (!current) throw new Error("Conta a pagar nao encontrada.");
+    const status = body.status ? String(body.status) : String(current.status || "");
+    const paidAt = status === "Pago" ? String(body.paidAt || current.paid_at || todayIso()).slice(0, 10) : String(current.paid_at || "") || null;
+    const paymentMethod = String(body.paymentMethod ?? current.payment_method ?? "");
+    const amountCents = body.amountCents === undefined && body.amount === undefined
+      ? Number(current.amount_cents || 0)
+      : centsFromBody(body);
+    const updated = await supabasePatch<Record<string, unknown>>("accounts_payable", { id: `eq.${id}` }, {
+      supplier: body.supplier === undefined ? String(current.supplier || "") : String(body.supplier).trim(),
+      description: body.description === undefined ? String(current.description || "") : String(body.description).trim(),
+      category_id: body.categoryId === undefined ? Number(current.category_id || 0) || null : Number(body.categoryId) || null,
+      competence_month: body.competenceMonth === undefined ? String(current.competence_month || "") : String(body.competenceMonth),
+      due_date: body.dueDate === undefined ? String(current.due_date || "") : String(body.dueDate).slice(0, 10),
+      amount_cents: amountCents,
+      payment_method: paymentMethod,
+      paid_at: paidAt,
+      status,
+      notes: body.notes === undefined ? String(current.notes || "") : String(body.notes),
+      updated_at: new Date().toISOString(),
+    });
+    if (status === "Pago") {
+      const legacySourceKey = `accounts_payable:${id}:payment`;
+      const movement = await supabaseGetOne<Record<string, unknown>>("cash_movements", {
+        select: "id",
+        legacy_source_key: `eq.${legacySourceKey}`,
+      });
+      const values = {
+        type: "saida",
+        origin: "Conta a pagar",
+        origin_id: id,
+        movement_date: paidAt || todayIso(),
+        amount_cents: amountCents,
+        payment_method: paymentMethod || "Nao informado",
+        description: String(updated.description || ""),
+        legacy_source_key: legacySourceKey,
+        created_by: auth.id,
+      };
+      if (movement?.id) await supabasePatch("cash_movements", { id: `eq.${movement.id}` }, values);
+      else await supabaseInsert("cash_movements", values);
+    }
+    await auditRest(auth, "update", "accounts_payable", id, updated);
+    return Response.json({ payable: camelizeRows([updated])[0] });
+  }
+
+  return jsonError("Entidade financeira invalida.");
 }

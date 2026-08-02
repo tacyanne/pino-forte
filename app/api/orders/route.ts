@@ -3,10 +3,27 @@ import { getDb } from "../../../db";
 import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
 import { receivableDueDateFromIssuedAt } from "../../../lib/finance";
-import { camelizeRows } from "../../../lib/supabase-mappers";
-import { hasSupabaseRest, supabaseSelect } from "../../../lib/supabase-rest";
+import { camelizeRow, camelizeRows } from "../../../lib/supabase-mappers";
+import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
 type OrderItem = { code: string; quantity: number; unitPrice: number };
+type RestCustomer = { id: number; name: string; customerType: string };
+type RestOrder = Record<string, unknown> & {
+  id: number;
+  customerName: string;
+  customerType: string;
+  productCode: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  discountRate: number;
+  total: number;
+  received: number;
+  paymentMethod: string;
+  productionStatus: string;
+  createdAt: string;
+  walletMonth: string;
+};
 
 function automaticDiscount(customerType: string, quantity: number) {
   if (customerType.trim().toLocaleLowerCase("pt-BR") !== "distribuidor") return 0;
@@ -114,6 +131,45 @@ export async function GET(request: Request) {
   }
 }
 
+async function calculateTotalsFromRest(
+  auth: { role: string },
+  customerId: number,
+  customerName: string,
+  requestedCustomerType: unknown,
+  items: OrderItem[],
+  requestedDiscount: unknown,
+) {
+  const quantity = items.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
+  const subtotal = items.reduce(
+    (sum, item) => sum + Math.max(1, Number(item.quantity)) * Math.max(0, Number(item.unitPrice)),
+    0,
+  );
+  const customer = customerId
+    ? await supabaseGetOne<RestCustomer>("customers", {
+        select: "id,name,customerType:customer_type",
+        id: `eq.${customerId}`,
+      })
+    : await supabaseGetOne<RestCustomer>("customers", {
+        select: "id,name,customerType:customer_type",
+        name: `eq.${customerName.trim()}`,
+      });
+  const customerType =
+    customer?.customerType ||
+    String(requestedCustomerType || "").trim() ||
+    "Cliente final";
+  const automatic = automaticDiscount(customerType, quantity);
+  const requested = requestedDiscount === undefined || requestedDiscount === null || requestedDiscount === ""
+    ? automatic
+    : Number(requestedDiscount);
+  if (!Number.isFinite(requested) || requested < 0 || requested >= 100)
+    throw new Error("Informe um desconto valido.");
+  if (requested > 10 && auth.role !== "admin")
+    throw new Error("Descontos acima de 10% exigem autorizacao do administrador.");
+  const discountRate = auth.role === "admin" ? requested : automatic;
+  const total = Math.round(subtotal * (1 - discountRate / 100) * 100) / 100;
+  return { quantity, subtotal, customerType, discountRate, total, customerId: customer?.id || customerId || null };
+}
+
 async function getOrdersFromRest() {
   const rows = await supabaseSelect<Record<string, unknown>>("service_orders", {
     select: "*",
@@ -135,6 +191,7 @@ export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    if (hasSupabaseRest()) return postOrderWithRest(auth, body);
     const items = Array.isArray(body.items)
       ? (
           body.items as { code: string; quantity: number; unitPrice: number }[]
@@ -261,6 +318,7 @@ export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    if (hasSupabaseRest()) return patchOrderWithRest(auth, body);
     const id = Number(body.id);
     if (!id) return Response.json({ error: "OS inválida." }, { status: 400 });
     const allowedProduction = [
@@ -388,6 +446,10 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
+    if (hasSupabaseRest()) {
+      await supabaseDelete("service_orders", { id: "gte.0" });
+      return Response.json({ success: true });
+    }
     const db = await getDb();
     await db.delete(serviceOrders);
     return Response.json({ success: true });
@@ -402,4 +464,137 @@ export async function DELETE(request: Request) {
       { status: 500 },
     );
   }
+}
+
+async function postOrderWithRest(auth: { role: string }, body: Record<string, unknown>) {
+  const items = Array.isArray(body.items)
+    ? (body.items as { code: string; quantity: number; unitPrice: number }[]).filter((item) => item.code && Number(item.quantity) > 0)
+    : [];
+  const normalizedItems: OrderItem[] = items.length
+    ? items
+    : [{ code: String(body.productCode || ""), quantity: Math.max(1, Number(body.quantity || 1)), unitPrice: Math.max(0, Number(body.unitPrice || 0)) }];
+  const unitPrice = items.length ? Math.max(0, Number(items[0].unitPrice)) : Math.max(0, Number(body.unitPrice || 0));
+  const received = Math.max(0, Number(body.received || 0));
+  const paymentMethod = String(body.paymentMethod || "");
+  const deliveryType = String(body.deliveryType || "");
+  if (!["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(paymentMethod))
+    return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
+  if (!["Retirada no local", "Entrega"].includes(deliveryType))
+    return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
+  if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
+    return Response.json({ error: "Informe o valor recebido." }, { status: 400 });
+  const requestedStatus = String(body.productionStatus || "Fila de produção");
+  const productionStatus = ["Fila de produção", "Em produção", "Pronta", "Entregue"].includes(requestedStatus)
+    ? requestedStatus
+    : "Fila de produção";
+  if (!String(body.customerName || "").trim() || !normalizedItems.length || normalizedItems.some((item) => !item.code))
+    return Response.json({ error: "Selecione o cliente e pelo menos uma peca." }, { status: 400 });
+  const totals = await calculateTotalsFromRest(
+    auth,
+    Number(body.customerId || 0),
+    String(body.customerName),
+    body.customerType,
+    normalizedItems,
+    body.discountRate,
+  );
+  const moveToWallet = ["Pix", "Boleto", "Cartão"].includes(paymentMethod) && received < totals.total;
+  const storedPaymentMethod = moveToWallet ? "Carteira" : paymentMethod;
+  const initialWalletHistory =
+    moveToWallet && received > 0
+      ? JSON.stringify([{ amount: Math.min(received, totals.total), method: paymentMethod, date: String(body.createdAt || new Date().toISOString().slice(0, 10)) }])
+      : String(body.commercialStatus || "");
+  const orderCreatedAt = String(body.createdAt || new Date().toISOString().slice(0, 10));
+  const issuedAt = orderCreatedAt.slice(0, 10);
+  const dueDate = receivableDueDateFromIssuedAt(issuedAt);
+  const [lastOrder] = await supabaseSelect<{ id: number }>("service_orders", {
+    select: "id",
+    order: "id.desc",
+    limit: "1",
+  });
+  const number = `OS-${new Date().getFullYear()}-${String(Number(lastOrder?.id || 0) + 1).padStart(6, "0")}`;
+  const order = await supabaseInsert<Record<string, unknown>>("service_orders", {
+    number,
+    customer_id: totals.customerId,
+    customer_name: String(body.customerName),
+    customer_type: totals.customerType,
+    origin: String(body.origin || "WhatsApp"),
+    created_at: orderCreatedAt,
+    issued_at: issuedAt,
+    due_date: dueDate,
+    product_code: items.length ? JSON.stringify(items) : String(body.productCode),
+    quantity: totals.quantity,
+    unit_price: unitPrice,
+    subtotal: totals.subtotal,
+    discount_rate: totals.discountRate,
+    total: totals.total,
+    received: Math.min(received, totals.total),
+    delivery_date: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
+    delivery_type: deliveryType,
+    payment_method: storedPaymentMethod,
+    wallet_month: storedPaymentMethod === "Carteira" ? orderCreatedAt.slice(0, 7) : "",
+    production_status: productionStatus,
+    commercial_status: initialWalletHistory,
+    notes: String(body.notes || ""),
+  });
+  return Response.json({ order: camelizeRow(order) }, { status: 201 });
+}
+
+async function patchOrderWithRest(auth: { role: string }, body: Record<string, unknown>) {
+  const id = Number(body.id);
+  if (!id) return Response.json({ error: "OS invalida." }, { status: 400 });
+  const current = await supabaseGetOne<RestOrder>("service_orders", {
+    select: "*",
+    id: `eq.${id}`,
+  });
+  if (!current) return Response.json({ error: "OS nao encontrada." }, { status: 404 });
+  const allowedProduction = ["Fila de produção", "Aguardando", "Em produção", "Pronta", "Entregue", "Cancelada"];
+  const changes: Record<string, string | number | null> = {};
+  if (body.productionStatus && allowedProduction.includes(String(body.productionStatus)))
+    changes.production_status = String(body.productionStatus);
+  if (body.received !== undefined) changes.received = Math.max(0, Number(body.received));
+  if (body.deliveryDate) changes.delivery_date = String(body.deliveryDate);
+  if (body.notes !== undefined) changes.notes = String(body.notes);
+  if (body.commercialStatus !== undefined) changes.commercial_status = String(body.commercialStatus);
+  if (body.customerName !== undefined) changes.customer_name = String(body.customerName);
+  if (body.createdAt !== undefined) {
+    changes.created_at = String(body.createdAt);
+    const issuedAt = String(body.createdAt).slice(0, 10);
+    changes.issued_at = issuedAt;
+    changes.due_date = receivableDueDateFromIssuedAt(issuedAt);
+  }
+  if (body.origin !== undefined) changes.origin = String(body.origin);
+  if (body.deliveryType !== undefined) changes.delivery_type = String(body.deliveryType);
+  if (body.paymentMethod !== undefined) changes.payment_method = String(body.paymentMethod);
+  if (body.productCode !== undefined) {
+    const items = Array.isArray(body.items) ? (body.items as { code: string; quantity: number; unitPrice: number }[]) : [];
+    if (items.length) {
+      const totals = await calculateTotalsFromRest(
+        auth,
+        Number(body.customerId || 0),
+        String(body.customerName ?? current.customerName),
+        body.customerType,
+        items,
+        body.discountRate,
+      );
+      changes.product_code = JSON.stringify(items);
+      changes.quantity = totals.quantity;
+      changes.unit_price = Math.max(0, Number(items[0].unitPrice));
+      changes.subtotal = totals.subtotal;
+      changes.customer_type = totals.customerType;
+      changes.discount_rate = totals.discountRate;
+      changes.total = totals.total;
+      changes.customer_id = totals.customerId;
+    } else {
+      changes.product_code = String(body.productCode);
+    }
+  }
+  if (String(body.paymentMethod ?? current.paymentMethod) === "Carteira") {
+    const effectiveCreatedAt = String(body.createdAt ?? current.createdAt);
+    changes.wallet_month = current.walletMonth || effectiveCreatedAt.slice(0, 7);
+  } else if (body.paymentMethod !== undefined) {
+    changes.wallet_month = "";
+  }
+  if (!Object.keys(changes).length) return Response.json({ error: "Nenhuma alteracao informada." }, { status: 400 });
+  const order = await supabasePatch<Record<string, unknown>>("service_orders", { id: `eq.${id}` }, changes);
+  return Response.json({ order: camelizeRow(order) });
 }
