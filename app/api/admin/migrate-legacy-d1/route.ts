@@ -48,13 +48,38 @@ async function targetCounts() {
   return { customers: customers.length, products: products.length, orders: orders.length };
 }
 
+async function targetSnapshot() {
+  const [customers, products, orders, settings] = await Promise.all([
+    supabaseSelect<LegacyRow>("customers", { select: "*", order: "id.asc" }),
+    supabaseSelect<LegacyRow>("products", { select: "*", order: "id.asc" }),
+    supabaseSelect<LegacyRow>("service_orders", { select: "*", order: "id.asc" }),
+    supabaseSelect<LegacyRow>("app_settings", { select: "*", order: "id.asc" }),
+  ]);
+  return { customers, products, orders, settings };
+}
+
+const totals = (rows: LegacyRow[], totalKey: string, receivedKey?: string) => ({
+  total: rows.reduce((sum, row) => sum + Number(row[totalKey] || 0), 0),
+  received: receivedKey ? rows.reduce((sum, row) => sum + Number(row[receivedKey] || 0), 0) : 0,
+});
+
 export async function GET(request: Request) {
   if (!tokenIsValid(request)) return Response.json({ error: "Não autorizado." }, { status: 401 });
   const legacy = await snapshot();
+  const target = await targetSnapshot();
   return Response.json({
     legacy,
+    target,
     legacyCounts: Object.fromEntries(Object.entries(legacy).map(([key, rows]) => [key, rows.length])),
     targetCounts: await targetCounts(),
+    comparison: {
+      legacyOrderNumbers: legacy.orders.map((row) => text(row.number)),
+      targetOrderNumbers: target.orders.map((row) => text(row.number)),
+      legacyOrderTotals: totals(legacy.orders, "total", "received"),
+      targetOrderTotals: totals(target.orders, "total", "received"),
+      legacyCustomerDocuments: legacy.customers.map((row) => text(row.document)).sort(),
+      targetCustomerDocuments: target.customers.map((row) => text(row.document)).sort(),
+    },
   });
 }
 
