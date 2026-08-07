@@ -2726,7 +2726,7 @@ export default function Home() {
                       <p>Apresenta os valores integrais cadastrados para venda ao consumidor.</p>
                     </div>
                     <div className="catalog-management-actions">
-                      <a className="secondary-button" href="/catalogo" target="_blank" rel="noreferrer">
+                      <a className="secondary-button" href="/catalogo">
                         Acessar online
                       </a>
                       <button className="catalog-bw-download" onClick={() => downloadCatalogPdf("final", "bw")}>
@@ -2744,7 +2744,7 @@ export default function Home() {
                       <p>Apresenta o preço de cada peça e os descontos de 5%, 8% e 10% conforme a quantidade.</p>
                     </div>
                     <div className="catalog-management-actions">
-                      <a className="secondary-button" href="/catalogo?tipo=distribuidor" target="_blank" rel="noreferrer">
+                      <a className="secondary-button" href="/catalogo?tipo=distribuidor">
                         Acessar online
                       </a>
                       <button className="catalog-bw-download" onClick={() => downloadCatalogPdf("distributor", "bw")}>
