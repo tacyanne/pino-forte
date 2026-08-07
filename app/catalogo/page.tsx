@@ -1,6 +1,8 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "../../db";
 import { products } from "../../db/schema";
+import { camelizeRows } from "../../lib/supabase-mappers";
+import { hasSupabaseRest, supabaseSelect } from "../../lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
@@ -38,12 +40,19 @@ export default async function CatalogoPage({
 }) {
   const params = await searchParams;
   const distributor = params?.tipo === "distribuidor";
-  const db = await getDb();
-  const catalogProducts = await db
-    .select()
-    .from(products)
-    .where(eq(products.active, true))
-    .orderBy(asc(products.code));
+  const catalogProducts = hasSupabaseRest()
+    ? camelizeRows<typeof products.$inferSelect>(
+        await supabaseSelect<Record<string, unknown>>("products", {
+          select: "*",
+          active: "eq.true",
+          order: "code.asc",
+        }),
+      )
+    : await (await getDb())
+        .select()
+        .from(products)
+        .where(eq(products.active, true))
+        .orderBy(asc(products.code));
 
   return (
     <main className="catalog-page">
