@@ -1,4 +1,4 @@
-import { asc, eq, like } from "drizzle-orm";
+import { and, asc, eq, like, ne } from "drizzle-orm";
 import { getDb, getSql } from "../../../db";
 import { customers, products } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
@@ -76,7 +76,11 @@ export async function POST(request: Request) {
       const measure = body.measure?.trim() || "";
       const price = Math.max(0, Number(body.price || 0));
       if (!code || !pieceType || !name || !measure || !price) return Response.json({ error: "Código, tipo de peça, descrição, aplicação e valor são obrigatórios." }, { status: 400 });
-      const [product] = await db.insert(products).values({ code, sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"), pieceType, name, measure, price }).returning();
+      const sku = body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-");
+      const existing = await db.select({ id: products.id }).from(products).where(eq(products.code, code)).limit(1);
+      if (existing.length)
+        return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
+      const [product] = await db.insert(products).values({ code, sku, pieceType, name, measure, price }).returning();
       return Response.json({ product }, { status: 201 });
     }
     const name = body.name?.trim() || "";
@@ -107,7 +111,13 @@ export async function PATCH(request: Request) {
       const changes: Partial<typeof products.$inferInsert> = {};
       if (body.active !== undefined) changes.active = body.active;
       if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
-      if (body.code) changes.code = body.code.trim().toUpperCase();
+      if (body.code) {
+        const code = body.code.trim().toUpperCase();
+        const duplicate = await db.select({ id: products.id }).from(products).where(and(eq(products.code, code), ne(products.id, id))).limit(1);
+        if (duplicate.length)
+          return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
+        changes.code = code;
+      }
       if (body.pieceType !== undefined) {
         const pieceType = normalizePieceType(body.pieceType);
         if (!pieceType) return Response.json({ error: "Selecione o tipo de peça." }, { status: 400 });
@@ -201,6 +211,9 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
     const price = Math.max(0, Number(body.price || 0));
     if (!code || !pieceType || !name || !measure || !price)
       return Response.json({ error: "Codigo, tipo de peca, descricao, aplicacao e valor sao obrigatorios." }, { status: 400 });
+    const existing = await supabaseGetOne("products", { select: "id", code: `eq.${code}` });
+    if (existing)
+      return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
     const product = await supabaseInsert<Record<string, unknown>>("products", {
       code,
       sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"),
@@ -245,7 +258,13 @@ async function patchCatalogWithRest(body: { type?: string; id?: number; active?:
     const changes: Record<string, string | number | boolean> = {};
     if (body.active !== undefined) changes.active = body.active;
     if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
-    if (body.code) changes.code = body.code.trim().toUpperCase();
+    if (body.code) {
+      const code = body.code.trim().toUpperCase();
+      const duplicate = await supabaseGetOne<Record<string, unknown>>("products", { select: "id", code: `eq.${code}` });
+      if (duplicate && Number(duplicate.id) !== id)
+        return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
+      changes.code = code;
+    }
     if (body.pieceType !== undefined) {
       const pieceType = normalizePieceType(body.pieceType);
       if (!pieceType) return Response.json({ error: "Selecione o tipo de peca." }, { status: 400 });

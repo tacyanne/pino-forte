@@ -1066,8 +1066,16 @@ export default function Home() {
           price: parseCurrency(String(f.get("price"))),
         }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error);
+      const j = await r.json().catch(() => ({} as { error?: string; product?: Product }));
+      if (!r.ok)
+        throw new Error(
+          j.error ||
+            (r.status === 409
+              ? "Já existe uma peça cadastrada com este código."
+              : "Não foi possível cadastrar a peça. Tente novamente."),
+        );
+      if (!j.product)
+        throw new Error("Não foi possível confirmar o cadastro da peça. Tente novamente.");
       setProducts((v) =>
         (editingProduct
           ? v.map((p) => (p.id === j.product.id ? j.product : p))
