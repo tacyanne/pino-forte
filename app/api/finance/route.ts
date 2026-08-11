@@ -9,7 +9,7 @@ import {
   receipts,
   serviceOrders,
 } from "../../../db/schema";
-import { centsFromBody, currentMonth, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
+import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
 import { requireUser } from "../../../lib/auth";
 import { camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
@@ -348,7 +348,11 @@ export async function PATCH(request: Request) {
         if (amountCents > current.balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
 
         const newReceived = current.receivedAmountCents + amountCents;
-        const newBalance = Math.max(0, current.originalAmountCents - newReceived);
+        const rawBalance = Math.max(0, current.originalAmountCents - newReceived);
+        // Resíduo pequeno é quitado: o total da OS passa a ser o valor recebido.
+        const writeOff = rawBalance > 0 && rawBalance <= RESIDUAL_SETTLE_CENTS;
+        const newOriginal = writeOff ? newReceived : current.originalAmountCents;
+        const newBalance = writeOff ? 0 : rawBalance;
         const status = receivableStatus(newBalance, current.dueDate);
         const [receipt] = await tx
           .insert(receipts)
@@ -366,6 +370,7 @@ export async function PATCH(request: Request) {
         const [updated] = await tx
           .update(accountsReceivable)
           .set({
+            originalAmountCents: newOriginal,
             receivedAmountCents: newReceived,
             balanceCents: newBalance,
             status,
@@ -382,6 +387,7 @@ export async function PATCH(request: Request) {
             balanceCents: newBalance,
             financialStatus: status,
             updatedAt: new Date().toISOString(),
+            ...(writeOff ? { totalCents: newReceived, total: newReceived / 100 } : {}),
           })
           .where(eq(serviceOrders.id, current.serviceOrderId));
 
@@ -591,7 +597,11 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
     if (amountCents > balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
     const originalAmountCents = Number(current.original_amount_cents || 0);
     const newReceived = Number(current.received_amount_cents || 0) + amountCents;
-    const newBalance = Math.max(0, originalAmountCents - newReceived);
+    const rawBalance = Math.max(0, originalAmountCents - newReceived);
+    // Resíduo pequeno é quitado: o total da OS passa a ser o valor recebido.
+    const writeOff = rawBalance > 0 && rawBalance <= RESIDUAL_SETTLE_CENTS;
+    const newOriginal = writeOff ? newReceived : originalAmountCents;
+    const newBalance = writeOff ? 0 : rawBalance;
     const status = receivableStatus(newBalance, String(current.due_date || ""));
     const receipt = await supabaseInsert<Record<string, unknown>>("receipts", {
       account_receivable_id: id,
@@ -603,6 +613,7 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
       created_by: auth.id,
     });
     const updated = await supabasePatch<Record<string, unknown>>("accounts_receivable", { id: `eq.${id}` }, {
+      original_amount_cents: newOriginal,
       received_amount_cents: newReceived,
       balance_cents: newBalance,
       status,
@@ -614,6 +625,7 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
       balance_cents: newBalance,
       financial_status: status,
       updated_at: new Date().toISOString(),
+      ...(writeOff ? { total_cents: newReceived, total: newReceived / 100 } : {}),
     });
     await supabaseInsert("cash_movements", {
       type: "entrada",
