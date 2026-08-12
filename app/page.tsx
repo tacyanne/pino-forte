@@ -2995,6 +2995,7 @@ export default function Home() {
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
                                       <span>Data de emissão</span>
+                                      <span>Data de vencimento</span>
                                       <span>Valor</span>
                                     </div>
                                     {item.items
@@ -3013,7 +3014,8 @@ export default function Home() {
                                         }}
                                       >
                                         <b>{entry.orderNumber}</b>
-                                        <span>{brDate(entry.issuedAt)}</span>
+                                        <span className="wallet-order-date" data-label="Emissão">{brDate(entry.issuedAt)}</span>
+                                        <span className="wallet-order-date" data-label="Vencimento">{brDate(entry.receivable.dueDate)}</span>
                                         <strong>{money(entry.total)}</strong>
                                       </div>
                                     ))}
