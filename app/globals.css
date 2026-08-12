@@ -325,6 +325,15 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   width:150px;
   text-align:center;
 }
+.orders-table th:nth-child(n+3),
+.orders-table td:nth-child(n+3){
+  text-align:center;
+}
+.orders-table td:nth-child(6) .status{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
 .review-shell .order-view-actions{
   grid-template-columns:repeat(auto-fit,minmax(145px,1fr))!important;
 }
