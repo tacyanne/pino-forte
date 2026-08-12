@@ -798,9 +798,7 @@ export default function Home() {
       };
     })
     .sort((a, b) => {
-      const overdueDifference = Number(b.status === "Atrasado") - Number(a.status === "Atrasado");
-      if (overdueDifference !== 0) return overdueDifference;
-      const dueDifference = dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
+      const dueDifference = dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
       if (dueDifference !== 0) return dueDifference;
       return b.receivable.id - a.receivable.id;
     })
@@ -2221,7 +2219,7 @@ export default function Home() {
                       <div className="dashboard-receivables-head" aria-hidden="true">
                         <span>OS / Cliente</span>
                         <span>Vencimento</span>
-                        <span>Saldo</span>
+                        <span>Saldo Devedor</span>
                         <span>Status</span>
                       </div>
                       {dashboardReceivables.length ? dashboardReceivables.map((row) => (
@@ -2243,7 +2241,7 @@ export default function Home() {
                             <small>{row.customerName}</small>
                           </div>
                           <span data-label="Vencimento">{brDate(row.dueDate)}</span>
-                          <strong data-label="Saldo">{money(row.balance)}</strong>
+                          <strong data-label="Saldo Devedor">{money(row.balance)}</strong>
                           <span className={`status ${row.status === "Atrasado" ? "red" : "amber"}`}>{row.status}</span>
                         </div>
                       )) : (
