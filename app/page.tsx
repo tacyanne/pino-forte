@@ -2234,7 +2234,7 @@ export default function Home() {
                     <div className="dashboard-receivables">
                       <div className="dashboard-receivables-head" aria-hidden="true">
                         <span>OS / Cliente</span>
-                        <span>Vencimento</span>
+                        <span>Data de vencimento</span>
                         <span>Saldo Devedor</span>
                         <span>Status</span>
                       </div>
@@ -2256,7 +2256,7 @@ export default function Home() {
                             <b>{row.orderNumber}</b>
                             <small>{row.customerName}</small>
                           </div>
-                          <span data-label="Vencimento">{brDate(row.dueDate)}</span>
+                          <span data-label="Data de vencimento">{brDate(row.dueDate)}</span>
                           <strong data-label="Saldo Devedor">{money(row.balance)}</strong>
                           <span className={`status ${row.status === "Atrasado" ? "red" : "amber"}`}>{row.status}</span>
                         </div>
@@ -2940,7 +2940,7 @@ export default function Home() {
                           <tr>
                             <th>OS</th>
                             <th>Cliente</th>
-                            <th>Vencimento</th>
+                            <th>Data de vencimento</th>
                             <th>Saldo Devedor</th>
                             <th>Status</th>
                           </tr>
