@@ -663,11 +663,28 @@ export default function Home() {
         pending: Math.max(0, summary.sales - summary.received),
       }));
   }, [orders, dashboardMonth]);
+  const receivableByOrderId = new Map(
+    financeData.accountsReceivable.map((receivable) => [receivable.serviceOrderId, receivable]),
+  );
+  const orderDisplayStatus = (order: Order) => {
+    const baseStatus = paymentStatus(order);
+    const receivable = receivableByOrderId.get(order.id);
+    if (
+      baseStatus !== "Pago" &&
+      baseStatus !== "Cancelada" &&
+      receivable &&
+      receivable.balanceCents > 0 &&
+      dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso())
+    ) return "Atrasado";
+    return baseStatus;
+  };
+  const orderDisplayTone = (order: Order) =>
+    orderDisplayStatus(order) === "Atrasado" ? "red" : paymentTone(order);
   const filteredOrders = orders
     .filter(
       (o) =>
         (!orderMonthFilter || monthInSaoPaulo(o.createdAt) === orderMonthFilter) &&
-        (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
+        (paymentFilter === "Todos" || orderDisplayStatus(o) === paymentFilter) &&
         (paymentMethodFilter === "Todos" || o.paymentMethod === paymentMethodFilter) &&
         `${o.number} ${o.customerName} ${o.productCode}`
           .toLowerCase()
@@ -703,17 +720,12 @@ export default function Home() {
   );
   const reportOrders = orders.filter(
     (o) => {
-      const paymentStatus =
-        o.received >= o.total
-          ? "Pago"
-          : o.received > 0
-            ? "Pagamento parcial"
-            : "Em aberto";
+      const status = orderDisplayStatus(o);
       return (
         o.productionStatus !== "Cancelada" &&
         (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
         (!reportCustomer || o.customerName.toLowerCase().includes(reportCustomer.toLowerCase())) &&
-        (!reportPaymentStatus || paymentStatus === reportPaymentStatus)
+        (!reportPaymentStatus || status === reportPaymentStatus)
       );
     },
   );
@@ -857,7 +869,11 @@ export default function Home() {
   }, [customers, financeData.accountsReceivable, ordersById]);
   const walletRows = walletCustomers.filter((item) => {
     const balance = item.total - item.received;
-    const status = balance > 0 ? "Em aberto" : "Pago";
+    const status = balance <= 0
+      ? "Pago"
+      : item.items.some((entry) => entry.balance > 0 && dateTimestamp(entry.receivable.dueDate) < dateTimestamp(todayIso()))
+        ? "Atrasado"
+        : "Em aberto";
     return (
       (!walletStatusFilter || status === walletStatusFilter) &&
       item.customer.toLowerCase().includes(walletQuery.toLowerCase())
@@ -2006,7 +2022,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Data do pedido</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Data do pedido</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${orderDisplayStatus(order)}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -2030,7 +2046,7 @@ export default function Home() {
         o.total,
         o.received,
         o.total - o.received,
-        paymentStatus(o),
+        orderDisplayStatus(o),
       ]),
     ];
     const csv = rows
@@ -2211,7 +2227,7 @@ export default function Home() {
                   <div className="panel">
                     <div className="panel-title">
                       <div>
-                        <h2>Contas a receber</h2>
+                        <h2>OS a Receber</h2>
                       </div>
                       <button onClick={() => go("financial")}>Ver todas</button>
                     </div>
@@ -2547,7 +2563,7 @@ export default function Home() {
                   <Field label="Status">
                     <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
                       <option>Todos</option>
-                      {["Pago", "Pagamento parcial", "Em aberto", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
+                      {["Pago", "Pagamento parcial", "Em aberto", "Atrasado", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
                     </select>
                   </Field>
                   <Field label="Forma de pagamento">
@@ -2602,7 +2618,7 @@ export default function Home() {
                           <td>{brDate(order.createdAt)}</td>
                           <td>{money(order.total)}</td>
                           <td>{order.paymentMethod}</td>
-                          <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
+                          <td><span className={`status ${orderDisplayTone(order)}`}>{orderDisplayStatus(order)}</span></td>
                         </tr>
                       ))}
                     </tbody>
@@ -2914,7 +2930,7 @@ export default function Home() {
                   <div className="panel financial-table-panel">
                     <div className="panel-title">
                       <div>
-                        <h2>Contas a receber</h2>
+                        <h2>OS a Receber</h2>
                         <p>{financialRows.length} registros encontrados</p>
                       </div>
                     </div>
@@ -2985,6 +3001,7 @@ export default function Home() {
                     >
                       <option value="">Todos</option>
                       <option>Em aberto</option>
+                      <option>Atrasado</option>
                       <option>Pago</option>
                     </select>
                   </Field>
@@ -3012,6 +3029,11 @@ export default function Home() {
                   <div className="wallet-grid">
                             {walletRows.map((item) => {
                               const balance = item.total - item.received;
+                              const walletStatus = balance <= 0
+                                ? "Pago"
+                                : item.items.some((entry) => entry.balance > 0 && dateTimestamp(entry.receivable.dueDate) < dateTimestamp(todayIso()))
+                                  ? "Atrasado"
+                                  : "Em aberto";
                               const history = item.items.flatMap((entry) =>
                                 financeData.receipts
                                   .filter((receipt) => receipt.accountReceivableId === entry.receivable.id && receipt.status === "Confirmado")
@@ -3038,9 +3060,9 @@ export default function Home() {
                                       <h2>{item.customer}</h2>
                                     </div>
                                     <span
-                                      className={`status ${balance ? "amber" : "green"}`}
+                                      className={`status ${walletStatus === "Pago" ? "green" : walletStatus === "Atrasado" ? "red" : "amber"}`}
                                     >
-                                      {balance ? "Em aberto" : "Pago"}
+                                      {walletStatus}
                                     </span>
                                   </div>
                                   <div className="wallet-summary wallet-summary-clean">
@@ -3173,6 +3195,7 @@ export default function Home() {
                       <option>Pago</option>
                       <option>Pagamento parcial</option>
                       <option>Em aberto</option>
+                      <option>Atrasado</option>
                     </select>
                   </Field>
                   <button
@@ -3724,7 +3747,7 @@ export default function Home() {
             </div>
             <div className="form-grid order-payment-grid review-payment-grid">
               <ReviewField label="Forma de entrega" value={orderModal.deliveryType} />
-              <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${paymentStatus(orderModal)}`} />
+              <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${orderDisplayStatus(orderModal)}`} />
               <ReviewField label="Valor recebido" value={money(orderModal.received)} />
               <div className={`payment-summary ${isDistributor(orderModal.customerType) ? "four-columns" : "two-columns"}`}>
                 {isDistributor(orderModal.customerType) && (
@@ -3770,16 +3793,16 @@ export default function Home() {
             </button>
             <button
               className="cancel-button order-cancel-button"
-              title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
-              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : orderDisplayStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
+              disabled={orderModal.productionStatus === "Cancelada" || orderDisplayStatus(orderModal) === "Pago"}
               onClick={() => cancelOrder(orderModal)}
             >
               Cancelar
             </button>
             <button
               className="primary-button"
-              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(orderModal) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
-              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : orderDisplayStatus(orderModal) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
+              disabled={orderModal.productionStatus === "Cancelada" || orderDisplayStatus(orderModal) === "Pago"}
               onClick={() => editOrder(orderModal, "review")}
             >
               Editar
