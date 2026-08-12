@@ -1660,7 +1660,7 @@ export default function Home() {
     pdf.text(order.number, 176.5, 29, { align: "center" });
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);
-    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 176.5, 38, { align: "center" });
+    pdf.text(`Data do pedido: ${brDate(order.createdAt)}`, 176.5, 38, { align: "center" });
 
     pdf.rect(15, 48, 180, 31);
     pdf.setFontSize(9);
@@ -1783,7 +1783,7 @@ export default function Home() {
       pdf.text(order.number, 180, at(20), { align: "center" });
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(7);
-      pdf.text(`Emissão: ${brDate(order.createdAt)}`, 180, at(26), { align: "center" });
+      pdf.text(`Data do pedido: ${brDate(order.createdAt)}`, 180, at(26), { align: "center" });
 
       pdf.rect(left, at(32), 200, 23);
       pdf.setFontSize(7.5);
@@ -1945,8 +1945,8 @@ export default function Home() {
       labels.forEach((label) => pdf.text(label.text, label.x, y, { align: label.align || "left" }));
       y += 7;
     };
-    drawSectionTitle("HISTÓRICO DE EMISSÕES");
-    drawHeader([{ text: "OS", x: 18 }, { text: "DATA DE EMISSÃO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
+    drawSectionTitle("HISTÓRICO DE PEDIDOS");
+    drawHeader([{ text: "OS", x: 18 }, { text: "DATA DO PEDIDO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(25);
     items.slice().sort((a, b) => dateTimestamp(a.issuedAt) - dateTimestamp(b.issuedAt)).forEach((item) => {
@@ -2006,7 +2006,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Data do pedido</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -3049,10 +3049,10 @@ export default function Home() {
                                     <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
                                   <div className="wallet-orders">
-                                    <strong className="wallet-section-title">HISTÓRICO DE EMISSÕES</strong>
+                                    <strong className="wallet-section-title">HISTÓRICO DE PEDIDOS</strong>
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
-                                      <span>Data de emissão</span>
+                                      <span>Data do pedido</span>
                                       <span>Data de vencimento</span>
                                       <span>Valor</span>
                                     </div>
@@ -3072,7 +3072,7 @@ export default function Home() {
                                         }}
                                       >
                                         <b>{entry.orderNumber}</b>
-                                        <span className="wallet-order-date" data-label="Emissão">{brDate(entry.issuedAt)}</span>
+                                        <span className="wallet-order-date" data-label="Data do pedido">{brDate(entry.issuedAt)}</span>
                                         <span className="wallet-order-date" data-label="Vencimento">{brDate(entry.receivable.dueDate)}</span>
                                         <strong>{money(entry.total)}</strong>
                                       </div>
@@ -3957,12 +3957,12 @@ function OrderList({
           <button className="order-row" key={o.id} onClick={() => onOpen(o)}>
             <div className="date-box">
               <strong>{brDate(o.createdAt)}</strong>
-              <span>Emissão</span>
+              <span>Data do pedido</span>
             </div>
             <div className="order-main">
               <strong>{o.customerName}</strong>
               <span>
-                {o.number} · Emitida em {brDate(o.createdAt)} · {orderItemSummary(o)}{" "}
+                {o.number} · Data do pedido: {brDate(o.createdAt)} · {orderItemSummary(o)}{" "}
                 · {money(o.total)}
               </span>
             </div>
