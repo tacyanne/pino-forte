@@ -774,6 +774,37 @@ export default function Home() {
     }),
     { forecast: 0, received: 0, pending: 0, overdue: 0 },
   );
+  const dashboardReceivables = financeData.accountsReceivable
+    .filter(
+      (receivable) =>
+        receivable.status !== "Pago" &&
+        receivable.status !== "Cancelado" &&
+        receivable.balanceCents > 0,
+    )
+    .map((receivable) => {
+      const order = ordersById.get(receivable.serviceOrderId);
+      const customer = receivable.customerId
+        ? customers.find((item) => item.id === receivable.customerId)
+        : undefined;
+      const isOverdue = dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso());
+      return {
+        receivable,
+        order,
+        orderNumber: order?.number || `CR-${String(receivable.id).padStart(5, "0")}`,
+        customerName: order?.customerName || customer?.name || "Cliente não identificado",
+        dueDate: receivable.dueDate,
+        balance: receivable.balanceCents / 100,
+        status: isOverdue ? "Atrasado" : "Em aberto",
+      };
+    })
+    .sort((a, b) => {
+      const overdueDifference = Number(b.status === "Atrasado") - Number(a.status === "Atrasado");
+      if (overdueDifference !== 0) return overdueDifference;
+      const dueDifference = dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
+      if (dueDifference !== 0) return dueDifference;
+      return b.receivable.id - a.receivable.id;
+    })
+    .slice(0, 6);
   const payableRows = financeData.accountsPayable
     .filter((payable) =>
       payable.status !== "Cancelado" &&
@@ -2182,14 +2213,43 @@ export default function Home() {
                   <div className="panel">
                     <div className="panel-title">
                       <div>
-                        <h2>Ordens recentes</h2>
+                        <h2>Contas a receber</h2>
                       </div>
-                      <button onClick={() => go("orders")}>Ver todas</button>
+                      <button onClick={() => go("financial")}>Ver todas</button>
                     </div>
-                    <OrderList
-                      orders={sortOrdersDesc(orders).slice(0, 6)}
-                      onOpen={setOrderModal}
-                    />
+                    <div className="dashboard-receivables">
+                      <div className="dashboard-receivables-head" aria-hidden="true">
+                        <span>OS / Cliente</span>
+                        <span>Vencimento</span>
+                        <span>Saldo</span>
+                        <span>Status</span>
+                      </div>
+                      {dashboardReceivables.length ? dashboardReceivables.map((row) => (
+                        <div
+                          className={`dashboard-receivable-row ${row.order ? "clickable" : ""}`}
+                          key={row.receivable.id}
+                          role={row.order ? "button" : undefined}
+                          tabIndex={row.order ? 0 : undefined}
+                          onClick={() => row.order && setOrderModal(row.order)}
+                          onKeyDown={(event) => {
+                            if (row.order && (event.key === "Enter" || event.key === " ")) {
+                              event.preventDefault();
+                              setOrderModal(row.order);
+                            }
+                          }}
+                        >
+                          <div className="dashboard-receivable-customer">
+                            <b>{row.orderNumber}</b>
+                            <small>{row.customerName}</small>
+                          </div>
+                          <span data-label="Vencimento">{brDate(row.dueDate)}</span>
+                          <strong data-label="Saldo">{money(row.balance)}</strong>
+                          <span className={`status ${row.status === "Atrasado" ? "red" : "amber"}`}>{row.status}</span>
+                        </div>
+                      )) : (
+                        <p className="dashboard-receivables-empty">Não há contas pendentes.</p>
+                      )}
+                    </div>
                   </div>
                   <div className="side-stack">
                     <div className="panel finance-history-card">
