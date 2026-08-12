@@ -536,6 +536,30 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     commercial_status: initialWalletHistory,
     notes: String(body.notes || ""),
   });
+  const serviceOrderId = Number(order.id || 0);
+  if (serviceOrderId) {
+    const originalAmountCents = Math.round(totals.total * 100);
+    const receivedAmountCents = Math.min(Math.round(received * 100), originalAmountCents);
+    const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);
+    try {
+      await supabaseInsert("accounts_receivable", {
+        service_order_id: serviceOrderId,
+        customer_id: totals.customerId,
+        issued_at: issuedAt,
+        due_date: dueDate,
+        original_amount_cents: originalAmountCents,
+        received_amount_cents: receivedAmountCents,
+        balance_cents: balanceCents,
+        status: balanceCents <= 0 ? "Pago" : "Pendente",
+        notes: String(body.notes || ""),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "");
+      if (!/duplicate|23505|unique/i.test(message)) {
+        console.error("Não foi possível criar a conta a receber da OS", serviceOrderId, error);
+      }
+    }
+  }
   return Response.json({ order: camelizeRow(order) }, { status: 201 });
 }
 

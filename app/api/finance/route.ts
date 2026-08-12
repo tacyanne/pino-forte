@@ -9,7 +9,7 @@ import {
   receipts,
   serviceOrders,
 } from "../../../db/schema";
-import { centsFromBody, currentMonth, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
+import { centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso, toCents } from "../../../lib/finance";
 import { requireUser } from "../../../lib/auth";
 import { camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
@@ -116,6 +116,7 @@ export async function GET(request: Request) {
 
 async function getFinanceFromRest(request: Request) {
   try {
+    await syncReceivablesFromOrdersRest();
     const url = new URL(request.url);
     const month = url.searchParams.get("month") || currentMonth();
     const today = todayIso();
@@ -212,6 +213,60 @@ async function getFinanceFromRest(request: Request) {
       { error: error instanceof Error ? error.message : "Nao foi possivel carregar o financeiro." },
       { status: 500 },
     );
+  }
+}
+
+async function syncReceivablesFromOrdersRest() {
+  const [orders, existingReceivables] = await Promise.all([
+    supabaseSelect<Record<string, unknown>>("service_orders", {
+      select: "id,customer_id,issued_at,created_at,due_date,total,total_cents,received,received_cents,production_status,notes",
+      order: "id.desc",
+      limit: "1000",
+    }),
+    supabaseSelect<Record<string, unknown>>("accounts_receivable", {
+      select: "service_order_id",
+      order: "id.desc",
+      limit: "1000",
+    }),
+  ]);
+  const registeredOrderIds = new Set(
+    existingReceivables.map((receivable) => Number(receivable.service_order_id || 0)),
+  );
+
+  for (const order of orders) {
+    const serviceOrderId = Number(order.id || 0);
+    if (
+      !serviceOrderId ||
+      registeredOrderIds.has(serviceOrderId) ||
+      String(order.production_status || "") === "Cancelada"
+    ) continue;
+
+    const issuedAt = String(order.issued_at || order.created_at || todayIso()).slice(0, 10);
+    const dueDate = String(order.due_date || receivableDueDateFromIssuedAt(issuedAt)).slice(0, 10);
+    const originalAmountCents = Number(order.total_cents || 0) || toCents(order.total);
+    const receivedAmountCents = Math.min(
+      Number(order.received_cents || 0) || toCents(order.received),
+      originalAmountCents,
+    );
+    const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);
+
+    try {
+      await supabaseInsert("accounts_receivable", {
+        service_order_id: serviceOrderId,
+        customer_id: order.customer_id ? Number(order.customer_id) : null,
+        issued_at: issuedAt,
+        due_date: dueDate,
+        original_amount_cents: originalAmountCents,
+        received_amount_cents: receivedAmountCents,
+        balance_cents: balanceCents,
+        status: receivableStatus(balanceCents, dueDate),
+        notes: String(order.notes || ""),
+      });
+      registeredOrderIds.add(serviceOrderId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "");
+      if (!/duplicate|23505|unique/i.test(message)) throw error;
+    }
   }
 }
 
