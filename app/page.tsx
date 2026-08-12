@@ -333,7 +333,7 @@ const paymentStatus = (order: Order) =>
     ? "Pago"
     : order.received > 0
       ? "Pagamento parcial"
-      : "Aguardando pagamento";
+      : "Em aberto";
 const paymentTone = (order: Order) =>
   order.productionStatus === "Cancelada"
     ? "red"
@@ -708,7 +708,7 @@ export default function Home() {
           ? "Pago"
           : o.received > 0
             ? "Pagamento parcial"
-            : "Aguardando pagamento";
+            : "Em aberto";
       return (
         o.productionStatus !== "Cancelada" &&
         (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
@@ -2549,7 +2549,7 @@ export default function Home() {
                   <Field label="Status">
                     <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
                       <option>Todos</option>
-                      {["Pago", "Pagamento parcial", "Aguardando pagamento", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
+                      {["Pago", "Pagamento parcial", "Em aberto", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
                     </select>
                   </Field>
                   <Field label="Forma de pagamento">
@@ -2926,7 +2926,7 @@ export default function Home() {
                           <tr>
                             <th>OS</th>
                             <th>Cliente</th>
-                            <th>{"Previs\u00e3o"}</th>
+                            <th>Vencimento</th>
                             <th>Saldo Devedor</th>
                             <th>Status</th>
                           </tr>
@@ -3174,7 +3174,7 @@ export default function Home() {
                       <option value="">Todos</option>
                       <option>Pago</option>
                       <option>Pagamento parcial</option>
-                      <option>Aguardando pagamento</option>
+                      <option>Em aberto</option>
                     </select>
                   </Field>
                   <button
