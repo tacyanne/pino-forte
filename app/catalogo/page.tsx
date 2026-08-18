@@ -12,6 +12,7 @@ const whatsappMessage = encodeURIComponent(
 const whatsapp = `https://wa.me/5543991565317?text=${whatsappMessage}`;
 
 const productImages: Record<string, string> = {
+  "GR 188": "/img-006.png",
   "RN 180": "/img-000.png",
   "RN 190": "/img-001.png",
   "RN 205": "/img-002.png",

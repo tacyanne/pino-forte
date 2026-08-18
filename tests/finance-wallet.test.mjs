@@ -69,3 +69,10 @@ test("cash movement types match the Supabase migration constraint", () => {
   assert.equal(financeApi.includes('type: "Entrada"'), false);
   assert.equal(financeApi.includes('type: "Saida"'), false);
 });
+
+test("GR 188 image is available in both online and PDF catalogs", () => {
+  const onlineCatalog = readFileSync(new URL("../app/catalogo/page.tsx", import.meta.url), "utf8");
+
+  assert.ok(page.includes('"GR 188": "/img-006.png"'));
+  assert.ok(onlineCatalog.includes('"GR 188": "/img-006.png"'));
+});
