@@ -200,7 +200,25 @@ const compareOrdersDesc = (a: Order, b: Order) =>
   dateTimestamp(b.createdAt) - dateTimestamp(a.createdAt) ||
   b.id - a.id;
 const sortOrdersDesc = (list: Order[]) => list.slice().sort(compareOrdersDesc);
-const paymentObservationFor = (order: Order) => {
+const paymentObservationFor = (order: Order, receipts: Receipt[] = []) => {
+  const confirmedReceipts = receipts
+    .filter(
+      (receipt) =>
+        receipt.serviceOrderId === order.id && receipt.status === "Confirmado",
+    )
+    .map((receipt) => ({
+      amount: receipt.amountCents / 100,
+      method: receipt.paymentMethod,
+      date: receipt.receiptDate,
+    }))
+    .sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date));
+  if (confirmedReceipts.length)
+    return confirmedReceipts
+      .map(
+        (payment) =>
+          `Pago ${money(payment.amount)} em ${brDate(payment.date)} via ${payment.method}`,
+      )
+      .join("\n");
   if (order.paymentMethod !== "Carteira") return "";
   let registeredPayments: { amount: number; method: string; date: string }[] = [];
   try {
@@ -234,8 +252,14 @@ const paymentObservationFor = (order: Order) => {
     )
     .join("\n");
 };
-const completeOrderNotes = (order: Order, separator = "\n") =>
-  [order.notes, paymentObservationFor(order)].filter(Boolean).join(separator);
+const completeOrderNotes = (
+  order: Order,
+  separator = "\n",
+  receipts: Receipt[] = [],
+) =>
+  [order.notes, paymentObservationFor(order, receipts)]
+    .filter(Boolean)
+    .join(separator);
 const monthInSaoPaulo = (date: string) => {
   if (!date) return "";
   const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -473,7 +497,7 @@ export default function Home() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
   const [discountOverride, setDiscountOverride] = useState("");
   const [orderItems, setOrderItems] = useState<
-    { code: string; quantity: number }[]
+    { code: string; quantity: number; unitPrice?: number }[]
   >([]);
 
   async function refreshFinance(month = financialMonth) {
@@ -605,10 +629,10 @@ export default function Home() {
     setAuth((value) => ({ ...value, users: refreshed.users || [] }));
   }
   const product = products.find((p) => p.code === selectedCode) || products[0];
+  const itemUnitPrice = (item: { code: string; unitPrice?: number }) =>
+    item.unitPrice ?? products.find((p) => p.code === item.code)?.price ?? 0;
   const subtotal = orderItems.reduce(
-    (sum, item) =>
-      sum +
-      (products.find((p) => p.code === item.code)?.price || 0) * item.quantity,
+    (sum, item) => sum + itemUnitPrice(item) * item.quantity,
     0,
   );
   const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
@@ -627,7 +651,12 @@ export default function Home() {
           ? 8
           : 5
       : 0;
-  const discountRate = automaticDiscountRate;
+  const explicitDiscountRate =
+    discountOverride.trim() === "" ? null : Number(discountOverride);
+  const discountRate =
+    explicitDiscountRate !== null && Number.isFinite(explicitDiscountRate)
+      ? explicitDiscountRate
+      : automaticDiscountRate;
   const discountAmount = subtotal * discountRate / 100;
   const total = Math.round((subtotal - discountAmount) * 100) / 100;
   const dashboardFinance = useMemo(() => {
@@ -957,7 +986,7 @@ export default function Home() {
   }
   function updateItem(
     index: number,
-    changes: Partial<{ code: string; quantity: number }>,
+    changes: Partial<{ code: string; quantity: number; unitPrice: number }>,
   ) {
     setOrderItems((items) =>
       items.map((item, i) => (i === index ? { ...item, ...changes } : item)),
@@ -1146,7 +1175,7 @@ export default function Home() {
       if (orderItems.some((item) => !item.code)) throw new Error("Selecione todas as peças da OS.");
       const items = orderItems.map((item) => ({
         ...item,
-        unitPrice: products.find((p) => p.code === item.code)?.price || 0,
+        unitPrice: itemUnitPrice(item),
       }));
       const paymentMethod = String(f.get("paymentMethod") || "");
       const deliveryType = String(f.get("deliveryType") || "");
@@ -1183,7 +1212,7 @@ export default function Home() {
           quantity,
           unitPrice: product.price,
           items,
-          discountRate: undefined,
+          discountRate,
           received,
           deliveryType,
           paymentMethod: moveToWallet ? "Carteira" : paymentMethod,
@@ -1241,7 +1270,11 @@ export default function Home() {
     }
   }
   function editOrder(order: Order, returnTo: "orders" | "review" = "review") {
-    const items = getOrderItems(order).map(({ code, quantity }) => ({ code, quantity }));
+    const items = getOrderItems(order).map(({ code, quantity, unitPrice }) => ({
+      code,
+      quantity,
+      unitPrice,
+    }));
     setEditingOrder(order);
     setEditOrderReturnTo(returnTo);
     setSelectedCustomer(order.customerName);
@@ -1269,7 +1302,7 @@ export default function Home() {
     setReceived(order.received);
     setSelectedDeliveryType(order.deliveryType);
     setSelectedPaymentMethod(order.paymentMethod);
-    setDiscountOverride(order.discountRate ? String(order.discountRate) : "");
+    setDiscountOverride(String(order.discountRate ?? 0));
     setOrderModal(null);
     setScreen("new-order");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1755,7 +1788,7 @@ export default function Home() {
     const columns = [5, 31, 119, 139, 171, 205];
     const observationLines = [
       "Observações:",
-      ...completeOrderNotes(order, "\n")
+      ...completeOrderNotes(order, "\n", financeData.receipts)
         .split("\n")
         .filter(Boolean)
         .flatMap((line) => pdf.splitTextToSize(line, 192)),
@@ -1842,8 +1875,9 @@ export default function Home() {
 
       pdf.rect(left, at(108), 200, 18);
       pdf.setFont("helvetica", "normal");
-      pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 8, at(114));
-      pdf.text(`Forma de entrega: ${order.deliveryType}`, 76, at(114));
+      pdf.text(`Status: ${order.productionStatus}`, 8, at(114));
+      pdf.text(`Forma de entrega: ${order.deliveryType}`, 65, at(114));
+      pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 132, at(114));
       pdf.setFontSize(6.2);
       pdf.text(observationLines, 8, at(119), { lineHeightFactor: 1.05 });
 
@@ -2352,9 +2386,14 @@ export default function Home() {
                               <select
                                 required
                                 value={item.code}
-                                onChange={(e) =>
-                                  updateItem(index, { code: e.target.value })
-                                }
+                                onChange={(e) => {
+                                  const code = e.target.value;
+                                  updateItem(index, {
+                                    code,
+                                    unitPrice:
+                                      products.find((product) => product.code === code)?.price || 0,
+                                  });
+                                }}
                               >
                                 <option value="">Selecione</option>
                                 {products
@@ -2399,12 +2438,12 @@ export default function Home() {
                             </Field>
                             <div className="order-item-value">
                               <span>Valor unitário</span>
-                              <strong>{money(p?.price || 0)}</strong>
+                              <strong>{money(itemUnitPrice(item))}</strong>
                             </div>
                             <div className="subtotal">
                               <span>Valor total</span>
                               <strong>
-                                {money((p?.price || 0) * item.quantity)}
+                                {money(itemUnitPrice(item) * item.quantity)}
                               </strong>
                             </div>
                             {index === orderItems.length - 1 && (
@@ -3777,7 +3816,7 @@ export default function Home() {
             </div>
             <ReviewField
               label="Observações adicionais"
-              value={completeOrderNotes(orderModal, "\n")}
+              value={completeOrderNotes(orderModal, "\n", financeData.receipts)}
               multiline
             />
           </div>

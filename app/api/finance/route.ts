@@ -22,6 +22,8 @@ const isInMonth = (date: string | null | undefined, month: string) =>
 const jsonError = (message: string, status = 400) =>
   Response.json({ error: message }, { status });
 
+const receiptPaymentMethods = ["Pix", "Dinheiro", "Cartão", "Boleto"];
+
 async function audit(
   db: Awaited<ReturnType<typeof getDb>>,
   auth: Auth,
@@ -393,7 +395,7 @@ export async function PATCH(request: Request) {
       const amountCents = centsFromBody(body);
       const paymentMethod = String(body.paymentMethod || "").trim();
       const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
-      if (amountCents <= 0 || !paymentMethod)
+      if (amountCents <= 0 || !receiptPaymentMethods.includes(paymentMethod))
         return jsonError("Informe valor e forma de recebimento.");
 
       const result = await db.transaction(async (tx) => {
@@ -436,6 +438,7 @@ export async function PATCH(request: Request) {
             received: newReceived / 100,
             balanceCents: newBalance,
             financialStatus: status,
+            ...(newBalance === 0 ? { paymentMethod } : {}),
             updatedAt: new Date().toISOString(),
           })
           .where(eq(serviceOrders.id, current.serviceOrderId));
@@ -635,7 +638,8 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
     const amountCents = centsFromBody(body);
     const paymentMethod = String(body.paymentMethod || "").trim();
     const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
-    if (amountCents <= 0 || !paymentMethod) return jsonError("Informe valor e forma de recebimento.");
+    if (amountCents <= 0 || !receiptPaymentMethods.includes(paymentMethod))
+      return jsonError("Informe valor e forma de recebimento.");
     const current = await supabaseGetOne<Record<string, unknown>>("accounts_receivable", {
       select: "*",
       id: `eq.${id}`,
@@ -668,6 +672,7 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
       received: newReceived / 100,
       balance_cents: newBalance,
       financial_status: status,
+      ...(newBalance === 0 ? { payment_method: paymentMethod } : {}),
       updated_at: new Date().toISOString(),
     });
     await supabaseInsert("cash_movements", {
