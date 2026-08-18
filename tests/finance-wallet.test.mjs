@@ -23,6 +23,15 @@ test("wallet is backed by receivables and receipts", () => {
   assert.equal(settleBlock.includes('commercialStatus: JSON.stringify(history)'), false);
 });
 
+test("OS a Receber lists only orders with an outstanding balance", () => {
+  const financialRowsStart = page.indexOf("const financialRows");
+  const financialRowsEnd = page.indexOf("const financialTotals", financialRowsStart);
+  const financialRowsBlock = page.slice(financialRowsStart, financialRowsEnd);
+
+  assert.ok(financialRowsBlock.includes("row.balance > 0"));
+  assert.ok(financialRowsBlock.includes('row.status !== "Pago"'));
+});
+
 test("historical order values and receipt details are preserved", () => {
   assert.ok(page.includes("item.unitPrice ??"));
   assert.ok(page.includes("unitPrice: itemUnitPrice(item)"));

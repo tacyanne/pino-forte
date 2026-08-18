@@ -795,6 +795,8 @@ export default function Home() {
       };
     })
     .filter((row) => (
+      row.balance > 0 &&
+      row.status !== "Pago" &&
       (!financialMonth || monthInSaoPaulo(row.issuedAt) === financialMonth || row.issuedAt.slice(0, 7) === financialMonth) &&
       (!financialCustomer || row.customerName.toLowerCase().includes(financialCustomer.toLowerCase())) &&
       (!financialStatus || row.status === financialStatus)
