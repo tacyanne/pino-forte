@@ -451,6 +451,7 @@ export default function Home() {
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
+  const financialMonth = reportMonth;
   const [financeData, setFinanceData] = useState<FinanceData>({
     summary: null,
     accountsReceivable: [],
