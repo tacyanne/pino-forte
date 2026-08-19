@@ -451,9 +451,6 @@ export default function Home() {
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
-  const [financialMonth, setFinancialMonth] = useState("");
-  const [financialCustomer, setFinancialCustomer] = useState("");
-  const [financialStatus, setFinancialStatus] = useState("");
   const [financeData, setFinanceData] = useState<FinanceData>({
     summary: null,
     accountsReceivable: [],
@@ -798,9 +795,9 @@ export default function Home() {
     .filter((row) => (
       row.balance > 0 &&
       row.status !== "Pago" &&
-      (!financialMonth || monthInSaoPaulo(row.issuedAt) === financialMonth || row.issuedAt.slice(0, 7) === financialMonth) &&
-      (!financialCustomer || row.customerName.toLowerCase().includes(financialCustomer.toLowerCase())) &&
-      (!financialStatus || row.status === financialStatus)
+      (!reportMonth || monthInSaoPaulo(row.issuedAt) === reportMonth || row.issuedAt.slice(0, 7) === reportMonth) &&
+      (!reportCustomer || row.customerName.toLowerCase().includes(reportCustomer.toLowerCase())) &&
+      (!reportPaymentStatus || (row.order ? orderDisplayStatus(row.order) : row.status) === reportPaymentStatus)
     ))
     .sort((a, b) => {
       const orderDifference = b.orderNumber.localeCompare(a.orderNumber, "pt-BR", { numeric: true });
@@ -2124,7 +2121,6 @@ export default function Home() {
     ["orders", "▤", "OS"],
     ["wallet", "▣", "Carteira"],
     ["financial", "$", "Financeiro"],
-    ["reports", "▥", "Relatórios"],
     ["catalog", "▦", "Catálogo"],
   ];
   const settingsNav: [SettingsSection, string, string][] = [
@@ -2879,26 +2875,32 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {screen === "financial" && (
+            {(screen === "financial" || screen === "reports") && (
               <div className="page">
                 <Heading
-                  eyebrow="FINANCEIRO"
+                  eyebrow="VISÃO DO NEGÓCIO"
                   title="Financeiro"
-                  subtitle="Controle os valores recebidos, pendentes e atrasados."
+                  subtitle="Acompanhe vendas, recebimentos, pendências e desempenho comercial."
+                  action={<button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button>}
                 />
-                <div className="filters operational-filters financial-filters">
+                <div className="filters operational-filters operational-filters-three">
                   <Field label="Buscar cliente">
-                    <input
-                      value={financialCustomer}
-                      onChange={(event) => setFinancialCustomer(event.target.value)}
-                    />
+                    <select value={reportCustomer} onChange={(event) => setReportCustomer(event.target.value)}>
+                      <option value="">Todos</option>
+                      {[...customers].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Mês">
+                    <select value={reportMonth} onChange={(event) => setReportMonth(event.target.value)}>
+                      <option value="">Todos</option>
+                      {reportMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
+                    </select>
                   </Field>
                   <Field label="Status">
-                    <select
-                      value={financialStatus}
-                      onChange={(event) => setFinancialStatus(event.target.value)}
-                    >
+                    <select value={reportPaymentStatus} onChange={(event) => setReportPaymentStatus(event.target.value)}>
                       <option value="">Todos</option>
+                      <option>Pago</option>
+                      <option>Pagamento parcial</option>
                       <option>Em aberto</option>
                       <option>Atrasado</option>
                     </select>
@@ -2907,8 +2909,9 @@ export default function Home() {
                     type="button"
                     className="outline-button filter-clear"
                     onClick={() => {
-                      setFinancialCustomer("");
-                      setFinancialStatus("");
+                      setReportMonth("");
+                      setReportCustomer("");
+                      setReportPaymentStatus("");
                     }}
                   >
                     Limpar
@@ -2917,11 +2920,21 @@ export default function Home() {
                 {financeLoading && <div className="panel empty">Atualizando financeiro...</div>}
                 {financeError && <p className="modal-error">{financeError}</p>}
                 <section className="metrics report-metrics financial-metrics">
-                  <Metric icon="R$" label="Previsto" value={money(financialTotals.forecast)} />
-                  <Metric icon="✓" label="Recebido" value={money(financialTotals.received)} />
+                  <Metric icon="R$" label="Vendas" value={money(reportSales)} />
+                  <Metric icon="✓" label="Recebido" value={money(reportReceived)} />
                   <Metric icon="!" label="Pendente" value={money(financialTotals.pending)} alert={financialTotals.pending > 0} tone="red" />
                   <Metric icon="!!" label="Atrasado" value={money(financialTotals.overdue)} alert={financialTotals.overdue > 0} tone="red" />
                 </section>
+                <div className="panel business-performance-panel">
+                  <div className="panel-title"><div><h2>Peças mais vendidas</h2><p>Quantidade comercializada no período selecionado</p></div></div>
+                  <div className="report-bars">
+                    {products.map((product) => {
+                      const count = reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === product.code).reduce((total, item) => total + item.quantity, 0), 0);
+                      const max = Math.max(1, ...products.map((candidate) => reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === candidate.code).reduce((total, item) => total + item.quantity, 0), 0)));
+                      return <div key={product.id}><span>{product.code}</span><div><i style={{ width: `${(count / max) * 100}%` }} /></div><b>{count} un.</b></div>;
+                    })}
+                  </div>
+                </div>
                 <section className="financial-layout">
                   <aside className="financial-side">
                     <div className="panel financial-next-card">
@@ -3202,7 +3215,7 @@ export default function Home() {
                 )}
               </div>
             )}
-            {screen === "reports" && (
+            {false && screen === "reports" && (
               <div className="page">
                 <Heading
                   eyebrow="ANÁLISE"

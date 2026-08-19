@@ -635,6 +635,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   justify-self:end;
   width:110px;
 }
+.business-performance-panel{margin-bottom:18px;padding:22px}.business-performance-panel .report-bars{box-shadow:none;border:0;padding:0;margin:14px 0 0}.business-performance-panel .panel-title{margin-bottom:0}
 @media(max-width:1050px) and (min-width:761px){
   .operational-filters-orders{
     grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr);
