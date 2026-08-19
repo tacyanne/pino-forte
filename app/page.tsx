@@ -3030,60 +3030,6 @@ export default function Home() {
                       </div>
                     </div>
                   </aside>
-                  <div className="panel financial-table-panel">
-                    <div className="panel-title">
-                      <div>
-                        <h2>OS a Receber</h2>
-                        <p>{financialRows.length} registros encontrados</p>
-                      </div>
-                    </div>
-                    <div className="table-wrap standardized-table financial-table">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>OS</th>
-                            <th>Cliente</th>
-                            <th>Data de vencimento</th>
-                            <th>Saldo Devedor</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {!financialRows.length && (
-                            <tr className="orders-empty-row">
-                              <td colSpan={5}>Nenhum recebivel encontrado.</td>
-                            </tr>
-                          )}
-                          {financialRows.map((row) => (
-                            <tr
-                              key={row.receivable.id}
-                              className={row.order ? "clickable-table-row" : ""}
-                              role={row.order ? "button" : undefined}
-                              tabIndex={row.order ? 0 : undefined}
-                              aria-label={row.order ? `Visualizar ${row.orderNumber}` : row.orderNumber}
-                              onClick={() => row.order && setOrderModal(row.order)}
-                              onKeyDown={(event) => {
-                                if (row.order && (event.key === "Enter" || event.key === " ")) {
-                                  event.preventDefault();
-                                  setOrderModal(row.order);
-                                }
-                              }}
-                            >
-                              <td><b>{row.orderNumber}</b></td>
-                              <td><b>{row.customerName}</b></td>
-                              <td>{brDate(row.dueDate)}</td>
-                              <td>{money(row.balance)}</td>
-                              <td>
-                                <span className={`status ${row.status === "Pago" ? "green" : row.status === "Atrasado" ? "red" : "amber"}`}>
-                                  {row.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                 </section>
               </div>
             )}
