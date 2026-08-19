@@ -2945,7 +2945,6 @@ export default function Home() {
                     Limpar
                   </button>
                 </div>
-                {financeLoading && <div className="panel empty">Atualizando financeiro...</div>}
                 {financeError && <p className="modal-error">{financeError}</p>}
                 <section className="executive-finance-grid">
                   <article className={`finance-result-card ${operatingResult < 0 ? "negative" : ""}`}>
