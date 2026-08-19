@@ -869,10 +869,13 @@ export default function Home() {
   const averageTicket = reportOrders.length ? reportSales / reportOrders.length : 0;
   const openBalance = financialTotals.pending + financialTotals.overdue;
   const overdueRate = openBalance > 0 ? (financialTotals.overdue / openBalance) * 100 : 0;
+  const reportOrderIds = new Set(reportOrders.map((order) => order.id));
   const paymentMix = Object.entries(
-    reportOrders.reduce((mix, order) => {
-      const method = order.paymentMethod || "Não informado";
-      mix[method] = (mix[method] || 0) + order.total;
+    financeData.receipts
+      .filter((receipt) => receipt.status === "Confirmado" && reportOrderIds.has(receipt.serviceOrderId) && receipt.paymentMethod !== "Carteira")
+      .reduce((mix, receipt) => {
+      const method = receipt.paymentMethod || "Não informado";
+      mix[method] = (mix[method] || 0) + receipt.amountCents / 100;
       return mix;
     }, {} as Record<string, number>),
   ).sort((a, b) => b[1] - a[1]);
@@ -2976,7 +2979,7 @@ export default function Home() {
                   <article className="panel compact-analysis-panel">
                     <div className="panel-title"><div><h2>Visão comercial</h2><p>Como as vendas do período se distribuem</p></div></div>
                     <div className="compact-analysis-columns">
-                      <div className="compact-list"><h3>FORMAS DE PAGAMENTO</h3>{paymentMix.slice(0, 4).map(([method, value]) => <div key={method}><span>{method}</span><b>{money(value)}</b></div>)}</div>
+                      <div className="compact-list"><h3>RECEBIMENTOS POR FORMA</h3>{paymentMix.length ? paymentMix.slice(0, 4).map(([method, value]) => <div key={method}><span>{method}</span><b>{money(value)}</b></div>) : <p className="compact-empty">Nenhum recebimento no período.</p>}</div>
                       <div className="compact-list"><h3>PEÇAS MAIS VENDIDAS</h3>{products.map((product) => ({ product, count: reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === product.code).reduce((total, item) => total + item.quantity, 0), 0) })).filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 5).map(({ product, count }, index) => <div key={product.id}><span><i>{index + 1}</i>{product.code}</span><b>{count} un.</b></div>)}</div>
                     </div>
                   </article>
