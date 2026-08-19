@@ -857,6 +857,30 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       return dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
     });
+  const paidExpenses = payableRows
+    .filter((payable) => payable.status === "Pago")
+    .reduce((sum, payable) => sum + payable.amountCents / 100, 0);
+  const operatingResult = reportReceived - paidExpenses;
+  const receiptRate = reportSales > 0 ? Math.min(100, (reportReceived / reportSales) * 100) : 0;
+  const soldUnits = reportOrders.reduce(
+    (sum, order) => sum + getOrderItems(order).reduce((total, item) => total + item.quantity, 0),
+    0,
+  );
+  const averageTicket = reportOrders.length ? reportSales / reportOrders.length : 0;
+  const openBalance = financialTotals.pending + financialTotals.overdue;
+  const overdueRate = openBalance > 0 ? (financialTotals.overdue / openBalance) * 100 : 0;
+  const paymentMix = Object.entries(
+    reportOrders.reduce((mix, order) => {
+      const method = order.paymentMethod || "Não informado";
+      mix[method] = (mix[method] || 0) + order.total;
+      return mix;
+    }, {} as Record<string, number>),
+  ).sort((a, b) => b[1] - a[1]);
+  const attentionRows = financialRows
+    .filter((row) => row.status === "Atrasado" && row.balance > 0)
+    .slice()
+    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
+    .slice(0, 4);
   const walletCustomers = useMemo(() => {
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
     return Object.values(
@@ -2920,22 +2944,43 @@ export default function Home() {
                 </div>
                 {financeLoading && <div className="panel empty">Atualizando financeiro...</div>}
                 {financeError && <p className="modal-error">{financeError}</p>}
-                <section className="metrics report-metrics financial-metrics">
-                  <Metric icon="R$" label="Vendas" value={money(reportSales)} />
-                  <Metric icon="✓" label="Recebido" value={money(reportReceived)} />
-                  <Metric icon="!" label="Pendente" value={money(financialTotals.pending)} alert={financialTotals.pending > 0} tone="red" />
-                  <Metric icon="!!" label="Atrasado" value={money(financialTotals.overdue)} alert={financialTotals.overdue > 0} tone="red" />
-                </section>
-                <div className="panel business-performance-panel">
-                  <div className="panel-title"><div><h2>Peças mais vendidas</h2><p>Quantidade comercializada no período selecionado</p></div></div>
-                  <div className="report-bars">
-                    {products.map((product) => {
-                      const count = reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === product.code).reduce((total, item) => total + item.quantity, 0), 0);
-                      const max = Math.max(1, ...products.map((candidate) => reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === candidate.code).reduce((total, item) => total + item.quantity, 0), 0)));
-                      return <div key={product.id}><span>{product.code}</span><div><i style={{ width: `${(count / max) * 100}%` }} /></div><b>{count} un.</b></div>;
-                    })}
+                <section className="executive-finance-grid">
+                  <article className={`finance-result-card ${operatingResult < 0 ? "negative" : ""}`}>
+                    <span>RESULTADO DO PERÍODO</span>
+                    <strong>{money(operatingResult)}</strong>
+                    <p>Recebimentos menos contas pagas</p>
+                    <div><b>{money(reportReceived)}</b> recebidos <i /> <b>{money(paidExpenses)}</b> pagos</div>
+                  </article>
+                  <div className="finance-kpi-grid">
+                    <article><span>Vendas</span><strong>{money(reportSales)}</strong><small>{reportOrders.length} ordens no período</small></article>
+                    <article><span>Saldo a receber</span><strong>{money(openBalance)}</strong><small>{money(financialTotals.pending)} ainda no prazo</small></article>
+                    <article className={financialTotals.overdue > 0 ? "attention" : ""}><span>Em atraso</span><strong>{money(financialTotals.overdue)}</strong><small>{overdueRate.toFixed(0)}% do saldo aberto</small></article>
+                    <article><span>Taxa de recebimento</span><strong>{receiptRate.toFixed(0)}%</strong><small>{money(reportReceived)} já convertidos em caixa</small></article>
                   </div>
-                </div>
+                </section>
+                <section className="business-health-strip">
+                  <div><span>Ticket médio</span><b>{money(averageTicket)}</b></div>
+                  <div><span>Peças vendidas</span><b>{soldUnits} un.</b></div>
+                  <div><span>Contas pagas</span><b>{money(paidExpenses)}</b></div>
+                </section>
+                <section className="finance-insights-grid">
+                  <article className="panel finance-attention-panel">
+                    <div className="panel-title"><div><h2>Atenção agora</h2><p>Recebimentos atrasados que exigem ação</p></div><span className="insight-count">{attentionRows.length}</span></div>
+                    {!attentionRows.length ? <p className="positive-empty">Nenhuma pendência atrasada no filtro atual.</p> : attentionRows.map((row) => (
+                      <button type="button" className="attention-row" key={row.receivable.id} onClick={() => row.order && setOrderModal(row.order)}>
+                        <span><b>{row.customerName}</b><small>{row.orderNumber} · venceu em {brDate(row.dueDate)}</small></span>
+                        <strong>{money(row.balance)}</strong>
+                      </button>
+                    ))}
+                  </article>
+                  <article className="panel compact-analysis-panel">
+                    <div className="panel-title"><div><h2>Visão comercial</h2><p>Como as vendas do período se distribuem</p></div></div>
+                    <div className="compact-analysis-columns">
+                      <div className="compact-list"><h3>FORMAS DE PAGAMENTO</h3>{paymentMix.slice(0, 4).map(([method, value]) => <div key={method}><span>{method}</span><b>{money(value)}</b></div>)}</div>
+                      <div className="compact-list"><h3>PEÇAS MAIS VENDIDAS</h3>{products.map((product) => ({ product, count: reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === product.code).reduce((total, item) => total + item.quantity, 0), 0) })).filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 5).map(({ product, count }, index) => <div key={product.id}><span><i>{index + 1}</i>{product.code}</span><b>{count} un.</b></div>)}</div>
+                    </div>
+                  </article>
+                </section>
                 <section className="financial-layout">
                   <aside className="financial-side">
                     <div className="panel financial-next-card">
