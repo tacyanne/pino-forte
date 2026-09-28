@@ -11,6 +11,7 @@ import {
 } from "react";
 import { jsPDF } from "jspdf";
 import { ProductImageInput } from "./catalogo/product-image-input";
+import { CatalogImage } from "./catalogo/catalog-image";
 import { productImageSource } from "../lib/product-images";
 import { loadCatalogImage } from "../lib/catalog-image";
 
@@ -3318,6 +3319,23 @@ export default function Home() {
                 <ReviewField label="Aplicação" value={viewingProduct.measure} />
               </div>
             </div>
+            <section className="product-image-editor" aria-label="Imagem da peça">
+              <div className="product-image-preview">
+                {productImageSource(viewingProduct) ? (
+                  <CatalogImage src={productImageSource(viewingProduct)} alt={`Imagem da peça ${viewingProduct.code}`} />
+                ) : <span>Sem imagem cadastrada</span>}
+              </div>
+              <div className="product-image-controls">
+                <strong>Imagem da peça</strong>
+                <p>Esta imagem é usada no catálogo e nos PDFs.</p>
+                <button type="button" className="primary-button product-image-upload-button" onClick={() => {
+                  const product = viewingProduct;
+                  setViewingProduct(null);
+                  setEditingProduct(product);
+                  setProductModal(true);
+                }}>{productImageSource(viewingProduct) ? "Editar imagem" : "Adicionar imagem"}</button>
+              </div>
+            </section>
             <div className="record-view-footer record-view-actions-row">
               <button className="record-back-button system-back-button" onClick={() => setViewingProduct(null)}>
                 Voltar

@@ -11,6 +11,7 @@ export function ProductImageInput({ initialSource, disabled, onBusyChange }: {
   const [value, setValue] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [fileName, setFileName] = useState("");
   const generation = useRef(0);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => () => { generation.current++; onBusyChange(false); }, [onBusyChange]);
@@ -31,7 +32,7 @@ export function ProductImageInput({ initialSource, disabled, onBusyChange }: {
       const data = await loadCatalogImage(url, false, true);
       const message = productImageError(data);
       if (message) throw new Error(message);
-      if (current === generation.current) setValue(data);
+      if (current === generation.current) { setValue(data); setFileName(file.name); }
     } catch (cause) {
       if (current === generation.current) setError(cause instanceof Error ? cause.message : "Não foi possível preparar a imagem.");
     } finally {
@@ -46,9 +47,13 @@ export function ProductImageInput({ initialSource, disabled, onBusyChange }: {
         {preview ? <CatalogImage src={preview} alt="Prévia da imagem da peça no catálogo" /> : <span>Sem imagem</span>}
       </div>
       <div className="product-image-controls">
-        <label htmlFor="product-image-file"><strong>Imagem da peça</strong></label>
+        <strong>Imagem da peça</strong>
         <p>Tamanho, enquadramento e contraste ajustados automaticamente. Prefira desenhos nítidos com fundo branco.</p>
-        <input ref={input} id="product-image-file" type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled || busy} onChange={(e) => void select(e.target.files?.[0])} aria-describedby="product-image-help" />
+        <input ref={input} id="product-image-file" type="file" style={{ display: "none" }} accept="image/jpeg,image/png,image/webp" disabled={disabled || busy} onChange={(e) => void select(e.target.files?.[0])} aria-label="Arquivo da imagem da peça" />
+        <button type="button" className="primary-button product-image-upload-button" disabled={disabled || busy} onClick={() => input.current?.click()} aria-describedby="product-image-help">
+          {busy ? "Preparando imagem..." : preview ? "Trocar imagem" : "Selecionar imagem"}
+        </button>
+        {fileName && value && <p role="status">Imagem selecionada: <strong>{fileName}</strong>. Clique em Salvar para confirmar.</p>}
         <small id="product-image-help">JPG, PNG ou WebP · até 10 MB. A alteração será aplicada ao salvar a peça.</small>
         <div className="product-image-actions">
           {preview && <button type="button" className="cancel-button" disabled={disabled || busy} onClick={() => { setValue(""); setError(""); }}>Remover imagem</button>}
