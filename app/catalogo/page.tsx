@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { CatalogImage } from "./catalog-image";
 import { getDb } from "../../db";
 import { products } from "../../db/schema";
 
@@ -76,8 +77,7 @@ export default async function CatalogoPage({
                 </div>
                 <div className="catalog-product">
                   {productImages[product.code] ? (
-                    <img
-                      className="catalog-product-image"
+                    <CatalogImage
                       src={productImages[product.code]}
                       alt={`Pino de balança ${product.code}`}
                     />

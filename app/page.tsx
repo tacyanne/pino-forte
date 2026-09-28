@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { jsPDF } from "jspdf";
+import { loadCatalogImage } from "../lib/catalog-image";
 
 type Screen =
   | "dashboard"
@@ -1465,7 +1466,7 @@ export default function Home() {
         const imageUrl = catalogProductImages[product.code];
         if (!imageUrl) return "";
         try {
-          return await loadImageData(imageUrl, !color);
+          return await loadCatalogImage(imageUrl, !color);
         } catch {
           return "";
         }
