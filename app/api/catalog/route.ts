@@ -1,3 +1,4 @@
+import { productImageError } from "../../../lib/product-images";
 import { asc, eq, like } from "drizzle-orm";
 import { getDb, getSql } from "../../../db";
 import { customers, products } from "../../../db/schema";
@@ -66,7 +67,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string };
+    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; imageData?: string | null };
+    if (body.type === "product") { const error = productImageError(body.imageData); if (error) return Response.json({ error }, { status: 400 }); }
     if (hasSupabaseRest()) return postCatalogWithRest(body);
     const db = await getDb();
     if (body.type === "product") {
@@ -98,13 +100,15 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; imageData?: string | null };
+    if (body.type === "product") { const error = productImageError(body.imageData); if (error) return Response.json({ error }, { status: 400 }); }
     if (hasSupabaseRest()) return patchCatalogWithRest(body);
     const id = Number(body.id);
     if (!id) return Response.json({ error: "Cadastro inválido." }, { status: 400 });
     const db = await getDb();
     if (body.type === "product") {
       const changes: Partial<typeof products.$inferInsert> = {};
+      if (body.imageData !== undefined) changes.imageData = body.imageData;
       if (body.active !== undefined) changes.active = body.active;
       if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
       if (body.code) changes.code = body.code.trim().toUpperCase();
@@ -192,7 +196,7 @@ async function getCatalogFromRest() {
   );
 }
 
-async function postCatalogWithRest(body: { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string }) {
+async function postCatalogWithRest(body: { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; imageData?: string | null }) {
   if (body.type === "product") {
     const code = body.code?.trim().toUpperCase() || "";
     const name = body.name?.trim() || "";
@@ -205,6 +209,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
       code,
       sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"),
       piece_type: pieceType,
+      image_data: body.imageData ?? null,
       name,
       measure,
       price,
@@ -238,11 +243,12 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
   return Response.json({ customer: camelizeRow(customer) }, { status: 201 });
 }
 
-async function patchCatalogWithRest(body: { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string }) {
+async function patchCatalogWithRest(body: { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; imageData?: string | null }) {
   const id = Number(body.id);
   if (!id) return Response.json({ error: "Cadastro invalido." }, { status: 400 });
   if (body.type === "product") {
-    const changes: Record<string, string | number | boolean> = {};
+    const changes: Record<string, string | number | boolean | null> = {};
+    if (body.imageData !== undefined) changes.image_data = body.imageData;
     if (body.active !== undefined) changes.active = body.active;
     if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
     if (body.code) changes.code = body.code.trim().toUpperCase();
