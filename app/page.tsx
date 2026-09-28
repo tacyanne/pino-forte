@@ -3328,12 +3328,6 @@ export default function Home() {
               <div className="product-image-controls">
                 <strong>Imagem da peça</strong>
                 <p>Esta imagem é usada no catálogo e nos PDFs.</p>
-                <button type="button" className="primary-button product-image-upload-button" onClick={() => {
-                  const product = viewingProduct;
-                  setViewingProduct(null);
-                  setEditingProduct(product);
-                  setProductModal(true);
-                }}>{productImageSource(viewingProduct) ? "Editar imagem" : "Adicionar imagem"}</button>
               </div>
             </section>
             <div className="record-view-footer record-view-actions-row">
