@@ -155,6 +155,7 @@ type WalletEntry = {
   balance: number;
 };
 const catalogProductImages: Record<string, string> = {
+  "RN 183": "/rn-183.jpeg",
   "GR 188": "/img-006.png",
   "RN 180": "/img-000.png",
   "RN 190": "/img-001.png",
