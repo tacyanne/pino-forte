@@ -44,6 +44,9 @@ export function loadCatalogImage(url: string, grayscale = false): Promise<string
         output.fillRect(0, 0, frame.width, frame.height);
         const padding = 24;
         const scale = Math.min((frame.width - padding * 2) / width, (frame.height - padding * 2) / height);
+        // The RN 183 scan has heavier strokes than the other technical drawings.
+        // Soften only its rendering, consistently in the web catalog and PDF.
+        output.globalAlpha = url === "/rn-183.jpeg" ? 0.75 : 1;
         output.drawImage(source, left, top, width, height,
           (frame.width - width * scale) / 2, (frame.height - height * scale) / 2,
           width * scale, height * scale);
