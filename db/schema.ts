@@ -30,6 +30,7 @@ export const customers = pgTable("customers", {
 });
 
 export const products = pgTable("products", {
+  imageData: text("image_data"),
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),
   sku: text("sku").notNull().unique(),

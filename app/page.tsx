@@ -10,6 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import { jsPDF } from "jspdf";
+import { ProductImageInput } from "./catalogo/product-image-input";
+import { CatalogImage } from "./catalogo/catalog-image";
+import { productImageSource } from "../lib/product-images";
+import { loadCatalogImage } from "../lib/catalog-image";
 
 type Screen =
   | "dashboard"
@@ -45,6 +49,7 @@ type Customer = {
   createdAt: string;
 };
 type Product = {
+  imageData?: string | null;
   id: number;
   code: string;
   sku: string;
@@ -153,14 +158,6 @@ type WalletEntry = {
   total: number;
   received: number;
   balance: number;
-};
-const catalogProductImages: Record<string, string> = {
-  "RN 180": "/img-000.png",
-  "RN 190": "/img-001.png",
-  "RN 205": "/img-002.png",
-  "RN 225": "/img-003.png",
-  "RO 215": "/img-004.png",
-  "RO 235": "/img-005.png",
 };
 const basePieceTypes = ["Pino", "Bucha"];
 
@@ -421,6 +418,7 @@ export default function Home() {
   const [addressState, setAddressState] = useState("");
   const [zipLoading, setZipLoading] = useState(false);
   const [productModal, setProductModal] = useState(false);
+  const [imageProcessing, setImageProcessing] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [reportMonth, setReportMonth] = useState("");
@@ -1043,6 +1041,7 @@ export default function Home() {
   }
   async function saveProduct(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (imageProcessing) return flash("Aguarde a padronização da imagem.");
     setSaving(true);
     const f = new FormData(e.currentTarget);
     try {
@@ -1053,12 +1052,19 @@ export default function Home() {
         !String(f.get("measure") || "").trim()
       )
         throw new Error("Preencha código, tipo de peça, descrição e aplicação.");
+      let imageData = f.has("imageData") ? String(f.get("imageData")) : undefined;
+      if (imageData === undefined && editingProduct && editingProduct.imageData == null &&
+          editingProduct.code !== String(f.get("code")).trim().toUpperCase()) {
+        const source = productImageSource(editingProduct);
+        if (source) imageData = await loadCatalogImage(source);
+      }
       const r = await fetch("/api/catalog", {
         method: editingProduct ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           type: "product",
           id: editingProduct?.id,
+          ...(imageData !== undefined ? { imageData } : {}),
           code: f.get("code"),
           pieceType: f.get("pieceType"),
           name: f.get("name"),
@@ -1461,10 +1467,10 @@ export default function Home() {
     const logo = await loadImageData(color ? "/logo-sistema.png" : "/logo-pdf.png", !color);
     const productImageData = await Promise.all(
       activeProducts.map(async (product) => {
-        const imageUrl = catalogProductImages[product.code];
+        const imageUrl = productImageSource(product);
         if (!imageUrl) return "";
         try {
-          return await loadImageData(imageUrl, !color);
+          return await loadCatalogImage(imageUrl, !color);
         } catch {
           return "";
         }
@@ -3313,6 +3319,17 @@ export default function Home() {
                 <ReviewField label="Aplicação" value={viewingProduct.measure} />
               </div>
             </div>
+            <section className="product-image-editor" aria-label="Imagem da peça">
+              <div className="product-image-preview">
+                {productImageSource(viewingProduct) ? (
+                  <CatalogImage src={productImageSource(viewingProduct)} alt={`Imagem da peça ${viewingProduct.code}`} />
+                ) : <span>Sem imagem cadastrada</span>}
+              </div>
+              <div className="product-image-controls">
+                <strong>Imagem da peça</strong>
+                <p>Esta imagem é usada no catálogo e nos PDFs.</p>
+              </div>
+            </section>
             <div className="record-view-footer record-view-actions-row">
               <button className="record-back-button system-back-button" onClick={() => setViewingProduct(null)}>
                 Voltar
@@ -3482,6 +3499,7 @@ export default function Home() {
                 <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
             </div>
+            <ProductImageInput key={editingProduct?.id ?? "new"} initialSource={editingProduct ? productImageSource(editingProduct) : ""} disabled={saving} onBusyChange={setImageProcessing} />
             <div className="form-actions registration-actions">
               <button
                 type="button"
@@ -3495,7 +3513,7 @@ export default function Home() {
               >
                 Cancelar
               </button>
-              <button className="primary-button" disabled={saving}>
+              <button className="primary-button" disabled={saving || imageProcessing}>
                 {saving ? "Salvando..." : "Salvar"}
               </button>
             </div>

@@ -730,3 +730,10 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .financial-table td:nth-child(5)::before{content:"Status"}
   .financial-table td:nth-child(5) .status{justify-self:start}
 }
+
+.product-image-editor{display:flex;gap:24px;align-items:flex-start;margin:24px 0;padding:20px;border:1px solid #ddd;border-radius:12px;background:#fafafa}
+.product-image-preview{width:180px;min-height:145px;display:flex;align-items:center;justify-content:center;background:white;border:1px solid #eee;border-radius:8px;flex-shrink:0}
+.product-image-preview .catalog-product-image{width:180px;height:145px;border-radius:8px}
+.product-image-controls{flex:1;min-width:0}.product-image-controls p{margin:8px 0;color:#555}.product-image-controls input[type=file]{display:block;max-width:100%;margin:12px 0}.product-image-controls small{display:block;color:#666}.product-image-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.product-image-controls .product-image-error{color:#b42318}
+@media(max-width:620px){.product-image-editor{flex-direction:column;gap:16px;padding:16px}.product-image-controls{width:100%}}
+.product-image-upload-button{display:inline-flex;align-items:center;justify-content:center;min-height:46px;margin:12px 0;padding:12px 20px;cursor:pointer}.product-image-upload-button:disabled{cursor:wait;opacity:.65}

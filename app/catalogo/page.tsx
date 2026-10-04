@@ -1,4 +1,6 @@
+import { productImageSource } from "../../lib/product-images";
 import { asc, eq } from "drizzle-orm";
+import { CatalogImage } from "./catalog-image";
 import { getDb } from "../../db";
 import { products } from "../../db/schema";
 
@@ -9,14 +11,6 @@ const whatsappMessage = encodeURIComponent(
 );
 const whatsapp = `https://wa.me/5543991565317?text=${whatsappMessage}`;
 
-const productImages: Record<string, string> = {
-  "RN 180": "/img-000.png",
-  "RN 190": "/img-001.png",
-  "RN 205": "/img-002.png",
-  "RN 225": "/img-003.png",
-  "RO 215": "/img-004.png",
-  "RO 235": "/img-005.png",
-};
 
 function money(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -74,10 +68,9 @@ export default async function CatalogoPage({
                   <strong className="catalog-price">{money(product.price)}</strong>
                 </div>
                 <div className="catalog-product">
-                  {productImages[product.code] ? (
-                    <img
-                      className="catalog-product-image"
-                      src={productImages[product.code]}
+                  {productImageSource(product) ? (
+                    <CatalogImage
+                      src={productImageSource(product)}
                       alt={`Pino de balança ${product.code}`}
                     />
                   ) : (

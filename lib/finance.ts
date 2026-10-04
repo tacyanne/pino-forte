@@ -48,6 +48,17 @@ export function centsFromBody(body: Record<string, unknown>, amountKey = "amount
   return toCents(body.amount);
 }
 
+// Saldo devedor residual até este valor (em centavos) é tratado como quitado:
+// o total da OS é ajustado para o valor efetivamente recebido e o saldo zera.
+export const RESIDUAL_SETTLE_CENTS = 100;
+
+export function settleResidualTotal(total: number, received: number) {
+  const balanceCents = Math.round(total * 100) - Math.round(received * 100);
+  return received > 0 && balanceCents > 0 && balanceCents <= RESIDUAL_SETTLE_CENTS
+    ? Math.round(received * 100) / 100
+    : total;
+}
+
 export function receivableStatus(balanceCents: number, dueDate: string, today = todayIso()) {
   if (balanceCents <= 0) return "Pago";
   if (dueDate && dueDate < today) return "Vencido";

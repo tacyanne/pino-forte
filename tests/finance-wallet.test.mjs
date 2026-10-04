@@ -5,6 +5,7 @@ import test from "node:test";
 const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const financeApi = readFileSync(new URL("../app/api/finance/route.ts", import.meta.url), "utf8");
 const financeLib = readFileSync(new URL("../lib/finance.ts", import.meta.url), "utf8");
+const ordersApi = readFileSync(new URL("../app/api/orders/route.ts", import.meta.url), "utf8");
 
 test("wallet is backed by receivables and receipts", () => {
   const walletStart = page.indexOf("const walletCustomers");
@@ -20,6 +21,15 @@ test("wallet is backed by receivables and receipts", () => {
   assert.ok(page.includes("financeData.receipts"));
   assert.ok(page.includes('entity: "accountsReceivable"'));
   assert.equal(settleBlock.includes('commercialStatus: JSON.stringify(history)'), false);
+});
+
+test("small residual balances settle the order at the received amount", () => {
+  assert.ok(financeLib.includes("RESIDUAL_SETTLE_CENTS"));
+  assert.ok(financeLib.includes("settleResidualTotal"));
+  assert.ok(ordersApi.includes("settleResidualTotal(totals.total, received)"));
+  assert.ok(ordersApi.includes("settleResidualTotal(projectedTotal, projectedReceived)"));
+  assert.ok(financeApi.includes("RESIDUAL_SETTLE_CENTS"));
+  assert.ok(financeApi.includes("original_amount_cents: newOriginal"));
 });
 
 test("cash movement types match the Supabase migration constraint", () => {
