@@ -42,3 +42,7 @@ next-env.d.ts
 /work/
 .tmp-*.log
 debug.log*
+
+# build cache e logs locais
+*.tsbuildinfo
+mcp-server.log
