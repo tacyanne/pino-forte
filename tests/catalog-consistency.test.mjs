@@ -62,6 +62,7 @@ test("one saved description is reread by both online catalogs and all four PDF s
       return Response.json([{ userId: 1, expiresAt: "2099-01-01T00:00:00Z" }]);
     if (path === "/rest/v1/app_users")
       return Response.json([{ id: 1, role: "admin", active: true }]);
+    if (path === "/rest/v1/piece_lines") return Response.json([{id:1,name:"Descricao anterior",active:true},{id:2,name:"Descricao atualizada",active:true}]);
     assert.equal(new URL(url).pathname, "/rest/v1/products");
     if (options.method === "PATCH") {
       if (new URL(url).searchParams.get("id") !== "eq.27")

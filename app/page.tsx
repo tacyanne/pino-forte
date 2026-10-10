@@ -1,4 +1,5 @@
 "use client";
+import type { PieceLine } from "../lib/piece-lines";
 
 import {
   Children,
@@ -25,6 +26,7 @@ type Screen =
   | "customers"
   | "products"
   | "piece-types"
+  | "piece-lines"
   | "catalog"
   | "financial"
   | "wallet"
@@ -34,6 +36,7 @@ type SettingsSection =
   | "customers"
   | "products"
   | "piece-types"
+  | "piece-lines"
   | "company"
   | "users";
 type Customer = {
@@ -59,6 +62,7 @@ type Product = {
   code: string;
   sku: string;
   pieceType: string;
+  lineName?: string | null;
   name: string;
   measure: string;
   price: number;
@@ -428,6 +432,11 @@ export default function Home() {
   const [editingType, setEditingType] = useState<PieceType | null>(null);
   const [viewingType, setViewingType] = useState<PieceType | null>(null);
   const [typeSaving, setTypeSaving] = useState(false);
+  const [pieceLines, setPieceLines] = useState<PieceLine[]>([]);
+  const [lineModal, setLineModal] = useState(false);
+  const [editingLine, setEditingLine] = useState<PieceLine | null>(null);
+  const [viewingLine, setViewingLine] = useState<PieceLine | null>(null);
+  const [lineSaving, setLineSaving] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
   const [productTypeFilter, setProductTypeFilter] = useState("Todos");
@@ -536,7 +545,7 @@ export default function Home() {
       ]);
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
-      setPieceTypes(cat.pieceTypes || []);
+      setPieceTypes(cat.pieceTypes || []); setPieceLines(cat.pieceLines || []);
       setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
       let settings = config.settings;
@@ -582,7 +591,7 @@ export default function Home() {
         const data = await response.json();
         if (response.ok && Array.isArray(data.products) && !request.signal.aborted) {
           setProducts(data.products);
-          if (Array.isArray(data.pieceTypes)) setPieceTypes(data.pieceTypes);
+          if (Array.isArray(data.pieceTypes)) setPieceTypes(data.pieceTypes); if (Array.isArray(data.pieceLines)) setPieceLines(data.pieceLines);
         }
       } catch { /* Keep the last confirmed data; exports require a fresh successful read. */ }
     };
@@ -762,6 +771,8 @@ export default function Home() {
   );
   const pieceTypeOptions = pieceTypes.map((type) => type.name);
   const selectablePieceTypes = pieceTypes.filter((type) => type.active || type.name === editingProduct?.pieceType);
+  const selectablePieceLines = pieceLines.filter((line) => line.active || line.name === editingProduct?.name);
+  const filteredPieceLines = pieceLines.filter((line) => line.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
   const filteredPieceTypes = pieceTypes.filter((type) => type.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
   const filteredProducts = products.filter((product) =>
     (productTypeFilter === "Todos" || product.pieceType === productTypeFilter) &&
@@ -1007,6 +1018,7 @@ export default function Home() {
     if (section === "customers") return go("customers");
     if (section === "products") return go("products");
     if (section === "piece-types") return go("piece-types");
+    if (section === "piece-lines") return go("piece-lines");
     return go("settings");
   }
   function flash(text: string, tone?: "success" | "error" | "warning" | "info") {
@@ -1209,6 +1221,47 @@ export default function Home() {
       flash(error instanceof Error ? error.message : "Não foi possível atualizar o tipo.", "error");
     } finally { setTypeSaving(false); }
   }
+  async function writeLine(body: { id?: number; name?: string; active?: boolean }, editing: boolean) {
+    const response = await fetch("/api/piece-lines", {
+      method: editing ? "PATCH" : "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.pieceLine) throw new Error(data.error || "Não foi possível salvar a linha. Tente novamente.");
+    const saved: PieceLine = data.pieceLine;
+    const previous = pieceLines.find((type) => type.id === saved.id);
+    setPieceLines((types) => [...types.filter((type) => type.id !== saved.id), saved]
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+    if (previous && previous.name !== saved.name) {
+      setProducts((rows) => rows.map((product) => product.lineName === previous.name ? { ...product, lineName: saved.name, name: saved.name } : product));
+    }
+    notifyCatalogUpdate();
+    return saved;
+  }
+  async function saveLine(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLineSaving(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      await writeLine({ id: editingLine?.id, name: String(form.get("name") || "").trim() }, !!editingLine);
+      setLineModal(false);
+      setEditingLine(null);
+      flash(editingLine ? "Linha atualizada com sucesso." : "Linha cadastrada com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível salvar a linha.", "error");
+    } finally { setLineSaving(false); }
+  }
+  async function toggleLine(type: PieceLine) {
+    setLineSaving(true);
+    try {
+      await writeLine({ id: type.id, active: !type.active }, true);
+      setViewingLine(null);
+      flash(type.active ? "Linha inativada com sucesso." : "Linha ativada com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível atualizar a linha.", "error");
+    } finally { setLineSaving(false); }
+  }
   async function saveProduct(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (imageProcessing) return flash("Aguarde a padronização da imagem.");
@@ -1221,7 +1274,7 @@ export default function Home() {
         !String(f.get("name") || "").trim() ||
         !String(f.get("measure") || "").trim()
       )
-        throw new Error("Preencha código, tipo de peça, descrição e aplicação.");
+        throw new Error("Preencha código, tipo de peça, linha e aplicação.");
       let imageData = f.has("imageData") ? String(f.get("imageData")) : undefined;
       if (imageData === undefined && editingProduct && editingProduct.imageData == null &&
           editingProduct.code !== String(f.get("code")).trim().toUpperCase()) {
@@ -1237,7 +1290,8 @@ export default function Home() {
           ...(imageData !== undefined ? { imageData } : {}),
           code: f.get("code"),
           pieceType: f.get("pieceType"),
-          name: f.get("name"),
+          lineName: f.get("name"),
+          ...(!editingProduct ? { name: f.get("name") } : {}),
           measure: f.get("measure"),
           price: parseCurrency(String(f.get("price"))),
         }),
@@ -2232,10 +2286,11 @@ export default function Home() {
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Peças"],
     ["piece-types", "◇", "Tipos"],
+    ["piece-lines", "◇", "Linhas"],
     ["company", "⌂", "Empresa"],
     ["users", "◉", "Usuários"],
   ];
-  const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products" || screen === "piece-types";
+  const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products" || screen === "piece-types" || screen === "piece-lines";
   const showSettings = settingsOpen || isSettingsScreen;
   return (
     <main className="app-shell">
@@ -2276,6 +2331,7 @@ export default function Home() {
                   (section === "customers" && screen === "customers") ||
                   (section === "products" && screen === "products") ||
                   (section === "piece-types" && screen === "piece-types") ||
+                  (section === "piece-lines" && screen === "piece-lines") ||
                   (screen === "settings" && settingsSection === section);
                 return (
                 <button
@@ -2874,6 +2930,29 @@ export default function Home() {
                         </tr>
                       ))}
                       {!filteredPieceTypes.length && <tr><td colSpan={2} className="empty">{query ? "Nenhum tipo encontrado." : "Nenhum tipo cadastrado."}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {screen === "piece-lines" && (
+              <div className="page">
+                <Heading eyebrow="CADASTROS" title="Linhas" subtitle="Mantenha as linhas disponíveis para o cadastro de peças."
+                  action={<button className="primary-button" onClick={() => { setEditingLine(null); setLineModal(true); }}>＋ Nova linha</button>} />
+                <Filters query={query} setQuery={setQuery} queryLabel="Buscar linha" />
+                <div className="table-wrap standardized-table piece-type-table">
+                  <table>
+                    <thead><tr><th>Linha</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {filteredPieceLines.map((type) => (
+                        <tr key={type.id} className="clickable-table-row" role="button" tabIndex={0}
+                          aria-label={`Visualizar linha ${type.name}`} onClick={() => setViewingLine(type)}
+                          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setViewingLine(type); } }}>
+                          <td><b>{type.name}</b></td>
+                          <td><span className={`status ${type.active ? "green" : "red"}`}>{type.active ? "Ativo" : "Inativo"}</span></td>
+                        </tr>
+                      ))}
+                      {!filteredPieceLines.length && <tr><td colSpan={2} className="empty">{query ? "Nenhuma linha encontrada." : "Nenhuma linha cadastrada."}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -3565,6 +3644,37 @@ export default function Home() {
           </form>
         </Modal>
       )}
+      {viewingLine && (
+        <Modal title="Visualizar linha" page pageLabel="" close={() => { if (!lineSaving) setViewingLine(null); }}>
+          <div className="record-view">
+            <div className="record-view-grid"><div className="type-form-row">
+              <ReviewField label="Linha" value={viewingLine.name} />
+              <ReviewField label="Status" value={viewingLine.active ? "Ativo" : "Inativo"} />
+            </div></div>
+            <div className="record-view-footer record-view-actions-row">
+              <button className="record-back-button system-back-button" disabled={lineSaving} onClick={() => setViewingLine(null)}>Voltar</button>
+              <button className="record-edit-button" disabled={lineSaving} onClick={() => { setEditingLine(viewingLine); setViewingLine(null); setLineModal(true); }}>Editar</button>
+              <button className={viewingLine.active ? "record-inactivate" : "record-activate"} disabled={lineSaving} onClick={() => { void toggleLine(viewingLine); }}>
+                {lineSaving ? "Salvando..." : viewingLine.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {lineModal && (
+        <Modal title={editingLine ? "Editar linha" : "Cadastrar linha"} page pageLabel="" close={() => { if (!lineSaving) { setLineModal(false); setEditingLine(null); } }}>
+          <form className="customer-page-form" onSubmit={saveLine}>
+            <div className="form-grid type-form-row">
+              <Field label="Linha *"><input name="name" required maxLength={200} defaultValue={editingLine?.name || ""} disabled={lineSaving} /></Field>
+              <Field label="Status"><input value={editingLine?.active === false ? "Inativo" : "Ativo"} readOnly /></Field>
+            </div>
+            <div className="form-actions registration-actions">
+              <button type="button" className="cancel-button" disabled={lineSaving} onClick={() => { const type = editingLine; setLineModal(false); setEditingLine(null); if (type) setViewingLine(type); }}>Cancelar</button>
+              <button type="submit" className="primary-button" disabled={lineSaving}>{lineSaving ? "Salvando..." : "Salvar"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {viewingProduct && (
         <Modal
           title="Visualizar peça"
@@ -3579,7 +3689,7 @@ export default function Home() {
                 <ReviewField label="Tipo" value={viewingProduct.pieceType || "—"} />
                 <ReviewField label="Valor" value={money(viewingProduct.price)} />
                 <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
-                <ReviewField label="Descrição" value={viewingProduct.name} />
+                <ReviewField label="Linha" value={viewingProduct.name} />
                 <ReviewField label="Aplicação" value={viewingProduct.measure} />
               </div>
             </div>
@@ -3757,8 +3867,9 @@ export default function Home() {
               <Field label="Status">
                 <input value={editingProduct?.active === false ? "Inativo" : "Ativo"} readOnly />
               </Field>
-              <Field label="Descrição *">
-                <input name="name" required defaultValue={editingProduct?.name || ""} />
+              <Field label="Linha *">
+                <select name="name" required defaultValue={editingProduct?.name || ""}><option value="">Selecione</option>{selectablePieceLines.map((line) => <option key={line.id} value={line.name}>{line.name}{line.active ? "" : " (inativa)"}</option>)}</select>
+                {!pieceLines.some((line) => line.active) && <small>Cadastre ou ative uma linha em Configurações → Linhas.</small>}
               </Field>
               <Field label="Aplicação *">
                 <input name="measure" required defaultValue={editingProduct?.measure || ""} />

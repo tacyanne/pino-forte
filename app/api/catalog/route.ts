@@ -1,3 +1,5 @@
+import { displayProductLine } from "../../../lib/product-line-display";
+import { listPieceLines, PieceLineError, validateProductLine } from "../../../lib/piece-lines";
 import { productImageError } from "../../../lib/product-images";
 import { and, asc, eq, like, ne } from "drizzle-orm";
 import { getDb, getSql } from "../../../db";
@@ -55,7 +57,7 @@ export async function GET(request: Request) {
     }
     const customerRows = await db.select().from(customers).orderBy(asc(customers.name));
     return Response.json(
-      { products: productRows, customers: customerRows, pieceTypes: await listPieceTypes() },
+      { products: productRows.map(displayProductLine), customers: customerRows, pieceTypes: await listPieceTypes(), pieceLines: await listPieceLines() },
       { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error) {
@@ -66,13 +68,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; imageData?: string | null };
+    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; lineName?: string; imageData?: string | null };
     if (body.type === "product") { const error = productImageError(body.imageData); if (error) return Response.json({ error }, { status: 400 }); }
     if (hasSupabaseRest()) return await postCatalogWithRest(body);
     const db = await getDb();
     if (body.type === "product") {
       const code = body.code?.trim().toUpperCase() || "";
-      const name = body.name?.trim() || "";
+      const lineName = await validateProductLine(body.lineName ?? body.name);
+      const name = body.name?.trim() || lineName;
       const pieceType = await validateProductType(body.pieceType);
       const measure = body.measure?.trim() || "";
       const price = Math.max(0, Number(body.price || 0));
@@ -81,8 +84,8 @@ export async function POST(request: Request) {
       const existing = await db.select({ id: products.id }).from(products).where(eq(products.code, code)).limit(1);
       if (existing.length)
         return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
-      const [product] = await db.insert(products).values({ code, sku, pieceType, name, measure, price, imageData: body.imageData ?? null }).returning();
-      return Response.json({ product }, { status: 201 });
+      const [product] = await db.insert(products).values({ code, sku, pieceType, name, lineName, measure, price, imageData: body.imageData ?? null }).returning();
+      return Response.json({ product: displayProductLine(product) }, { status: 201 });
     }
     const name = body.name?.trim() || "";
     const whatsapp = body.whatsapp?.trim() || "";
@@ -96,14 +99,14 @@ export async function POST(request: Request) {
     const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "", zipCode: body.zipCode?.trim() || "", street: body.street?.trim() || "", number: body.number?.trim() || "", complement: body.complement?.trim() || "", neighborhood: body.neighborhood?.trim() || "", city: body.city?.trim() || "", state: body.state?.trim() || "", customerType }).returning();
     return Response.json({ customer }, { status: 201 });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: error instanceof PieceTypeError ? error.status : 500 });
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: error instanceof PieceTypeError || error instanceof PieceLineError ? error.status : 500 });
   }
 }
 
 export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; imageData?: string | null };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; lineName?: string; imageData?: string | null };
     if (body.type === "product") { const error = productImageError(body.imageData); if (error) return Response.json({ error }, { status: 400 }); }
     if (hasSupabaseRest()) return await patchCatalogWithRest(body);
     const id = Number(body.id);
@@ -125,12 +128,13 @@ export async function PATCH(request: Request) {
         const pieceType = await validateProductType(body.pieceType, id);
         changes.pieceType = pieceType;
       }
+      if (body.lineName !== undefined) changes.lineName = await validateProductLine(body.lineName, id);
       if (body.name) changes.name = body.name.trim();
       if (body.measure) changes.measure = body.measure.trim();
       if (body.sku !== undefined) changes.sku = body.sku.trim().toUpperCase();
       const [product] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
       if (!product) return Response.json({ error: "Peça não encontrada. Atualize a lista e tente novamente." }, { status: 404 });
-      return Response.json({ product });
+      return Response.json({ product: displayProductLine(product) });
     }
     if (body.name !== undefined && !body.document?.trim()) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
     if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.street?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !body.state?.trim() || !body.number?.trim())) return Response.json({ error: "Preencha o endereço obrigatório usando um CEP válido." }, { status: 400 });
@@ -157,7 +161,7 @@ export async function PATCH(request: Request) {
     const [customer] = await db.update(customers).set(changes).where(eq(customers.id, id)).returning();
     return Response.json({ customer });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o cadastro." }, { status: error instanceof PieceTypeError ? error.status : 500 });
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o cadastro." }, { status: error instanceof PieceTypeError || error instanceof PieceLineError ? error.status : 500 });
   }
 }
 
@@ -200,15 +204,16 @@ async function getCatalogFromRest() {
     order: "name.asc",
   });
   return Response.json(
-    { products: camelizeRows(productRows), customers: camelizeRows(customerRows), pieceTypes: await listPieceTypes() },
+    { products: camelizeRows(productRows).map(displayProductLine), customers: camelizeRows(customerRows), pieceTypes: await listPieceTypes(), pieceLines: await listPieceLines() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
   );
 }
 
-async function postCatalogWithRest(body: { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; imageData?: string | null }) {
+async function postCatalogWithRest(body: { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; lineName?: string; imageData?: string | null }) {
   if (body.type === "product") {
     const code = body.code?.trim().toUpperCase() || "";
-    const name = body.name?.trim() || "";
+    const lineName = await validateProductLine(body.lineName ?? body.name);
+      const name = body.name?.trim() || lineName;
     const pieceType = await validateProductType(body.pieceType);
     const measure = body.measure?.trim() || "";
     const price = Math.max(0, Number(body.price || 0));
@@ -221,12 +226,13 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
       code,
       sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"),
       piece_type: pieceType,
+      line_name: lineName,
       image_data: body.imageData ?? null,
       name,
       measure,
       price,
     });
-    return Response.json({ product: camelizeRow(product) }, { status: 201 });
+    return Response.json({ product: displayProductLine(camelizeRow(product)) }, { status: 201 });
   }
 
   const name = body.name?.trim() || "";
@@ -255,7 +261,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
   return Response.json({ customer: camelizeRow(customer) }, { status: 201 });
 }
 
-async function patchCatalogWithRest(body: { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; imageData?: string | null }) {
+async function patchCatalogWithRest(body: { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; lineName?: string; imageData?: string | null }) {
   const id = Number(body.id);
   if (!id) return Response.json({ error: "Cadastro invalido." }, { status: 400 });
   if (body.type === "product") {
@@ -274,12 +280,13 @@ async function patchCatalogWithRest(body: { type?: string; id?: number; active?:
       const pieceType = await validateProductType(body.pieceType, id);
       changes.piece_type = pieceType;
     }
-    if (body.name) changes.name = body.name.trim();
+    if (body.lineName !== undefined) changes.line_name = await validateProductLine(body.lineName, id);
+      if (body.name) changes.name = body.name.trim();
     if (body.measure) changes.measure = body.measure.trim();
     if (body.sku !== undefined) changes.sku = body.sku.trim().toUpperCase();
     const product = await supabasePatch<Record<string, unknown>>("products", { id: `eq.${id}` }, changes);
     if (!product) return Response.json({ error: "Peça não encontrada. Atualize a lista e tente novamente." }, { status: 404 });
-    return Response.json({ product: camelizeRow(product) });
+    return Response.json({ product: displayProductLine(camelizeRow(product)) });
   }
 
   const changes: Record<string, string | boolean> = {};

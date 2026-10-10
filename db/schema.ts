@@ -37,12 +37,21 @@ export const pieceTypes = pgTable("piece_types", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
 
+export const pieceLines = pgTable("piece_lines", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  active: boolean("active").notNull().default(true),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+});
+
 export const products = pgTable("products", {
   imageData: text("image_data"),
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),
   sku: text("sku").notNull().unique(),
   name: text("name").notNull(),
+  lineName: text("line_name").references(() => pieceLines.name, { onUpdate: "cascade", onDelete: "restrict" }),
   pieceType: text("piece_type").notNull().references(() => pieceTypes.name, { onUpdate: "cascade", onDelete: "restrict" }),
   measure: text("measure").notNull(),
   price: doublePrecision("price").notNull(),

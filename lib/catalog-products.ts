@@ -8,7 +8,7 @@ export async function loadActiveCatalogProducts() {
   const rows = hasSupabaseRest()
     ? camelizeRows<typeof products.$inferSelect>(
         await supabaseSelect<Record<string, unknown>>("products", {
-          select: "id,code,name,piece_type,measure,price,image_data,active",
+          select: "id,code,name,line_name,piece_type,measure,price,image_data,active",
           active: "eq.true",
           order: "code.asc",
         }),
@@ -22,10 +22,10 @@ export async function loadActiveCatalogProducts() {
         .orderBy(asc(products.code));
   // The public catalog exposes no customer or internal management data.
   return rows.map(
-    ({ id, code, name, pieceType, measure, price, imageData, active }) => ({
+    ({ id, code, name, lineName, pieceType, measure, price, imageData, active }) => ({
       id,
       code,
-      name,
+      name: lineName || name,
       pieceType,
       measure,
       price,
