@@ -763,4 +763,5 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .catalog-product>div:last-child{min-width:0;overflow-wrap:anywhere}
 .type-form-row{display:grid;grid-template-columns:minmax(200px,2fr) minmax(140px,1fr);gap:20px}
 .piece-type-table td:first-child{width:75%}
+.piece-type-table th,.piece-type-table td{text-align:left!important}
 @media(max-width:760px){.piece-type-table table{min-width:0}.type-form-row{grid-template-columns:1fr}}
