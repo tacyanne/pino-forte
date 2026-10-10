@@ -20,7 +20,7 @@ test("sidebar keeps operational entries first and support records under Configur
   assert.ok(page.includes('["orders", "▤", "OS"]'));
   assert.ok(page.includes('["wallet", "▣", "Carteira"]'));
   assert.ok(page.includes('["financial", "$", "Financeiro"]'));
-  assert.ok(page.includes('["reports", "▥", "Relatórios"]'));
+  assert.ok(page.includes('title="Relatórios"'));
   assert.ok(page.includes('["catalog", "▦", "Catálogo"]'));
   assert.ok(page.includes('["customers", "♙", "Clientes"]'));
   assert.ok(page.includes('["products", "⬡", "Peças"]'));

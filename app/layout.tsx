@@ -22,9 +22,6 @@ export const metadata: Metadata = {
     title: "Pino Forte",
     statusBarStyle: "black-translucent",
   },
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: [
       { url: "/favicon-v3.ico", sizes: "any" },

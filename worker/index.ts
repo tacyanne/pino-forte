@@ -40,7 +40,13 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    if (url.pathname === "/catalogo" || url.pathname.startsWith("/api/catalog")) {
+      const fresh = new Response(response.body, response);
+      fresh.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      return fresh;
+    }
+    return response;
   },
 };
 

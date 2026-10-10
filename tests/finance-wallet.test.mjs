@@ -71,8 +71,10 @@ test("cash movement types match the Supabase migration constraint", () => {
 });
 
 test("GR 188 image is available in both online and PDF catalogs", () => {
-  const onlineCatalog = readFileSync(new URL("../app/catalogo/page.tsx", import.meta.url), "utf8");
+  const onlineCatalog = readFileSync(new URL("../app/catalogo/catalog-view.tsx", import.meta.url), "utf8");
+  const images = readFileSync(new URL("../lib/product-images.ts", import.meta.url), "utf8");
 
-  assert.ok(page.includes('"GR 188": "/img-006.png"'));
-  assert.ok(onlineCatalog.includes('"GR 188": "/img-006.png"'));
+  assert.ok(images.includes('"GR 188": "/img-006.png"'));
+  assert.ok(page.includes("productImageSource(product)"));
+  assert.ok(onlineCatalog.includes("productImageSource(product)"));
 });

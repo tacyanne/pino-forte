@@ -14,6 +14,8 @@ import { ProductImageInput } from "./catalogo/product-image-input";
 import { CatalogImage } from "./catalogo/catalog-image";
 import { productImageSource } from "../lib/product-images";
 import { loadCatalogImage } from "../lib/catalog-image";
+import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "../lib/catalog-sync";
+import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 
 type Screen =
   | "dashboard"
@@ -560,6 +562,22 @@ export default function Home() {
       if (data.user) loadAll(); else setLoading(false);
     }).catch(() => { setAuth((value) => ({ ...value, loading: false })); setLoading(false); });
   }, []);
+  useEffect(() => {
+    if (!auth.user) return;
+    let controller: AbortController | undefined;
+    const refresh = async () => {
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      try {
+        const response = await fetch("/api/catalog", { cache: "no-store", signal: request.signal });
+        const data = await response.json();
+        if (response.ok && Array.isArray(data.products) && !request.signal.aborted) setProducts(data.products);
+      } catch { /* Keep the last confirmed data; exports require a fresh successful read. */ }
+    };
+    const stop = watchCatalogUpdates(() => { void refresh(); });
+    return () => { stop(); controller?.abort(); };
+  }, [auth.user]);
   useEffect(() => {
     if (!auth.user) return;
     const id = window.setTimeout(() => {
@@ -1191,9 +1209,10 @@ export default function Home() {
       );
       setProductModal(false);
       setEditingProduct(null);
+      notifyCatalogUpdate();
       flash(editingProduct ? "Peça atualizada com sucesso." : "Peça cadastrada com sucesso.");
     } catch (err) {
-      flash(err instanceof Error ? err.message : "Erro ao cadastrar.");
+      flash(err instanceof Error ? err.message : "Erro ao cadastrar.", "error");
     } finally {
       setSaving(false);
     }
@@ -1524,7 +1543,10 @@ export default function Home() {
     }
     if (type === "customer")
       setCustomers((v) => v.map((x) => (x.id === id ? j.customer : x)));
-    else setProducts((v) => v.map((x) => (x.id === id ? j.product : x)));
+    else {
+      setProducts((v) => v.map((x) => (x.id === id ? j.product : x)));
+      notifyCatalogUpdate();
+    }
   }
   function whatsapp(order: Order) {
     const customer = findBestCustomer(customers, order.customerName);
@@ -1567,7 +1589,14 @@ export default function Home() {
     audience: "final" | "distributor",
     variant: "bw" | "color",
   ) {
-    const activeProducts = products
+    let currentProducts: Product[];
+    try {
+      currentProducts = await fetchCatalogProducts<Product>();
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível atualizar o catálogo.", "error");
+      return;
+    }
+    const activeProducts = currentProducts
       .filter((product) => product.active)
       .sort((a, b) => a.code.localeCompare(b.code, "pt-BR"));
     if (!activeProducts.length) {
@@ -1589,8 +1618,20 @@ export default function Home() {
         }
       }),
     );
-    const pages = Math.ceil(activeProducts.length / 6);
-    for (let page = 0; page < pages; page += 1) {
+    const pages: { items: Product[]; y: number; height: number }[][] = [[]];
+    let nextRowY = distributor ? 65 : 49;
+    for (let index = 0; index < activeProducts.length; index += 2) {
+      const items = activeProducts.slice(index, index + 2);
+      const height = Math.max(...items.map((item) => catalogPdfDetails(pdf, item).height)) + (distributor ? 8 : 5);
+      if (nextRowY + height > 263 && pages[pages.length - 1].length) {
+        pages.push([]);
+        nextRowY = distributor ? 65 : 49;
+      }
+      pages[pages.length - 1].push({ items, y: nextRowY, height });
+      nextRowY += height + 5;
+    }
+    let sourceIndex = 0;
+    for (let page = 0; page < pages.length; page += 1) {
       if (page > 0) pdf.addPage();
       if (color) {
         pdf.setFillColor(248, 248, 246);
@@ -1631,16 +1672,8 @@ export default function Home() {
         pdf.text("5% até 9 unidades  |  8% de 10 a 19 unidades  |  10% de 20 em diante", 17, 57.5);
       }
 
-      const pageProducts = activeProducts.slice(page * 6, page * 6 + 6);
-      const cardY = distributor ? 65 : 49;
-      const cardHeight = distributor ? 56 : 61;
-      const rowGap = 5;
-      pageProducts.forEach((product, pageIndex) => {
-        const sourceIndex = page * 6 + pageIndex;
-        const column = pageIndex % 2;
-        const row = Math.floor(pageIndex / 2);
+      pages[page].forEach(({ items, y, height: cardHeight }) => items.forEach((product, column) => {
         const x = column === 0 ? 12 : 109;
-        const y = cardY + row * (cardHeight + rowGap);
         const width = 89;
 
         pdf.setFillColor(255, 255, 255);
@@ -1661,20 +1694,8 @@ export default function Home() {
         if (productImageData[sourceIndex]) {
           pdf.addImage(productImageData[sourceIndex], "JPEG", x + 6, y + 19, 36, 29, undefined, "FAST");
         }
-        pdf.setFont("helvetica", "normal");
-        pdf.setTextColor(95, 95, 95);
-        pdf.setFontSize(7.5);
-        pdf.text(product.code.startsWith("RN") ? "Linha Randon" : "Linha Rodoviária", x + 47, y + 25);
-        pdf.setTextColor(35, 35, 35);
-        pdf.setFontSize(10);
-        pdf.text("Pino de balança", x + 47, y + 33);
-        pdf.setTextColor(105, 105, 105);
-        pdf.setFontSize(7);
-        pdf.text("C O M U M", x + 47, y + 40);
-        pdf.setTextColor(35, 35, 35);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(9.5);
-        pdf.text(product.measure, x + 47, y + 48);
+        drawCatalogPdfDetails(pdf, product, x + 47, y + 22);
+        sourceIndex += 1;
 
         if (distributor) {
           pdf.setFontSize(6.7);
@@ -1686,7 +1707,7 @@ export default function Home() {
             y + cardHeight - 3,
           );
         }
-      });
+      }));
 
       if (color) {
         pdf.setFillColor(7, 7, 7);
