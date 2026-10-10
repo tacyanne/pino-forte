@@ -2994,7 +2994,7 @@ export default function Home() {
                       <tr>
                         <th>Código</th>
                         <th>Tipo</th>
-                        <th>Descrição</th>
+                        <th>Linha</th>
                         <th>Medidas</th>
                         <th>Valor</th>
                         <th>Status</th>
