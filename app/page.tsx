@@ -1274,7 +1274,7 @@ export default function Home() {
         !String(f.get("name") || "").trim() ||
         !String(f.get("measure") || "").trim()
       )
-        throw new Error("Preencha código, tipo de peça, linha e aplicação.");
+        throw new Error("Preencha código, tipo de peça, linha e medidas.");
       let imageData = f.has("imageData") ? String(f.get("imageData")) : undefined;
       if (imageData === undefined && editingProduct && editingProduct.imageData == null &&
           editingProduct.code !== String(f.get("code")).trim().toUpperCase()) {
@@ -2995,7 +2995,7 @@ export default function Home() {
                         <th>Código</th>
                         <th>Tipo</th>
                         <th>Descrição</th>
-                        <th>Aplicação</th>
+                        <th>Medidas</th>
                         <th>Valor</th>
                         <th>Status</th>
                       </tr>
@@ -3690,7 +3690,7 @@ export default function Home() {
                 <ReviewField label="Valor" value={money(viewingProduct.price)} />
                 <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
                 <ReviewField label="Linha" value={viewingProduct.name} />
-                <ReviewField label="Aplicação" value={viewingProduct.measure} />
+                <ReviewField label="Medidas" value={viewingProduct.measure} />
               </div>
             </div>
             <section className="product-image-editor" aria-label="Imagem da peça">
@@ -3871,7 +3871,7 @@ export default function Home() {
                 <select name="name" required defaultValue={editingProduct?.name || ""}><option value="">Selecione</option>{selectablePieceLines.map((line) => <option key={line.id} value={line.name}>{line.name}{line.active ? "" : " (inativa)"}</option>)}</select>
                 {!pieceLines.some((line) => line.active) && <small>Cadastre ou ative uma linha em Configurações → Linhas.</small>}
               </Field>
-              <Field label="Aplicação *">
+              <Field label="Medidas *">
                 <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
             </div>

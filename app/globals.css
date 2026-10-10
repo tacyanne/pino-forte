@@ -447,7 +447,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .product-table td:nth-child(1)::before{content:"Código"}
   .product-table td:nth-child(2)::before{content:"Tipo"}
   .product-table td:nth-child(3)::before{content:"Descrição"}
-  .product-table td:nth-child(4)::before{content:"Aplicação"}
+  .product-table td:nth-child(4)::before{content:"Medidas"}
   .product-table td:nth-child(5)::before{content:"Valor"}
   .product-table td:nth-child(6)::before{content:"Status"}
   .product-table td:nth-child(6) .status{justify-self:start}

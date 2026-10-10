@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       const pieceType = await validateProductType(body.pieceType);
       const measure = body.measure?.trim() || "";
       const price = Math.max(0, Number(body.price || 0));
-      if (!code || !pieceType || !name || !measure || !price) return Response.json({ error: "Código, tipo de peça, descrição, aplicação e valor são obrigatórios." }, { status: 400 });
+      if (!code || !pieceType || !name || !measure || !price) return Response.json({ error: "Código, tipo de peça, descrição, medidas e valor são obrigatórios." }, { status: 400 });
       const sku = body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-");
       const existing = await db.select({ id: products.id }).from(products).where(eq(products.code, code)).limit(1);
       if (existing.length)
@@ -218,7 +218,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
     const measure = body.measure?.trim() || "";
     const price = Math.max(0, Number(body.price || 0));
     if (!code || !pieceType || !name || !measure || !price)
-      return Response.json({ error: "Codigo, tipo de peca, descricao, aplicacao e valor sao obrigatorios." }, { status: 400 });
+      return Response.json({ error: "Codigo, tipo de peca, descricao, medidas e valor sao obrigatorios." }, { status: 400 });
     const existing = await supabaseGetOne("products", { select: "id", code: `eq.${code}` });
     if (existing)
       return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
