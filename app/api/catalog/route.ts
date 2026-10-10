@@ -5,6 +5,7 @@ import { customers, products } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
 import { camelizeRows, camelizeRow } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
+import { listPieceTypes, PieceTypeError, validateProductType } from "../../../lib/piece-types";
 
 const initialProducts = [
   ["RN 180", "RN-180", "Pino de balança RN 180", "180 mm", 49, "Pino"],
@@ -14,8 +15,6 @@ const initialProducts = [
   ["RO 215", "RO-215", "Pino de balança RO 215", "215 mm", 63, "Pino"],
   ["RO 235", "RO-235", "Pino de balança RO 235", "235 mm", 68, "Pino"],
 ] as const;
-const normalizePieceType = (value?: string) =>
-  value?.trim().slice(0, 80) || "";
 
 async function selectProducts() {
   const db = await getDb();
@@ -56,7 +55,7 @@ export async function GET(request: Request) {
     }
     const customerRows = await db.select().from(customers).orderBy(asc(customers.name));
     return Response.json(
-      { products: productRows, customers: customerRows },
+      { products: productRows, customers: customerRows, pieceTypes: await listPieceTypes() },
       { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error) {
@@ -74,7 +73,7 @@ export async function POST(request: Request) {
     if (body.type === "product") {
       const code = body.code?.trim().toUpperCase() || "";
       const name = body.name?.trim() || "";
-      const pieceType = normalizePieceType(body.pieceType);
+      const pieceType = await validateProductType(body.pieceType);
       const measure = body.measure?.trim() || "";
       const price = Math.max(0, Number(body.price || 0));
       if (!code || !pieceType || !name || !measure || !price) return Response.json({ error: "Código, tipo de peça, descrição, aplicação e valor são obrigatórios." }, { status: 400 });
@@ -97,7 +96,7 @@ export async function POST(request: Request) {
     const [customer] = await db.insert(customers).values({ name, whatsapp, document: body.document?.trim() || "", email: body.email?.trim() || "", zipCode: body.zipCode?.trim() || "", street: body.street?.trim() || "", number: body.number?.trim() || "", complement: body.complement?.trim() || "", neighborhood: body.neighborhood?.trim() || "", city: body.city?.trim() || "", state: body.state?.trim() || "", customerType }).returning();
     return Response.json({ customer }, { status: 201 });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar o cliente." }, { status: error instanceof PieceTypeError ? error.status : 500 });
   }
 }
 
@@ -123,8 +122,7 @@ export async function PATCH(request: Request) {
         changes.code = code;
       }
       if (body.pieceType !== undefined) {
-        const pieceType = normalizePieceType(body.pieceType);
-        if (!pieceType) return Response.json({ error: "Selecione o tipo de peça." }, { status: 400 });
+        const pieceType = await validateProductType(body.pieceType, id);
         changes.pieceType = pieceType;
       }
       if (body.name) changes.name = body.name.trim();
@@ -159,7 +157,7 @@ export async function PATCH(request: Request) {
     const [customer] = await db.update(customers).set(changes).where(eq(customers.id, id)).returning();
     return Response.json({ customer });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o cadastro." }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o cadastro." }, { status: error instanceof PieceTypeError ? error.status : 500 });
   }
 }
 
@@ -202,7 +200,7 @@ async function getCatalogFromRest() {
     order: "name.asc",
   });
   return Response.json(
-    { products: camelizeRows(productRows), customers: camelizeRows(customerRows) },
+    { products: camelizeRows(productRows), customers: camelizeRows(customerRows), pieceTypes: await listPieceTypes() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
   );
 }
@@ -211,7 +209,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
   if (body.type === "product") {
     const code = body.code?.trim().toUpperCase() || "";
     const name = body.name?.trim() || "";
-    const pieceType = normalizePieceType(body.pieceType);
+    const pieceType = await validateProductType(body.pieceType);
     const measure = body.measure?.trim() || "";
     const price = Math.max(0, Number(body.price || 0));
     if (!code || !pieceType || !name || !measure || !price)
@@ -273,8 +271,7 @@ async function patchCatalogWithRest(body: { type?: string; id?: number; active?:
       changes.code = code;
     }
     if (body.pieceType !== undefined) {
-      const pieceType = normalizePieceType(body.pieceType);
-      if (!pieceType) return Response.json({ error: "Selecione o tipo de peca." }, { status: 400 });
+      const pieceType = await validateProductType(body.pieceType, id);
       changes.piece_type = pieceType;
     }
     if (body.name) changes.name = body.name.trim();

@@ -16,6 +16,7 @@ import { productImageSource } from "../lib/product-images";
 import { loadCatalogImage } from "../lib/catalog-image";
 import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "../lib/catalog-sync";
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
+import type { PieceType } from "../lib/piece-types";
 
 type Screen =
   | "dashboard"
@@ -23,6 +24,7 @@ type Screen =
   | "orders"
   | "customers"
   | "products"
+  | "piece-types"
   | "catalog"
   | "financial"
   | "wallet"
@@ -31,6 +33,7 @@ type Screen =
 type SettingsSection =
   | "customers"
   | "products"
+  | "piece-types"
   | "company"
   | "users";
 type Customer = {
@@ -161,7 +164,6 @@ type WalletEntry = {
   received: number;
   balance: number;
 };
-const basePieceTypes = ["Pino", "Bucha"];
 
 const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -421,6 +423,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [pieceTypes, setPieceTypes] = useState<PieceType[]>([]);
+  const [typeModal, setTypeModal] = useState(false);
+  const [editingType, setEditingType] = useState<PieceType | null>(null);
+  const [viewingType, setViewingType] = useState<PieceType | null>(null);
+  const [typeSaving, setTypeSaving] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
   const [productTypeFilter, setProductTypeFilter] = useState("Todos");
@@ -529,6 +536,7 @@ export default function Home() {
       ]);
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
+      setPieceTypes(cat.pieceTypes || []);
       setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
       let settings = config.settings;
@@ -572,7 +580,10 @@ export default function Home() {
       try {
         const response = await fetch("/api/catalog", { cache: "no-store", signal: request.signal });
         const data = await response.json();
-        if (response.ok && Array.isArray(data.products) && !request.signal.aborted) setProducts(data.products);
+        if (response.ok && Array.isArray(data.products) && !request.signal.aborted) {
+          setProducts(data.products);
+          if (Array.isArray(data.pieceTypes)) setPieceTypes(data.pieceTypes);
+        }
       } catch { /* Keep the last confirmed data; exports require a fresh successful read. */ }
     };
     const stop = watchCatalogUpdates(() => { void refresh(); });
@@ -749,15 +760,12 @@ export default function Home() {
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
-  const pieceTypeOptions = Array.from(
-    new Set([
-      ...basePieceTypes,
-      ...products.map((product) => product.pieceType).filter(Boolean),
-    ]),
-  );
+  const pieceTypeOptions = pieceTypes.map((type) => type.name);
+  const selectablePieceTypes = pieceTypes.filter((type) => type.active || type.name === editingProduct?.pieceType);
+  const filteredPieceTypes = pieceTypes.filter((type) => type.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
   const filteredProducts = products.filter((product) =>
-    (productTypeFilter === "Todos" || (product.pieceType || "Pino") === productTypeFilter) &&
-    `${product.code} ${product.pieceType || "Pino"} ${product.name} ${product.measure}`
+    (productTypeFilter === "Todos" || product.pieceType === productTypeFilter) &&
+    `${product.code} ${product.pieceType} ${product.name} ${product.measure}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
@@ -998,6 +1006,7 @@ export default function Home() {
     setSettingsOpen(true);
     if (section === "customers") return go("customers");
     if (section === "products") return go("products");
+    if (section === "piece-types") return go("piece-types");
     return go("settings");
   }
   function flash(text: string, tone?: "success" | "error" | "warning" | "info") {
@@ -1157,6 +1166,48 @@ export default function Home() {
     } finally {
       setSaving(false);
     }
+  }
+  async function writeType(body: { id?: number; name?: string; active?: boolean }, editing: boolean) {
+    const response = await fetch("/api/piece-types", {
+      method: editing ? "PATCH" : "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.pieceType) throw new Error(data.error || "Não foi possível salvar o tipo. Tente novamente.");
+    const saved: PieceType = data.pieceType;
+    const previous = pieceTypes.find((type) => type.id === saved.id);
+    setPieceTypes((types) => [...types.filter((type) => type.id !== saved.id), saved]
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+    if (previous && previous.name !== saved.name) {
+      setProducts((rows) => rows.map((product) => product.pieceType === previous.name ? { ...product, pieceType: saved.name } : product));
+      setProductTypeFilter((value) => value === previous.name ? saved.name : value);
+    }
+    notifyCatalogUpdate();
+    return saved;
+  }
+  async function saveType(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTypeSaving(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      await writeType({ id: editingType?.id, name: String(form.get("name") || "").trim() }, !!editingType);
+      setTypeModal(false);
+      setEditingType(null);
+      flash(editingType ? "Tipo atualizado com sucesso." : "Tipo cadastrado com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível salvar o tipo.", "error");
+    } finally { setTypeSaving(false); }
+  }
+  async function toggleType(type: PieceType) {
+    setTypeSaving(true);
+    try {
+      await writeType({ id: type.id, active: !type.active }, true);
+      setViewingType(null);
+      flash(type.active ? "Tipo inativado com sucesso." : "Tipo ativado com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível atualizar o tipo.", "error");
+    } finally { setTypeSaving(false); }
   }
   async function saveProduct(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -2180,10 +2231,11 @@ export default function Home() {
   const settingsNav: [SettingsSection, string, string][] = [
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Peças"],
+    ["piece-types", "◇", "Tipos"],
     ["company", "⌂", "Empresa"],
     ["users", "◉", "Usuários"],
   ];
-  const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products";
+  const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products" || screen === "piece-types";
   const showSettings = settingsOpen || isSettingsScreen;
   return (
     <main className="app-shell">
@@ -2223,6 +2275,7 @@ export default function Home() {
                 const active =
                   (section === "customers" && screen === "customers") ||
                   (section === "products" && screen === "products") ||
+                  (section === "piece-types" && screen === "piece-types") ||
                   (screen === "settings" && settingsSection === section);
                 return (
                 <button
@@ -2803,6 +2856,29 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {screen === "piece-types" && (
+              <div className="page">
+                <Heading eyebrow="CADASTROS" title="Tipos" subtitle="Mantenha os tipos disponíveis para o cadastro de peças."
+                  action={<button className="primary-button" onClick={() => { setEditingType(null); setTypeModal(true); }}>＋ Novo tipo</button>} />
+                <Filters query={query} setQuery={setQuery} queryLabel="Buscar tipo" />
+                <div className="table-wrap standardized-table piece-type-table">
+                  <table>
+                    <thead><tr><th>Tipo</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {filteredPieceTypes.map((type) => (
+                        <tr key={type.id} className="clickable-table-row" role="button" tabIndex={0}
+                          aria-label={`Visualizar tipo ${type.name}`} onClick={() => setViewingType(type)}
+                          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setViewingType(type); } }}>
+                          <td><b>{type.name}</b></td>
+                          <td><span className={`status ${type.active ? "green" : "red"}`}>{type.active ? "Ativo" : "Inativo"}</span></td>
+                        </tr>
+                      ))}
+                      {!filteredPieceTypes.length && <tr><td colSpan={2} className="empty">{query ? "Nenhum tipo encontrado." : "Nenhum tipo cadastrado."}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {screen === "products" && (
               <div className="page">
                 <Heading
@@ -2864,7 +2940,7 @@ export default function Home() {
                           <td>
                             <b>{p.code}</b>
                           </td>
-                          <td>{p.pieceType || "Pino"}</td>
+                          <td>{p.pieceType || "—"}</td>
                           <td>{p.name}</td>
                           <td>{p.measure}</td>
                           <td>{money(p.price)}</td>
@@ -3458,6 +3534,37 @@ export default function Home() {
           </div>
         </Modal>
       )}
+      {viewingType && (
+        <Modal title="Visualizar tipo" page pageLabel="" close={() => { if (!typeSaving) setViewingType(null); }}>
+          <div className="record-view">
+            <div className="record-view-grid"><div className="type-form-row">
+              <ReviewField label="Tipo" value={viewingType.name} />
+              <ReviewField label="Status" value={viewingType.active ? "Ativo" : "Inativo"} />
+            </div></div>
+            <div className="record-view-footer record-view-actions-row">
+              <button className="record-back-button system-back-button" disabled={typeSaving} onClick={() => setViewingType(null)}>Voltar</button>
+              <button className="record-edit-button" disabled={typeSaving} onClick={() => { setEditingType(viewingType); setViewingType(null); setTypeModal(true); }}>Editar</button>
+              <button className={viewingType.active ? "record-inactivate" : "record-activate"} disabled={typeSaving} onClick={() => { void toggleType(viewingType); }}>
+                {typeSaving ? "Salvando..." : viewingType.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {typeModal && (
+        <Modal title={editingType ? "Editar tipo" : "Cadastrar tipo"} page pageLabel="" close={() => { if (!typeSaving) { setTypeModal(false); setEditingType(null); } }}>
+          <form className="customer-page-form" onSubmit={saveType}>
+            <div className="form-grid type-form-row">
+              <Field label="Tipo *"><input name="name" required maxLength={80} defaultValue={editingType?.name || ""} disabled={typeSaving} /></Field>
+              <Field label="Status"><input value={editingType?.active === false ? "Inativo" : "Ativo"} readOnly /></Field>
+            </div>
+            <div className="form-actions registration-actions">
+              <button type="button" className="cancel-button" disabled={typeSaving} onClick={() => { const type = editingType; setTypeModal(false); setEditingType(null); if (type) setViewingType(type); }}>Cancelar</button>
+              <button type="submit" className="primary-button" disabled={typeSaving}>{typeSaving ? "Salvando..." : "Salvar"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {viewingProduct && (
         <Modal
           title="Visualizar peça"
@@ -3469,7 +3576,7 @@ export default function Home() {
             <div className="record-view-grid">
               <div className="product-view-row">
                 <ReviewField label="Código" value={viewingProduct.code} />
-                <ReviewField label="Tipo" value={viewingProduct.pieceType || "Pino"} />
+                <ReviewField label="Tipo" value={viewingProduct.pieceType || "—"} />
                 <ReviewField label="Valor" value={money(viewingProduct.price)} />
                 <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
                 <ReviewField label="Descrição" value={viewingProduct.name} />
@@ -3630,10 +3737,11 @@ export default function Home() {
               <Field label="Tipo de peça *">
                 <select name="pieceType" required defaultValue={editingProduct?.pieceType || ""}>
                   <option value="">Selecione</option>
-                  {pieceTypeOptions.map((type) => (
-                    <option key={type}>{type}</option>
+                  {selectablePieceTypes.map((type) => (
+                    <option key={type.id} value={type.name}>{type.name}{type.active ? "" : " (inativo)"}</option>
                   ))}
                 </select>
+{!pieceTypes.some((type) => type.active) && <small>Cadastre ou ative um tipo em Configurações → Tipos.</small>}
               </Field>
               <Field label="Valor *">
                 <input
