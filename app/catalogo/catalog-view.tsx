@@ -6,7 +6,7 @@ import {
   fetchCatalogProducts,
   watchCatalogUpdates,
 } from "../../lib/catalog-sync";
-import { CatalogImage } from "./catalog-image";
+import { ZoomableCatalogImage } from "./zoomable-catalog-image";
 
 type CatalogProduct = {
   id: number;
@@ -109,7 +109,7 @@ export function CatalogView({
                 </div>
                 <div className="catalog-product">
                   {productImageSource(product) ? (
-                    <CatalogImage
+                    <ZoomableCatalogImage
                       src={productImageSource(product)}
                       alt={`${product.name} · ${product.code}`}
                     />
