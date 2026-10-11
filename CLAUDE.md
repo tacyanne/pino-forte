@@ -64,3 +64,11 @@ Ver `.env.example`. Usadas no código:
 ## Deploy
 
 Na `main`, o deploy é feito pelo OpenAI Sites: o builder remoto roda `npm run build` sobre o commit enviado (ver README). Não há `wrangler.jsonc` nem `vercel.json` na `main`.
+
+## Fluxo de git (padronização C:\dev)
+
+- Proibido push direto na `main`: toda mudança, inclusive só documentação, vai por **branch → PR → aprovação da Tacyanne → merge**.
+- Nunca usar `--force` na `main`, nem `--no-verify`, nem fazer merge sem aprovação explícita da Tacyanne.
+- Branch: `tipo/descricao-curta` (`feat/`, `fix/`, `docs/`, `chore/`). Commits em Conventional Commits, em português.
+- Ao abrir o PR, informar o link e parar; o merge é decisão da Tacyanne.
+- O repo local tem hook `pre-push` que bloqueia push para `main`.
