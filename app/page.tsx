@@ -1,4 +1,5 @@
 "use client";
+import { BrandImage } from "./brand-image";
 import type { PieceLine } from "../lib/piece-lines";
 
 import {
@@ -2260,7 +2261,7 @@ export default function Home() {
   if (!auth.user) return (
     <main className="auth-page">
       <section className="auth-card">
-        <div className="auth-logo"><img src="/logo-sistema.png" alt="Pino Forte" /></div>
+        <div className="auth-logo"><BrandImage alt="Pino Forte" sizes="(max-width: 600px) 210px, 240px" /></div>
         <div className="auth-content">
         <h1>Acesso ao sistema</h1>
         <form onSubmit={submitAuth} noValidate>
@@ -2301,7 +2302,7 @@ export default function Home() {
           onClick={() => go("dashboard")}
           aria-label="Ir para o início"
         >
-          <img className="brand-logo" src="/logo-sistema.png" alt="Pino Forte — Fabricação de Peças para Suspensão" />
+          <BrandImage className="brand-logo" alt="Pino Forte — Fabricação de Peças para Suspensão" sizes="212px" />
         </button>
         <nav>
           {primaryNav.map(([s, i, l]) => (
@@ -2368,7 +2369,7 @@ export default function Home() {
             onClick={() => go("dashboard")}
             aria-label="Ir para o início"
           >
-            <img className="mobile-header-logo" src="/logo-sistema.png" alt="Pino Forte" />
+            <BrandImage className="mobile-header-logo" alt="Pino Forte" sizes="112px" />
           </button>
           <button className="mobile-add" onClick={() => go("new-order")}>
             ＋
