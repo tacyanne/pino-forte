@@ -2,7 +2,7 @@ import { desc, eq, max } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
-import { receivableDueDateFromIssuedAt, settleResidualTotal } from "../../../lib/finance";
+import { receivableDueDateFromIssuedAt, receivableStatus, settleResidualTotal } from "../../../lib/finance";
 import { camelizeRow, camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
@@ -78,39 +78,8 @@ export async function GET(request: Request) {
       .from(serviceOrders)
       .orderBy(desc(serviceOrders.id))
       .limit(100);
-    const customerRows = await db.select().from(customers);
-    const customerTypes = new Map(
-      customerRows.map((customer) => [
-        customer.name.trim().toLocaleLowerCase("pt-BR"),
-        customer.customerType.trim().toLocaleLowerCase("pt-BR"),
-      ]),
-    );
-    const repairedRows = await Promise.all(
-      rows.map(async (order) => {
-        const isDistributor =
-          order.customerType.trim().toLocaleLowerCase("pt-BR") === "distribuidor" ||
-          customerTypes.get(order.customerName.trim().toLocaleLowerCase("pt-BR")) ===
-            "distribuidor";
-        if (!isDistributor || order.discountRate > 0) return order;
-        const subtotal = order.subtotal > 0 ? order.subtotal : order.total;
-        const discountRate = automaticDiscount("Distribuidor", order.quantity);
-        const total = Math.round(subtotal * (1 - discountRate / 100) * 100) / 100;
-        const [updated] = await db
-          .update(serviceOrders)
-          .set({
-            subtotal,
-            customerType: "Distribuidor",
-            discountRate,
-            total,
-            received: Math.min(order.received, total),
-          })
-          .where(eq(serviceOrders.id, order.id))
-          .returning();
-        return updated || order;
-      }),
-    );
     return Response.json({
-      orders: repairedRows.map((order) => ({
+      orders: rows.map((order) => ({
         ...order,
         productionStatus:
           order.productionStatus === "Aguardando"
@@ -542,6 +511,30 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     commercial_status: initialWalletHistory,
     notes: String(body.notes || ""),
   });
+  const serviceOrderId = Number(order.id || 0);
+  if (serviceOrderId) {
+    const originalAmountCents = Math.round(totals.total * 100);
+    const receivedAmountCents = Math.min(Math.round(received * 100), originalAmountCents);
+    const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);
+    try {
+      await supabaseInsert("accounts_receivable", {
+        service_order_id: serviceOrderId,
+        customer_id: totals.customerId,
+        issued_at: issuedAt,
+        due_date: dueDate,
+        original_amount_cents: originalAmountCents,
+        received_amount_cents: receivedAmountCents,
+        balance_cents: balanceCents,
+        status: balanceCents <= 0 ? "Pago" : "Pendente",
+        notes: String(body.notes || ""),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "");
+      if (!/duplicate|23505|unique/i.test(message)) {
+        console.error("Não foi possível criar a conta a receber da OS", serviceOrderId, error);
+      }
+    }
+  }
   return Response.json({ order: camelizeRow(order) }, { status: 201 });
 }
 
@@ -606,5 +599,47 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
   const settledTotal = settleResidualTotal(projectedTotal, projectedReceived);
   if (settledTotal !== projectedTotal) changes.total = settledTotal;
   const order = await supabasePatch<Record<string, unknown>>("service_orders", { id: `eq.${id}` }, changes);
-  return Response.json({ order: camelizeRow(order) });
+  const totalCents = Math.round(Number(order.total || 0) * 100);
+  const subtotalCents = Math.round(Number(order.subtotal || order.total || 0) * 100);
+  const receivedCents = Math.min(
+    Math.round(Number(order.received || 0) * 100),
+    totalCents,
+  );
+  const balanceCents = Math.max(0, totalCents - receivedCents);
+  const issuedAt = String(order.issued_at || order.created_at || "").slice(0, 10);
+  const dueDate = String(order.due_date || receivableDueDateFromIssuedAt(issuedAt)).slice(0, 10);
+  const financialStatus = receivableStatus(balanceCents, dueDate);
+  const syncedOrder = await supabasePatch<Record<string, unknown>>("service_orders", { id: `eq.${id}` }, {
+    subtotal_cents: subtotalCents,
+    discount_cents: Math.max(0, subtotalCents - totalCents),
+    total_cents: totalCents,
+    received_cents: receivedCents,
+    balance_cents: balanceCents,
+    financial_status: financialStatus,
+    updated_at: new Date().toISOString(),
+  });
+  const receivable = await supabaseGetOne<Record<string, unknown>>("accounts_receivable", {
+    select: "*",
+    service_order_id: `eq.${id}`,
+  });
+  const receivableValues = {
+    customer_id: Number(order.customer_id || 0) || null,
+    issued_at: issuedAt,
+    due_date: dueDate,
+    original_amount_cents: totalCents,
+    received_amount_cents: receivedCents,
+    balance_cents: balanceCents,
+    status: financialStatus,
+    notes: String(order.notes || ""),
+    updated_at: new Date().toISOString(),
+  };
+  if (receivable) {
+    await supabasePatch("accounts_receivable", { id: `eq.${Number(receivable.id)}` }, receivableValues);
+  } else {
+    await supabaseInsert("accounts_receivable", {
+      service_order_id: id,
+      ...receivableValues,
+    });
+  }
+  return Response.json({ order: camelizeRow(syncedOrder) });
 }

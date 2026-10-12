@@ -9,7 +9,7 @@ import {
   receipts,
   serviceOrders,
 } from "../../../db/schema";
-import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
+import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso, toCents } from "../../../lib/finance";
 import { requireUser } from "../../../lib/auth";
 import { camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
@@ -21,6 +21,8 @@ const isInMonth = (date: string | null | undefined, month: string) =>
 
 const jsonError = (message: string, status = 400) =>
   Response.json({ error: message }, { status });
+
+const receiptPaymentMethods = ["Pix", "Dinheiro", "Cartão", "Boleto"];
 
 async function audit(
   db: Awaited<ReturnType<typeof getDb>>,
@@ -116,6 +118,7 @@ export async function GET(request: Request) {
 
 async function getFinanceFromRest(request: Request) {
   try {
+    await syncReceivablesFromOrdersRest();
     const url = new URL(request.url);
     const month = url.searchParams.get("month") || currentMonth();
     const today = todayIso();
@@ -212,6 +215,60 @@ async function getFinanceFromRest(request: Request) {
       { error: error instanceof Error ? error.message : "Nao foi possivel carregar o financeiro." },
       { status: 500 },
     );
+  }
+}
+
+async function syncReceivablesFromOrdersRest() {
+  const [orders, existingReceivables] = await Promise.all([
+    supabaseSelect<Record<string, unknown>>("service_orders", {
+      select: "id,customer_id,issued_at,created_at,due_date,total,total_cents,received,received_cents,production_status,notes",
+      order: "id.desc",
+      limit: "1000",
+    }),
+    supabaseSelect<Record<string, unknown>>("accounts_receivable", {
+      select: "service_order_id",
+      order: "id.desc",
+      limit: "1000",
+    }),
+  ]);
+  const registeredOrderIds = new Set(
+    existingReceivables.map((receivable) => Number(receivable.service_order_id || 0)),
+  );
+
+  for (const order of orders) {
+    const serviceOrderId = Number(order.id || 0);
+    if (
+      !serviceOrderId ||
+      registeredOrderIds.has(serviceOrderId) ||
+      String(order.production_status || "") === "Cancelada"
+    ) continue;
+
+    const issuedAt = String(order.issued_at || order.created_at || todayIso()).slice(0, 10);
+    const dueDate = String(order.due_date || receivableDueDateFromIssuedAt(issuedAt)).slice(0, 10);
+    const originalAmountCents = Number(order.total_cents || 0) || toCents(order.total);
+    const receivedAmountCents = Math.min(
+      Number(order.received_cents || 0) || toCents(order.received),
+      originalAmountCents,
+    );
+    const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);
+
+    try {
+      await supabaseInsert("accounts_receivable", {
+        service_order_id: serviceOrderId,
+        customer_id: order.customer_id ? Number(order.customer_id) : null,
+        issued_at: issuedAt,
+        due_date: dueDate,
+        original_amount_cents: originalAmountCents,
+        received_amount_cents: receivedAmountCents,
+        balance_cents: balanceCents,
+        status: receivableStatus(balanceCents, dueDate),
+        notes: String(order.notes || ""),
+      });
+      registeredOrderIds.add(serviceOrderId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "");
+      if (!/duplicate|23505|unique/i.test(message)) throw error;
+    }
   }
 }
 
@@ -338,7 +395,7 @@ export async function PATCH(request: Request) {
       const amountCents = centsFromBody(body);
       const paymentMethod = String(body.paymentMethod || "").trim();
       const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
-      if (amountCents <= 0 || !paymentMethod)
+      if (amountCents <= 0 || !receiptPaymentMethods.includes(paymentMethod))
         return jsonError("Informe valor e forma de recebimento.");
 
       const result = await db.transaction(async (tx) => {
@@ -386,6 +443,7 @@ export async function PATCH(request: Request) {
             received: newReceived / 100,
             balanceCents: newBalance,
             financialStatus: status,
+            ...(newBalance === 0 ? { paymentMethod } : {}),
             updatedAt: new Date().toISOString(),
             ...(writeOff ? { totalCents: newReceived, total: newReceived / 100 } : {}),
           })
@@ -586,7 +644,8 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
     const amountCents = centsFromBody(body);
     const paymentMethod = String(body.paymentMethod || "").trim();
     const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
-    if (amountCents <= 0 || !paymentMethod) return jsonError("Informe valor e forma de recebimento.");
+    if (amountCents <= 0 || !receiptPaymentMethods.includes(paymentMethod))
+      return jsonError("Informe valor e forma de recebimento.");
     const current = await supabaseGetOne<Record<string, unknown>>("accounts_receivable", {
       select: "*",
       id: `eq.${id}`,
@@ -624,6 +683,7 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
       received: newReceived / 100,
       balance_cents: newBalance,
       financial_status: status,
+      ...(newBalance === 0 ? { payment_method: paymentMethod } : {}),
       updated_at: new Date().toISOString(),
       ...(writeOff ? { total_cents: newReceived, total: newReceived / 100 } : {}),
     });

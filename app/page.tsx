@@ -1,4 +1,6 @@
 "use client";
+import { BrandImage } from "./brand-image";
+import type { PieceLine } from "../lib/piece-lines";
 
 import {
   Children,
@@ -14,6 +16,9 @@ import { ProductImageInput } from "./catalogo/product-image-input";
 import { CatalogImage } from "./catalogo/catalog-image";
 import { productImageSource } from "../lib/product-images";
 import { loadCatalogImage } from "../lib/catalog-image";
+import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "../lib/catalog-sync";
+import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
+import type { PieceType } from "../lib/piece-types";
 
 type Screen =
   | "dashboard"
@@ -21,6 +26,8 @@ type Screen =
   | "orders"
   | "customers"
   | "products"
+  | "piece-types"
+  | "piece-lines"
   | "catalog"
   | "financial"
   | "wallet"
@@ -29,6 +36,8 @@ type Screen =
 type SettingsSection =
   | "customers"
   | "products"
+  | "piece-types"
+  | "piece-lines"
   | "company"
   | "users";
 type Customer = {
@@ -54,6 +63,7 @@ type Product = {
   code: string;
   sku: string;
   pieceType: string;
+  lineName?: string | null;
   name: string;
   measure: string;
   price: number;
@@ -159,7 +169,6 @@ type WalletEntry = {
   received: number;
   balance: number;
 };
-const basePieceTypes = ["Pino", "Bucha"];
 
 const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -197,7 +206,25 @@ const compareOrdersDesc = (a: Order, b: Order) =>
   dateTimestamp(b.createdAt) - dateTimestamp(a.createdAt) ||
   b.id - a.id;
 const sortOrdersDesc = (list: Order[]) => list.slice().sort(compareOrdersDesc);
-const paymentObservationFor = (order: Order) => {
+const paymentObservationFor = (order: Order, receipts: Receipt[] = []) => {
+  const confirmedReceipts = receipts
+    .filter(
+      (receipt) =>
+        receipt.serviceOrderId === order.id && receipt.status === "Confirmado",
+    )
+    .map((receipt) => ({
+      amount: receipt.amountCents / 100,
+      method: receipt.paymentMethod,
+      date: receipt.receiptDate,
+    }))
+    .sort((a, b) => dateTimestamp(b.date) - dateTimestamp(a.date));
+  if (confirmedReceipts.length)
+    return confirmedReceipts
+      .map(
+        (payment) =>
+          `Pago ${money(payment.amount)} em ${brDate(payment.date)} via ${payment.method}`,
+      )
+      .join("\n");
   if (order.paymentMethod !== "Carteira") return "";
   let registeredPayments: { amount: number; method: string; date: string }[] = [];
   try {
@@ -231,8 +258,14 @@ const paymentObservationFor = (order: Order) => {
     )
     .join("\n");
 };
-const completeOrderNotes = (order: Order, separator = "\n") =>
-  [order.notes, paymentObservationFor(order)].filter(Boolean).join(separator);
+const completeOrderNotes = (
+  order: Order,
+  separator = "\n",
+  receipts: Receipt[] = [],
+) =>
+  [order.notes, paymentObservationFor(order, receipts)]
+    .filter(Boolean)
+    .join(separator);
 const monthInSaoPaulo = (date: string) => {
   if (!date) return "";
   const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -330,7 +363,7 @@ const paymentStatus = (order: Order) =>
     ? "Pago"
     : order.received > 0
       ? "Pagamento parcial"
-      : "Aguardando pagamento";
+      : "Em aberto";
 const paymentTone = (order: Order) =>
   order.productionStatus === "Cancelada"
     ? "red"
@@ -395,6 +428,16 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [pieceTypes, setPieceTypes] = useState<PieceType[]>([]);
+  const [typeModal, setTypeModal] = useState(false);
+  const [editingType, setEditingType] = useState<PieceType | null>(null);
+  const [viewingType, setViewingType] = useState<PieceType | null>(null);
+  const [typeSaving, setTypeSaving] = useState(false);
+  const [pieceLines, setPieceLines] = useState<PieceLine[]>([]);
+  const [lineModal, setLineModal] = useState(false);
+  const [editingLine, setEditingLine] = useState<PieceLine | null>(null);
+  const [viewingLine, setViewingLine] = useState<PieceLine | null>(null);
+  const [lineSaving, setLineSaving] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [query, setQuery] = useState("");
   const [productTypeFilter, setProductTypeFilter] = useState("Todos");
@@ -424,9 +467,7 @@ export default function Home() {
   const [reportMonth, setReportMonth] = useState("");
   const [reportCustomer, setReportCustomer] = useState("");
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
-  const [financialMonth, setFinancialMonth] = useState("");
-  const [financialCustomer, setFinancialCustomer] = useState("");
-  const [financialStatus, setFinancialStatus] = useState("");
+  const financialMonth = reportMonth;
   const [financeData, setFinanceData] = useState<FinanceData>({
     summary: null,
     accountsReceivable: [],
@@ -471,7 +512,7 @@ export default function Home() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
   const [discountOverride, setDiscountOverride] = useState("");
   const [orderItems, setOrderItems] = useState<
-    { code: string; quantity: number }[]
+    { code: string; quantity: number; unitPrice?: number }[]
   >([]);
 
   async function refreshFinance(month = financialMonth) {
@@ -505,6 +546,7 @@ export default function Home() {
       ]);
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
+      setPieceTypes(cat.pieceTypes || []); setPieceLines(cat.pieceLines || []);
       setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
       let settings = config.settings;
@@ -538,6 +580,25 @@ export default function Home() {
       if (data.user) loadAll(); else setLoading(false);
     }).catch(() => { setAuth((value) => ({ ...value, loading: false })); setLoading(false); });
   }, []);
+  useEffect(() => {
+    if (!auth.user) return;
+    let controller: AbortController | undefined;
+    const refresh = async () => {
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      try {
+        const response = await fetch("/api/catalog", { cache: "no-store", signal: request.signal });
+        const data = await response.json();
+        if (response.ok && Array.isArray(data.products) && !request.signal.aborted) {
+          setProducts(data.products);
+          if (Array.isArray(data.pieceTypes)) setPieceTypes(data.pieceTypes); if (Array.isArray(data.pieceLines)) setPieceLines(data.pieceLines);
+        }
+      } catch { /* Keep the last confirmed data; exports require a fresh successful read. */ }
+    };
+    const stop = watchCatalogUpdates(() => { void refresh(); });
+    return () => { stop(); controller?.abort(); };
+  }, [auth.user]);
   useEffect(() => {
     if (!auth.user) return;
     const id = window.setTimeout(() => {
@@ -603,10 +664,10 @@ export default function Home() {
     setAuth((value) => ({ ...value, users: refreshed.users || [] }));
   }
   const product = products.find((p) => p.code === selectedCode) || products[0];
+  const itemUnitPrice = (item: { code: string; unitPrice?: number }) =>
+    item.unitPrice ?? products.find((p) => p.code === item.code)?.price ?? 0;
   const subtotal = orderItems.reduce(
-    (sum, item) =>
-      sum +
-      (products.find((p) => p.code === item.code)?.price || 0) * item.quantity,
+    (sum, item) => sum + itemUnitPrice(item) * item.quantity,
     0,
   );
   const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
@@ -625,7 +686,12 @@ export default function Home() {
           ? 8
           : 5
       : 0;
-  const discountRate = automaticDiscountRate;
+  const explicitDiscountRate =
+    discountOverride.trim() === "" ? null : Number(discountOverride);
+  const discountRate =
+    explicitDiscountRate !== null && Number.isFinite(explicitDiscountRate)
+      ? explicitDiscountRate
+      : automaticDiscountRate;
   const discountAmount = subtotal * discountRate / 100;
   const total = Math.round((subtotal - discountAmount) * 100) / 100;
   const dashboardFinance = useMemo(() => {
@@ -661,11 +727,28 @@ export default function Home() {
         pending: Math.max(0, summary.sales - summary.received),
       }));
   }, [orders, dashboardMonth]);
+  const receivableByOrderId = new Map(
+    financeData.accountsReceivable.map((receivable) => [receivable.serviceOrderId, receivable]),
+  );
+  const orderDisplayStatus = (order: Order) => {
+    const baseStatus = paymentStatus(order);
+    const receivable = receivableByOrderId.get(order.id);
+    if (
+      baseStatus !== "Pago" &&
+      baseStatus !== "Cancelada" &&
+      receivable &&
+      receivable.balanceCents > 0 &&
+      dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso())
+    ) return "Atrasado";
+    return baseStatus;
+  };
+  const orderDisplayTone = (order: Order) =>
+    orderDisplayStatus(order) === "Atrasado" ? "red" : paymentTone(order);
   const filteredOrders = orders
     .filter(
       (o) =>
         (!orderMonthFilter || monthInSaoPaulo(o.createdAt) === orderMonthFilter) &&
-        (paymentFilter === "Todos" || paymentStatus(o) === paymentFilter) &&
+        (paymentFilter === "Todos" || orderDisplayStatus(o) === paymentFilter) &&
         (paymentMethodFilter === "Todos" || o.paymentMethod === paymentMethodFilter) &&
         `${o.number} ${o.customerName} ${o.productCode}`
           .toLowerCase()
@@ -687,31 +770,25 @@ export default function Home() {
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
-  const pieceTypeOptions = Array.from(
-    new Set([
-      ...basePieceTypes,
-      ...products.map((product) => product.pieceType).filter(Boolean),
-    ]),
-  );
+  const pieceTypeOptions = pieceTypes.map((type) => type.name);
+  const selectablePieceTypes = pieceTypes.filter((type) => type.active || type.name === editingProduct?.pieceType);
+  const selectablePieceLines = pieceLines.filter((line) => line.active || line.name === editingProduct?.name);
+  const filteredPieceLines = pieceLines.filter((line) => line.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
+  const filteredPieceTypes = pieceTypes.filter((type) => type.name.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
   const filteredProducts = products.filter((product) =>
-    (productTypeFilter === "Todos" || (product.pieceType || "Pino") === productTypeFilter) &&
-    `${product.code} ${product.pieceType || "Pino"} ${product.name} ${product.measure}`
+    (productTypeFilter === "Todos" || product.pieceType === productTypeFilter) &&
+    `${product.code} ${product.pieceType} ${product.name} ${product.measure}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
   const reportOrders = orders.filter(
     (o) => {
-      const paymentStatus =
-        o.received >= o.total
-          ? "Pago"
-          : o.received > 0
-            ? "Pagamento parcial"
-            : "Aguardando pagamento";
+      const status = orderDisplayStatus(o);
       return (
         o.productionStatus !== "Cancelada" &&
         (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
         (!reportCustomer || o.customerName.toLowerCase().includes(reportCustomer.toLowerCase())) &&
-        (!reportPaymentStatus || paymentStatus === reportPaymentStatus)
+        (!reportPaymentStatus || status === reportPaymentStatus)
       );
     },
   );
@@ -752,9 +829,11 @@ export default function Home() {
       };
     })
     .filter((row) => (
-      (!financialMonth || monthInSaoPaulo(row.issuedAt) === financialMonth || row.issuedAt.slice(0, 7) === financialMonth) &&
-      (!financialCustomer || row.customerName.toLowerCase().includes(financialCustomer.toLowerCase())) &&
-      (!financialStatus || row.status === financialStatus)
+      row.balance > 0 &&
+      row.status !== "Pago" &&
+      (!reportMonth || monthInSaoPaulo(row.issuedAt) === reportMonth || row.issuedAt.slice(0, 7) === reportMonth) &&
+      (!reportCustomer || row.customerName.toLowerCase().includes(reportCustomer.toLowerCase())) &&
+      (!reportPaymentStatus || (row.order ? orderDisplayStatus(row.order) : row.status) === reportPaymentStatus)
     ))
     .sort((a, b) => {
       const orderDifference = b.orderNumber.localeCompare(a.orderNumber, "pt-BR", { numeric: true });
@@ -772,6 +851,35 @@ export default function Home() {
     }),
     { forecast: 0, received: 0, pending: 0, overdue: 0 },
   );
+  const dashboardReceivables = financeData.accountsReceivable
+    .filter(
+      (receivable) =>
+        receivable.status !== "Pago" &&
+        receivable.status !== "Cancelado" &&
+        receivable.balanceCents > 0,
+    )
+    .map((receivable) => {
+      const order = ordersById.get(receivable.serviceOrderId);
+      const customer = receivable.customerId
+        ? customers.find((item) => item.id === receivable.customerId)
+        : undefined;
+      const isOverdue = dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso());
+      return {
+        receivable,
+        order,
+        orderNumber: order?.number || `CR-${String(receivable.id).padStart(5, "0")}`,
+        customerName: order?.customerName || customer?.name || "Cliente não identificado",
+        dueDate: receivable.dueDate,
+        balance: receivable.balanceCents / 100,
+        status: isOverdue ? "Atrasado" : "Em aberto",
+      };
+    })
+    .sort((a, b) => {
+      const dueDifference = dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
+      if (dueDifference !== 0) return dueDifference;
+      return b.receivable.id - a.receivable.id;
+    })
+    .slice(0, 6);
   const payableRows = financeData.accountsPayable
     .filter((payable) =>
       payable.status !== "Cancelado" &&
@@ -784,6 +892,33 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       return dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
     });
+  const paidExpenses = payableRows
+    .filter((payable) => payable.status === "Pago")
+    .reduce((sum, payable) => sum + payable.amountCents / 100, 0);
+  const operatingResult = reportReceived - paidExpenses;
+  const receiptRate = reportSales > 0 ? Math.min(100, (reportReceived / reportSales) * 100) : 0;
+  const soldUnits = reportOrders.reduce(
+    (sum, order) => sum + getOrderItems(order).reduce((total, item) => total + item.quantity, 0),
+    0,
+  );
+  const averageTicket = reportOrders.length ? reportSales / reportOrders.length : 0;
+  const openBalance = financialTotals.pending + financialTotals.overdue;
+  const overdueRate = openBalance > 0 ? (financialTotals.overdue / openBalance) * 100 : 0;
+  const reportOrderIds = new Set(reportOrders.map((order) => order.id));
+  const paymentMix = Object.entries(
+    financeData.receipts
+      .filter((receipt) => receipt.status === "Confirmado" && reportOrderIds.has(receipt.serviceOrderId) && receipt.paymentMethod !== "Carteira")
+      .reduce((mix, receipt) => {
+      const method = receipt.paymentMethod || "Não informado";
+      mix[method] = (mix[method] || 0) + receipt.amountCents / 100;
+      return mix;
+    }, {} as Record<string, number>),
+  ).sort((a, b) => b[1] - a[1]);
+  const attentionRows = financialRows
+    .filter((row) => row.status === "Atrasado" && row.balance > 0)
+    .slice()
+    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
+    .slice(0, 4);
   const walletCustomers = useMemo(() => {
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
     return Object.values(
@@ -826,7 +961,11 @@ export default function Home() {
   }, [customers, financeData.accountsReceivable, ordersById]);
   const walletRows = walletCustomers.filter((item) => {
     const balance = item.total - item.received;
-    const status = balance > 0 ? "Em aberto" : "Pago";
+    const status = balance <= 0
+      ? "Pago"
+      : item.items.some((entry) => entry.balance > 0 && dateTimestamp(entry.receivable.dueDate) < dateTimestamp(todayIso()))
+        ? "Atrasado"
+        : "Em aberto";
     return (
       (!walletStatusFilter || status === walletStatusFilter) &&
       item.customer.toLowerCase().includes(walletQuery.toLowerCase())
@@ -879,6 +1018,8 @@ export default function Home() {
     setSettingsOpen(true);
     if (section === "customers") return go("customers");
     if (section === "products") return go("products");
+    if (section === "piece-types") return go("piece-types");
+    if (section === "piece-lines") return go("piece-lines");
     return go("settings");
   }
   function flash(text: string, tone?: "success" | "error" | "warning" | "info") {
@@ -910,7 +1051,7 @@ export default function Home() {
   }
   function updateItem(
     index: number,
-    changes: Partial<{ code: string; quantity: number }>,
+    changes: Partial<{ code: string; quantity: number; unitPrice: number }>,
   ) {
     setOrderItems((items) =>
       items.map((item, i) => (i === index ? { ...item, ...changes } : item)),
@@ -1039,6 +1180,89 @@ export default function Home() {
       setSaving(false);
     }
   }
+  async function writeType(body: { id?: number; name?: string; active?: boolean }, editing: boolean) {
+    const response = await fetch("/api/piece-types", {
+      method: editing ? "PATCH" : "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.pieceType) throw new Error(data.error || "Não foi possível salvar o tipo. Tente novamente.");
+    const saved: PieceType = data.pieceType;
+    const previous = pieceTypes.find((type) => type.id === saved.id);
+    setPieceTypes((types) => [...types.filter((type) => type.id !== saved.id), saved]
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+    if (previous && previous.name !== saved.name) {
+      setProducts((rows) => rows.map((product) => product.pieceType === previous.name ? { ...product, pieceType: saved.name } : product));
+      setProductTypeFilter((value) => value === previous.name ? saved.name : value);
+    }
+    notifyCatalogUpdate();
+    return saved;
+  }
+  async function saveType(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTypeSaving(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      await writeType({ id: editingType?.id, name: String(form.get("name") || "").trim() }, !!editingType);
+      setTypeModal(false);
+      setEditingType(null);
+      flash(editingType ? "Tipo atualizado com sucesso." : "Tipo cadastrado com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível salvar o tipo.", "error");
+    } finally { setTypeSaving(false); }
+  }
+  async function toggleType(type: PieceType) {
+    setTypeSaving(true);
+    try {
+      await writeType({ id: type.id, active: !type.active }, true);
+      setViewingType(null);
+      flash(type.active ? "Tipo inativado com sucesso." : "Tipo ativado com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível atualizar o tipo.", "error");
+    } finally { setTypeSaving(false); }
+  }
+  async function writeLine(body: { id?: number; name?: string; active?: boolean }, editing: boolean) {
+    const response = await fetch("/api/piece-lines", {
+      method: editing ? "PATCH" : "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.pieceLine) throw new Error(data.error || "Não foi possível salvar a linha. Tente novamente.");
+    const saved: PieceLine = data.pieceLine;
+    const previous = pieceLines.find((type) => type.id === saved.id);
+    setPieceLines((types) => [...types.filter((type) => type.id !== saved.id), saved]
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+    if (previous && previous.name !== saved.name) {
+      setProducts((rows) => rows.map((product) => product.lineName === previous.name ? { ...product, lineName: saved.name, name: saved.name } : product));
+    }
+    notifyCatalogUpdate();
+    return saved;
+  }
+  async function saveLine(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLineSaving(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      await writeLine({ id: editingLine?.id, name: String(form.get("name") || "").trim() }, !!editingLine);
+      setLineModal(false);
+      setEditingLine(null);
+      flash(editingLine ? "Linha atualizada com sucesso." : "Linha cadastrada com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível salvar a linha.", "error");
+    } finally { setLineSaving(false); }
+  }
+  async function toggleLine(type: PieceLine) {
+    setLineSaving(true);
+    try {
+      await writeLine({ id: type.id, active: !type.active }, true);
+      setViewingLine(null);
+      flash(type.active ? "Linha inativada com sucesso." : "Linha ativada com sucesso.", "success");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível atualizar a linha.", "error");
+    } finally { setLineSaving(false); }
+  }
   async function saveProduct(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (imageProcessing) return flash("Aguarde a padronização da imagem.");
@@ -1051,7 +1275,7 @@ export default function Home() {
         !String(f.get("name") || "").trim() ||
         !String(f.get("measure") || "").trim()
       )
-        throw new Error("Preencha código, tipo de peça, descrição e aplicação.");
+        throw new Error("Preencha código, tipo de peça, linha e medidas.");
       let imageData = f.has("imageData") ? String(f.get("imageData")) : undefined;
       if (imageData === undefined && editingProduct && editingProduct.imageData == null &&
           editingProduct.code !== String(f.get("code")).trim().toUpperCase()) {
@@ -1067,13 +1291,22 @@ export default function Home() {
           ...(imageData !== undefined ? { imageData } : {}),
           code: f.get("code"),
           pieceType: f.get("pieceType"),
-          name: f.get("name"),
+          lineName: f.get("name"),
+          ...(!editingProduct ? { name: f.get("name") } : {}),
           measure: f.get("measure"),
           price: parseCurrency(String(f.get("price"))),
         }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error);
+      const j = await r.json().catch(() => ({} as { error?: string; product?: Product }));
+      if (!r.ok)
+        throw new Error(
+          j.error ||
+            (r.status === 409
+              ? "Já existe uma peça cadastrada com este código."
+              : "Não foi possível cadastrar a peça. Tente novamente."),
+        );
+      if (!j.product)
+        throw new Error("Não foi possível confirmar o cadastro da peça. Tente novamente.");
       setProducts((v) =>
         (editingProduct
           ? v.map((p) => (p.id === j.product.id ? j.product : p))
@@ -1082,9 +1315,10 @@ export default function Home() {
       );
       setProductModal(false);
       setEditingProduct(null);
+      notifyCatalogUpdate();
       flash(editingProduct ? "Peça atualizada com sucesso." : "Peça cadastrada com sucesso.");
     } catch (err) {
-      flash(err instanceof Error ? err.message : "Erro ao cadastrar.");
+      flash(err instanceof Error ? err.message : "Erro ao cadastrar.", "error");
     } finally {
       setSaving(false);
     }
@@ -1099,7 +1333,7 @@ export default function Home() {
       if (orderItems.some((item) => !item.code)) throw new Error("Selecione todas as peças da OS.");
       const items = orderItems.map((item) => ({
         ...item,
-        unitPrice: products.find((p) => p.code === item.code)?.price || 0,
+        unitPrice: itemUnitPrice(item),
       }));
       const paymentMethod = String(f.get("paymentMethod") || "");
       const deliveryType = String(f.get("deliveryType") || "");
@@ -1136,7 +1370,7 @@ export default function Home() {
           quantity,
           unitPrice: product.price,
           items,
-          discountRate: undefined,
+          discountRate,
           received,
           deliveryType,
           paymentMethod: moveToWallet ? "Carteira" : paymentMethod,
@@ -1194,7 +1428,11 @@ export default function Home() {
     }
   }
   function editOrder(order: Order, returnTo: "orders" | "review" = "review") {
-    const items = getOrderItems(order).map(({ code, quantity }) => ({ code, quantity }));
+    const items = getOrderItems(order).map(({ code, quantity, unitPrice }) => ({
+      code,
+      quantity,
+      unitPrice,
+    }));
     setEditingOrder(order);
     setEditOrderReturnTo(returnTo);
     setSelectedCustomer(order.customerName);
@@ -1222,7 +1460,7 @@ export default function Home() {
     setReceived(order.received);
     setSelectedDeliveryType(order.deliveryType);
     setSelectedPaymentMethod(order.paymentMethod);
-    setDiscountOverride(order.discountRate ? String(order.discountRate) : "");
+    setDiscountOverride(String(order.discountRate ?? 0));
     setOrderModal(null);
     setScreen("new-order");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1411,7 +1649,10 @@ export default function Home() {
     }
     if (type === "customer")
       setCustomers((v) => v.map((x) => (x.id === id ? j.customer : x)));
-    else setProducts((v) => v.map((x) => (x.id === id ? j.product : x)));
+    else {
+      setProducts((v) => v.map((x) => (x.id === id ? j.product : x)));
+      notifyCatalogUpdate();
+    }
   }
   function whatsapp(order: Order) {
     const customer = findBestCustomer(customers, order.customerName);
@@ -1454,7 +1695,14 @@ export default function Home() {
     audience: "final" | "distributor",
     variant: "bw" | "color",
   ) {
-    const activeProducts = products
+    let currentProducts: Product[];
+    try {
+      currentProducts = await fetchCatalogProducts<Product>();
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível atualizar o catálogo.", "error");
+      return;
+    }
+    const activeProducts = currentProducts
       .filter((product) => product.active)
       .sort((a, b) => a.code.localeCompare(b.code, "pt-BR"));
     if (!activeProducts.length) {
@@ -1476,8 +1724,20 @@ export default function Home() {
         }
       }),
     );
-    const pages = Math.ceil(activeProducts.length / 6);
-    for (let page = 0; page < pages; page += 1) {
+    const pages: { items: Product[]; y: number; height: number }[][] = [[]];
+    let nextRowY = distributor ? 65 : 49;
+    for (let index = 0; index < activeProducts.length; index += 2) {
+      const items = activeProducts.slice(index, index + 2);
+      const height = Math.max(...items.map((item) => catalogPdfDetails(pdf, item).height)) + (distributor ? 8 : 5);
+      if (nextRowY + height > 263 && pages[pages.length - 1].length) {
+        pages.push([]);
+        nextRowY = distributor ? 65 : 49;
+      }
+      pages[pages.length - 1].push({ items, y: nextRowY, height });
+      nextRowY += height + 5;
+    }
+    let sourceIndex = 0;
+    for (let page = 0; page < pages.length; page += 1) {
       if (page > 0) pdf.addPage();
       if (color) {
         pdf.setFillColor(248, 248, 246);
@@ -1518,16 +1778,8 @@ export default function Home() {
         pdf.text("5% até 9 unidades  |  8% de 10 a 19 unidades  |  10% de 20 em diante", 17, 57.5);
       }
 
-      const pageProducts = activeProducts.slice(page * 6, page * 6 + 6);
-      const cardY = distributor ? 65 : 49;
-      const cardHeight = distributor ? 56 : 61;
-      const rowGap = 5;
-      pageProducts.forEach((product, pageIndex) => {
-        const sourceIndex = page * 6 + pageIndex;
-        const column = pageIndex % 2;
-        const row = Math.floor(pageIndex / 2);
+      pages[page].forEach(({ items, y, height: cardHeight }) => items.forEach((product, column) => {
         const x = column === 0 ? 12 : 109;
-        const y = cardY + row * (cardHeight + rowGap);
         const width = 89;
 
         pdf.setFillColor(255, 255, 255);
@@ -1548,20 +1800,8 @@ export default function Home() {
         if (productImageData[sourceIndex]) {
           pdf.addImage(productImageData[sourceIndex], "JPEG", x + 6, y + 19, 36, 29, undefined, "FAST");
         }
-        pdf.setFont("helvetica", "normal");
-        pdf.setTextColor(95, 95, 95);
-        pdf.setFontSize(7.5);
-        pdf.text(product.code.startsWith("RN") ? "Linha Randon" : "Linha Rodoviária", x + 47, y + 25);
-        pdf.setTextColor(35, 35, 35);
-        pdf.setFontSize(10);
-        pdf.text("Pino de balança", x + 47, y + 33);
-        pdf.setTextColor(105, 105, 105);
-        pdf.setFontSize(7);
-        pdf.text("C O M U M", x + 47, y + 40);
-        pdf.setTextColor(35, 35, 35);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(9.5);
-        pdf.text(product.measure, x + 47, y + 48);
+        drawCatalogPdfDetails(pdf, product, x + 47, y + 22);
+        sourceIndex += 1;
 
         if (distributor) {
           pdf.setFontSize(6.7);
@@ -1573,7 +1813,7 @@ export default function Home() {
             y + cardHeight - 3,
           );
         }
-      });
+      }));
 
       if (color) {
         pdf.setFillColor(7, 7, 7);
@@ -1629,7 +1869,7 @@ export default function Home() {
     pdf.text(order.number, 176.5, 29, { align: "center" });
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);
-    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 176.5, 38, { align: "center" });
+    pdf.text(`Data do pedido: ${brDate(order.createdAt)}`, 176.5, 38, { align: "center" });
 
     pdf.rect(15, 48, 180, 31);
     pdf.setFontSize(9);
@@ -1704,121 +1944,119 @@ export default function Home() {
     const logo = await loadImageData("/logo-pdf.png");
     const left = 5;
     const right = 205;
-    pdf.setDrawColor(60);
-    pdf.setLineWidth(0.3);
-    pdf.rect(left, 5, 200, 138);
-
-    if (order.productionStatus === "Cancelada") {
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(48);
-      pdf.setTextColor(248, 248, 248);
-      pdf.setDrawColor(185, 185, 185);
-      pdf.setLineWidth(0.25);
-      pdf.text("CANCELADA", 105, 82, {
-        align: "center",
-        angle: 28,
-        renderingMode: "fillThenStroke",
-      });
-      pdf.setTextColor(25);
-      pdf.setDrawColor(60);
-      pdf.setLineWidth(0.3);
-    }
-
-    pdf.rect(left, 5, 70, 27);
-    pdf.rect(75, 5, 80, 27);
-    pdf.rect(155, 5, 50, 27);
-    pdf.addImage(logo, "JPEG", 13, 9.3, 54, 18.4, undefined, "FAST");
-    pdf.setTextColor(25);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(10);
-    pdf.text("PINO FORTE", 79, 13);
-    pdf.setFontSize(7);
-    pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 79, 18.5);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7.5);
-    pdf.text(`Responsável: ${responsible || "—"}`, 79, 24);
-    pdf.text(`Telefone: ${companyPhone || "—"}`, 79, 29);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(8);
-    pdf.text("ORDEM DE SERVIÇO", 180, 12, { align: "center" });
-    pdf.setFontSize(11);
-    pdf.text(order.number, 180, 20, { align: "center" });
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
-    pdf.text(`Emissão: ${brDate(order.createdAt)}`, 180, 26, { align: "center" });
-
-    pdf.rect(left, 32, 200, 23);
-    pdf.setFontSize(7.5);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(`Cliente: ${order.customerName}`, 8, 39);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`CPF/CNPJ: ${customer ? formatDocument(customer.document).replace(/^(CPF|CNPJ): /, "") : "—"}`, 8, 46);
-    pdf.text(`Telefone: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 106, 46);
     const address = customer ? [customer.street, customer.number, customer.complement, customer.neighborhood, `${customer.city || ""}/${customer.state || ""}`, customer.zipCode].filter(Boolean).join(", ") : "";
-    pdf.text(`Endereço: ${address || "—"}`, 8, 52, { maxWidth: 130 });
-    pdf.text(`Pagamento: ${order.paymentMethod}`, 150, 46);
-
     const columns = [5, 31, 119, 139, 171, 205];
-    pdf.rect(left, 55, 200, 53);
-    columns.slice(1, -1).forEach((x) => pdf.line(x, 55, x, 108));
-    pdf.line(left, 63, right, 63);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(7);
-    pdf.text("CÓDIGO", 8, 60);
-    pdf.text("DESCRIÇÃO DA PEÇA", 34, 60);
-    pdf.text("QTD.", 129, 60, { align: "center" });
-    pdf.text("VALOR UNIT.", 155, 60, { align: "center" });
-    pdf.text("VALOR TOTAL", 201, 60, { align: "right" });
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(items.length > 5 ? 5.5 : 7);
-    let y = 69;
-    const rowHeight = Math.min(7, 29 / Math.max(items.length, 1));
-    items.forEach((item) => {
-      const product = products.find((value) => value.code === item.code);
-      pdf.text(item.code, 8, y);
-      pdf.text(`${pieceLabel(product, item.code)} · ${product?.measure || ""}`, 34, y, { maxWidth: 82 });
-      pdf.text(String(item.quantity), 129, y, { align: "center" });
-      pdf.text(money(item.unitPrice), 168, y, { align: "right" });
-      pdf.text(money(item.unitPrice * item.quantity), 201, y, { align: "right" });
-      y += rowHeight;
-    });
-    pdf.line(left, 100, right, 100);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(
-      order.discountRate > 0
-        ? `SUBTOTAL ${money(order.subtotal || order.total)} · DESCONTO ${order.discountRate}%`
-        : "TOTAL DA ORDEM",
-      75,
-      105,
-      { align: "center" },
-    );
-    pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 129, 105, { align: "center" });
-    pdf.text(money(order.total), 201, 105, { align: "right" });
-
-    pdf.rect(left, 108, 200, 18);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 8, 114);
-    pdf.text(`Forma de entrega: ${order.deliveryType}`, 76, 114);
     const observationLines = [
       "Observações:",
-      ...completeOrderNotes(order, "\n")
+      ...completeOrderNotes(order, "\n", financeData.receipts)
         .split("\n")
         .filter(Boolean)
         .flatMap((line) => pdf.splitTextToSize(line, 192)),
     ];
-    pdf.setFontSize(6.2);
-    pdf.text(observationLines, 8, 119, {
-      lineHeightFactor: 1.05,
-    });
+    const drawOrderCopy = (offsetY: number) => {
+      const at = (y: number) => y + offsetY;
+      pdf.setDrawColor(60);
+      pdf.setLineWidth(0.3);
+      pdf.rect(left, at(5), 200, 138);
 
-    pdf.line(18, 133, 82, 133);
-    pdf.line(128, 133, 192, 133);
-    pdf.setTextColor(70);
-    pdf.text("Assinatura do cliente", 50, 137, { align: "center" });
-    pdf.text("Responsável pela empresa", 160, 137, { align: "center" });
-    pdf.setFontSize(6.5);
-    pdf.setTextColor(100);
-    pdf.text(orderFooter, 105, 139.5, { align: "center" });
+      if (order.productionStatus === "Cancelada") {
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(48);
+        pdf.setTextColor(248, 248, 248);
+        pdf.setDrawColor(185, 185, 185);
+        pdf.setLineWidth(0.25);
+        pdf.text("CANCELADA", 105, at(82), { align: "center", angle: 28, renderingMode: "fillThenStroke" });
+        pdf.setTextColor(25);
+        pdf.setDrawColor(60);
+        pdf.setLineWidth(0.3);
+      }
+
+      pdf.rect(left, at(5), 70, 27);
+      pdf.rect(75, at(5), 80, 27);
+      pdf.rect(155, at(5), 50, 27);
+      pdf.addImage(logo, "JPEG", 13, at(9.3), 54, 18.4, undefined, "FAST");
+      pdf.setTextColor(25);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(10);
+      pdf.text("PINO FORTE", 79, at(13));
+      pdf.setFontSize(7);
+      pdf.text("FABRICAÇÃO DE PEÇAS PARA SUSPENSÃO", 79, at(18.5));
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.5);
+      pdf.text(`Responsável: ${responsible || "—"}`, 79, at(24));
+      pdf.text(`Telefone: ${companyPhone || "—"}`, 79, at(29));
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(8);
+      pdf.text("ORDEM DE SERVIÇO", 180, at(12), { align: "center" });
+      pdf.setFontSize(11);
+      pdf.text(order.number, 180, at(20), { align: "center" });
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7);
+      pdf.text(`Data do pedido: ${brDate(order.createdAt)}`, 180, at(26), { align: "center" });
+
+      pdf.rect(left, at(32), 200, 23);
+      pdf.setFontSize(7.5);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(`Cliente: ${order.customerName}`, 8, at(39));
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`CPF/CNPJ: ${customer ? formatDocument(customer.document).replace(/^(CPF|CNPJ): /, "") : "—"}`, 8, at(46));
+      pdf.text(`Telefone: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 106, at(46));
+      pdf.text(`Endereço: ${address || "—"}`, 8, at(52), { maxWidth: 130 });
+      pdf.text(`Pagamento: ${order.paymentMethod}`, 150, at(46));
+
+      pdf.rect(left, at(55), 200, 53);
+      columns.slice(1, -1).forEach((x) => pdf.line(x, at(55), x, at(108)));
+      pdf.line(left, at(63), right, at(63));
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(7);
+      pdf.text("CÓDIGO", 8, at(60));
+      pdf.text("DESCRIÇÃO DA PEÇA", 34, at(60));
+      pdf.text("QTD.", 129, at(60), { align: "center" });
+      pdf.text("VALOR UNIT.", 155, at(60), { align: "center" });
+      pdf.text("VALOR TOTAL", 201, at(60), { align: "right" });
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(items.length > 5 ? 5.5 : 7);
+      let itemY = 69;
+      const rowHeight = Math.min(7, 29 / Math.max(items.length, 1));
+      items.forEach((item) => {
+        const product = products.find((value) => value.code === item.code);
+        pdf.text(item.code, 8, at(itemY));
+        pdf.text(`${pieceLabel(product, item.code)} · ${product?.measure || ""}`, 34, at(itemY), { maxWidth: 82 });
+        pdf.text(String(item.quantity), 129, at(itemY), { align: "center" });
+        pdf.text(money(item.unitPrice), 168, at(itemY), { align: "right" });
+        pdf.text(money(item.unitPrice * item.quantity), 201, at(itemY), { align: "right" });
+        itemY += rowHeight;
+      });
+      pdf.line(left, at(100), right, at(100));
+      pdf.setFont("helvetica", "bold");
+      pdf.text(order.discountRate > 0 ? `SUBTOTAL ${money(order.subtotal || order.total)} · DESCONTO ${order.discountRate}%` : "TOTAL DA ORDEM", 75, at(105), { align: "center" });
+      pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 129, at(105), { align: "center" });
+      pdf.text(money(order.total), 201, at(105), { align: "right" });
+
+      pdf.rect(left, at(108), 200, 18);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`Status: ${order.productionStatus}`, 8, at(114));
+      pdf.text(`Forma de entrega: ${order.deliveryType}`, 65, at(114));
+      pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 132, at(114));
+      pdf.setFontSize(6.2);
+      pdf.text(observationLines, 8, at(119), { lineHeightFactor: 1.05 });
+
+      pdf.line(18, at(133), 82, at(133));
+      pdf.line(128, at(133), 192, at(133));
+      pdf.setTextColor(70);
+      pdf.text("Assinatura do cliente", 50, at(137), { align: "center" });
+      pdf.text("Responsável pela empresa", 160, at(137), { align: "center" });
+      pdf.setFontSize(6.5);
+      pdf.setTextColor(100);
+      pdf.text(orderFooter, 105, at(139.5), { align: "center" });
+    };
+
+    drawOrderCopy(0);
+    pdf.setDrawColor(165);
+    pdf.setLineDashPattern([2, 2], 0);
+    pdf.line(5, 148.5, 205, 148.5);
+    pdf.setLineDashPattern([], 0);
+    drawOrderCopy(149);
     return pdf;
   }
   async function downloadPdf(order: Order) {
@@ -1917,8 +2155,8 @@ export default function Home() {
       labels.forEach((label) => pdf.text(label.text, label.x, y, { align: label.align || "left" }));
       y += 7;
     };
-    drawSectionTitle("HISTÓRICO DE EMISSÕES");
-    drawHeader([{ text: "OS", x: 18 }, { text: "DATA DE EMISSÃO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
+    drawSectionTitle("HISTÓRICO DE PEDIDOS");
+    drawHeader([{ text: "OS", x: 18 }, { text: "DATA DO PEDIDO", x: 105, align: "center" }, { text: "VALOR", x: 192, align: "right" }]);
     pdf.setFont("helvetica", "normal");
     pdf.setTextColor(25);
     items.slice().sort((a, b) => dateTimestamp(a.issuedAt) - dateTimestamp(b.issuedAt)).forEach((item) => {
@@ -1978,7 +2216,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Emissão</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${order.productionStatus}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Data do pedido</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${orderDisplayStatus(order)}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -2002,7 +2240,7 @@ export default function Home() {
         o.total,
         o.received,
         o.total - o.received,
-        paymentStatus(o),
+        orderDisplayStatus(o),
       ]),
     ];
     const csv = rows
@@ -2023,7 +2261,7 @@ export default function Home() {
   if (!auth.user) return (
     <main className="auth-page">
       <section className="auth-card">
-        <div className="auth-logo"><img src="/logo-sistema.png" alt="Pino Forte" /></div>
+        <div className="auth-logo"><BrandImage alt="Pino Forte" sizes="(max-width: 600px) 210px, 240px" /></div>
         <div className="auth-content">
         <h1>Acesso ao sistema</h1>
         <form onSubmit={submitAuth} noValidate>
@@ -2043,16 +2281,17 @@ export default function Home() {
     ["orders", "▤", "OS"],
     ["wallet", "▣", "Carteira"],
     ["financial", "$", "Financeiro"],
-    ["reports", "▥", "Relatórios"],
     ["catalog", "▦", "Catálogo"],
   ];
   const settingsNav: [SettingsSection, string, string][] = [
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Peças"],
+    ["piece-types", "◇", "Tipos"],
+    ["piece-lines", "◇", "Linhas"],
     ["company", "⌂", "Empresa"],
     ["users", "◉", "Usuários"],
   ];
-  const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products";
+  const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products" || screen === "piece-types" || screen === "piece-lines";
   const showSettings = settingsOpen || isSettingsScreen;
   return (
     <main className="app-shell">
@@ -2063,7 +2302,7 @@ export default function Home() {
           onClick={() => go("dashboard")}
           aria-label="Ir para o início"
         >
-          <img className="brand-logo" src="/logo-sistema.png" alt="Pino Forte — Fabricação de Peças para Suspensão" />
+          <BrandImage className="brand-logo" alt="Pino Forte — Fabricação de Peças para Suspensão" sizes="212px" />
         </button>
         <nav>
           {primaryNav.map(([s, i, l]) => (
@@ -2092,6 +2331,8 @@ export default function Home() {
                 const active =
                   (section === "customers" && screen === "customers") ||
                   (section === "products" && screen === "products") ||
+                  (section === "piece-types" && screen === "piece-types") ||
+                  (section === "piece-lines" && screen === "piece-lines") ||
                   (screen === "settings" && settingsSection === section);
                 return (
                 <button
@@ -2128,7 +2369,7 @@ export default function Home() {
             onClick={() => go("dashboard")}
             aria-label="Ir para o início"
           >
-            <img className="mobile-header-logo" src="/logo-sistema.png" alt="Pino Forte" />
+            <BrandImage className="mobile-header-logo" alt="Pino Forte" sizes="112px" />
           </button>
           <button className="mobile-add" onClick={() => go("new-order")}>
             ＋
@@ -2183,14 +2424,43 @@ export default function Home() {
                   <div className="panel">
                     <div className="panel-title">
                       <div>
-                        <h2>Ordens recentes</h2>
+                        <h2>OS a Receber</h2>
                       </div>
-                      <button onClick={() => go("orders")}>Ver todas</button>
+                      <button onClick={() => go("financial")}>Ver todas</button>
                     </div>
-                    <OrderList
-                      orders={sortOrdersDesc(orders).slice(0, 6)}
-                      onOpen={setOrderModal}
-                    />
+                    <div className="dashboard-receivables">
+                      <div className="dashboard-receivables-head" aria-hidden="true">
+                        <span>OS / Cliente</span>
+                        <span>Data de vencimento</span>
+                        <span>Saldo Devedor</span>
+                        <span>Status</span>
+                      </div>
+                      {dashboardReceivables.length ? dashboardReceivables.map((row) => (
+                        <div
+                          className={`dashboard-receivable-row ${row.order ? "clickable" : ""}`}
+                          key={row.receivable.id}
+                          role={row.order ? "button" : undefined}
+                          tabIndex={row.order ? 0 : undefined}
+                          onClick={() => row.order && setOrderModal(row.order)}
+                          onKeyDown={(event) => {
+                            if (row.order && (event.key === "Enter" || event.key === " ")) {
+                              event.preventDefault();
+                              setOrderModal(row.order);
+                            }
+                          }}
+                        >
+                          <div className="dashboard-receivable-customer">
+                            <b>{row.orderNumber}</b>
+                            <small>{row.customerName}</small>
+                          </div>
+                          <span data-label="Data de vencimento">{brDate(row.dueDate)}</span>
+                          <strong data-label="Saldo Devedor">{money(row.balance)}</strong>
+                          <span className={`status ${row.status === "Atrasado" ? "red" : "amber"}`}>{row.status}</span>
+                        </div>
+                      )) : (
+                        <p className="dashboard-receivables-empty">Não há contas pendentes.</p>
+                      )}
+                    </div>
                   </div>
                   <div className="side-stack">
                     <div className="panel finance-history-card">
@@ -2279,9 +2549,14 @@ export default function Home() {
                               <select
                                 required
                                 value={item.code}
-                                onChange={(e) =>
-                                  updateItem(index, { code: e.target.value })
-                                }
+                                onChange={(e) => {
+                                  const code = e.target.value;
+                                  updateItem(index, {
+                                    code,
+                                    unitPrice:
+                                      products.find((product) => product.code === code)?.price || 0,
+                                  });
+                                }}
                               >
                                 <option value="">Selecione</option>
                                 {products
@@ -2326,12 +2601,12 @@ export default function Home() {
                             </Field>
                             <div className="order-item-value">
                               <span>Valor unitário</span>
-                              <strong>{money(p?.price || 0)}</strong>
+                              <strong>{money(itemUnitPrice(item))}</strong>
                             </div>
                             <div className="subtotal">
                               <span>Valor total</span>
                               <strong>
-                                {money((p?.price || 0) * item.quantity)}
+                                {money(itemUnitPrice(item) * item.quantity)}
                               </strong>
                             </div>
                             {index === orderItems.length - 1 && (
@@ -2490,7 +2765,7 @@ export default function Home() {
                   <Field label="Status">
                     <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
                       <option>Todos</option>
-                      {["Pago", "Pagamento parcial", "Aguardando pagamento", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
+                      {["Pago", "Pagamento parcial", "Em aberto", "Atrasado", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
                     </select>
                   </Field>
                   <Field label="Forma de pagamento">
@@ -2545,7 +2820,7 @@ export default function Home() {
                           <td>{brDate(order.createdAt)}</td>
                           <td>{money(order.total)}</td>
                           <td>{order.paymentMethod}</td>
-                          <td><span className={`status ${paymentTone(order)}`}>{paymentStatus(order)}</span></td>
+                          <td><span className={`status ${orderDisplayTone(order)}`}>{orderDisplayStatus(order)}</span></td>
                         </tr>
                       ))}
                     </tbody>
@@ -2638,6 +2913,52 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {screen === "piece-types" && (
+              <div className="page">
+                <Heading eyebrow="CADASTROS" title="Tipos" subtitle="Mantenha os tipos disponíveis para o cadastro de peças."
+                  action={<button className="primary-button" onClick={() => { setEditingType(null); setTypeModal(true); }}>＋ Novo tipo</button>} />
+                <Filters query={query} setQuery={setQuery} queryLabel="Buscar tipo" />
+                <div className="table-wrap standardized-table piece-type-table">
+                  <table>
+                    <thead><tr><th>Tipo</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {filteredPieceTypes.map((type) => (
+                        <tr key={type.id} className="clickable-table-row" role="button" tabIndex={0}
+                          aria-label={`Visualizar tipo ${type.name}`} onClick={() => setViewingType(type)}
+                          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setViewingType(type); } }}>
+                          <td><b>{type.name}</b></td>
+                          <td><span className={`status ${type.active ? "green" : "red"}`}>{type.active ? "Ativo" : "Inativo"}</span></td>
+                        </tr>
+                      ))}
+                      {!filteredPieceTypes.length && <tr><td colSpan={2} className="empty">{query ? "Nenhum tipo encontrado." : "Nenhum tipo cadastrado."}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {screen === "piece-lines" && (
+              <div className="page">
+                <Heading eyebrow="CADASTROS" title="Linhas" subtitle="Mantenha as linhas disponíveis para o cadastro de peças."
+                  action={<button className="primary-button" onClick={() => { setEditingLine(null); setLineModal(true); }}>＋ Nova linha</button>} />
+                <Filters query={query} setQuery={setQuery} queryLabel="Buscar linha" />
+                <div className="table-wrap standardized-table piece-type-table">
+                  <table>
+                    <thead><tr><th>Linha</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {filteredPieceLines.map((type) => (
+                        <tr key={type.id} className="clickable-table-row" role="button" tabIndex={0}
+                          aria-label={`Visualizar linha ${type.name}`} onClick={() => setViewingLine(type)}
+                          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setViewingLine(type); } }}>
+                          <td><b>{type.name}</b></td>
+                          <td><span className={`status ${type.active ? "green" : "red"}`}>{type.active ? "Ativo" : "Inativo"}</span></td>
+                        </tr>
+                      ))}
+                      {!filteredPieceLines.length && <tr><td colSpan={2} className="empty">{query ? "Nenhuma linha encontrada." : "Nenhuma linha cadastrada."}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {screen === "products" && (
               <div className="page">
                 <Heading
@@ -2674,8 +2995,8 @@ export default function Home() {
                       <tr>
                         <th>Código</th>
                         <th>Tipo</th>
-                        <th>Descrição</th>
-                        <th>Aplicação</th>
+                        <th>Linha</th>
+                        <th>Medidas</th>
                         <th>Valor</th>
                         <th>Status</th>
                       </tr>
@@ -2699,7 +3020,7 @@ export default function Home() {
                           <td>
                             <b>{p.code}</b>
                           </td>
-                          <td>{p.pieceType || "Pino"}</td>
+                          <td>{p.pieceType || "—"}</td>
                           <td>{p.name}</td>
                           <td>{p.measure}</td>
                           <td>{money(p.price)}</td>
@@ -2732,7 +3053,7 @@ export default function Home() {
                       <p>Apresenta os valores integrais cadastrados para venda ao consumidor.</p>
                     </div>
                     <div className="catalog-management-actions">
-                      <a className="secondary-button" href="/catalogo" target="_blank" rel="noreferrer">
+                      <a className="secondary-button" href="/catalogo">
                         Acessar online
                       </a>
                       <button className="catalog-bw-download" onClick={() => downloadCatalogPdf("final", "bw")}>
@@ -2750,7 +3071,7 @@ export default function Home() {
                       <p>Apresenta o preço de cada peça e os descontos de 5%, 8% e 10% conforme a quantidade.</p>
                     </div>
                     <div className="catalog-management-actions">
-                      <a className="secondary-button" href="/catalogo?tipo=distribuidor" target="_blank" rel="noreferrer">
+                      <a className="secondary-button" href="/catalogo?tipo=distribuidor">
                         Acessar online
                       </a>
                       <button className="catalog-bw-download" onClick={() => downloadCatalogPdf("distributor", "bw")}>
@@ -2764,26 +3085,32 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {screen === "financial" && (
+            {(screen === "financial" || screen === "reports") && (
               <div className="page">
                 <Heading
-                  eyebrow="FINANCEIRO"
+                  eyebrow="VISÃO DO NEGÓCIO"
                   title="Financeiro"
-                  subtitle="Controle os valores recebidos, pendentes e atrasados."
+                  subtitle="Acompanhe vendas, recebimentos, pendências e desempenho comercial."
+                  action={<button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button>}
                 />
-                <div className="filters operational-filters financial-filters">
+                <div className="filters operational-filters operational-filters-three">
                   <Field label="Buscar cliente">
-                    <input
-                      value={financialCustomer}
-                      onChange={(event) => setFinancialCustomer(event.target.value)}
-                    />
+                    <select value={reportCustomer} onChange={(event) => setReportCustomer(event.target.value)}>
+                      <option value="">Todos</option>
+                      {[...customers].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Mês">
+                    <select value={reportMonth} onChange={(event) => setReportMonth(event.target.value)}>
+                      <option value="">Todos</option>
+                      {reportMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
+                    </select>
                   </Field>
                   <Field label="Status">
-                    <select
-                      value={financialStatus}
-                      onChange={(event) => setFinancialStatus(event.target.value)}
-                    >
+                    <select value={reportPaymentStatus} onChange={(event) => setReportPaymentStatus(event.target.value)}>
                       <option value="">Todos</option>
+                      <option>Pago</option>
+                      <option>Pagamento parcial</option>
                       <option>Em aberto</option>
                       <option>Atrasado</option>
                     </select>
@@ -2792,20 +3119,51 @@ export default function Home() {
                     type="button"
                     className="outline-button filter-clear"
                     onClick={() => {
-                      setFinancialCustomer("");
-                      setFinancialStatus("");
+                      setReportMonth("");
+                      setReportCustomer("");
+                      setReportPaymentStatus("");
                     }}
                   >
                     Limpar
                   </button>
                 </div>
-                {financeLoading && <div className="panel empty">Atualizando financeiro...</div>}
                 {financeError && <p className="modal-error">{financeError}</p>}
-                <section className="metrics report-metrics financial-metrics">
-                  <Metric icon="R$" label="Previsto" value={money(financialTotals.forecast)} />
-                  <Metric icon="✓" label="Recebido" value={money(financialTotals.received)} />
-                  <Metric icon="!" label="Pendente" value={money(financialTotals.pending)} alert={financialTotals.pending > 0} tone="red" />
-                  <Metric icon="!!" label="Atrasado" value={money(financialTotals.overdue)} alert={financialTotals.overdue > 0} tone="red" />
+                <section className="executive-finance-grid">
+                  <article className={`finance-result-card ${operatingResult < 0 ? "negative" : ""}`}>
+                    <span>RESULTADO DO PERÍODO</span>
+                    <strong>{money(operatingResult)}</strong>
+                    <p>Recebimentos menos contas pagas</p>
+                    <div><b>{money(reportReceived)}</b> recebidos <i /> <b>{money(paidExpenses)}</b> pagos</div>
+                  </article>
+                  <div className="finance-kpi-grid">
+                    <article><span>Vendas</span><strong>{money(reportSales)}</strong><small>{reportOrders.length} ordens no período</small></article>
+                    <article><span>Saldo a receber</span><strong>{money(openBalance)}</strong><small>{money(financialTotals.pending)} ainda no prazo</small></article>
+                    <article className={financialTotals.overdue > 0 ? "attention" : ""}><span>Em atraso</span><strong>{money(financialTotals.overdue)}</strong><small>{overdueRate.toFixed(0)}% do saldo aberto</small></article>
+                    <article><span>Taxa de recebimento</span><strong>{receiptRate.toFixed(0)}%</strong><small>{money(reportReceived)} já convertidos em caixa</small></article>
+                  </div>
+                </section>
+                <section className="business-health-strip">
+                  <div><span>Ticket médio</span><b>{money(averageTicket)}</b></div>
+                  <div><span>Peças vendidas</span><b>{soldUnits} un.</b></div>
+                  <div><span>Contas pagas</span><b>{money(paidExpenses)}</b></div>
+                </section>
+                <section className="finance-insights-grid">
+                  <article className="panel finance-attention-panel">
+                    <div className="panel-title"><div><h2>Atenção agora</h2><p>Recebimentos atrasados que exigem ação</p></div><span className="insight-count">{attentionRows.length}</span></div>
+                    {!attentionRows.length ? <p className="positive-empty">Nenhuma pendência atrasada no filtro atual.</p> : attentionRows.map((row) => (
+                      <button type="button" className="attention-row" key={row.receivable.id} onClick={() => row.order && setOrderModal(row.order)}>
+                        <span><b>{row.customerName}</b><small>{row.orderNumber} · venceu em {brDate(row.dueDate)}</small></span>
+                        <strong>{money(row.balance)}</strong>
+                      </button>
+                    ))}
+                  </article>
+                  <article className="panel compact-analysis-panel">
+                    <div className="panel-title"><div><h2>Visão comercial</h2><p>Como as vendas do período se distribuem</p></div></div>
+                    <div className="compact-analysis-columns">
+                      <div className="compact-list"><h3>RECEBIMENTOS POR FORMA</h3>{paymentMix.length ? paymentMix.slice(0, 4).map(([method, value]) => <div key={method}><span>{method}</span><b>{money(value)}</b></div>) : <p className="compact-empty">Nenhum recebimento no período.</p>}</div>
+                      <div className="compact-list"><h3>PEÇAS MAIS VENDIDAS</h3>{products.map((product) => ({ product, count: reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === product.code).reduce((total, item) => total + item.quantity, 0), 0) })).filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 5).map(({ product, count }, index) => <div key={product.id}><span><i>{index + 1}</i>{product.code}</span><b>{count} un.</b></div>)}</div>
+                    </div>
+                  </article>
                 </section>
                 <section className="financial-layout">
                   <aside className="financial-side">
@@ -2854,60 +3212,6 @@ export default function Home() {
                       </div>
                     </div>
                   </aside>
-                  <div className="panel financial-table-panel">
-                    <div className="panel-title">
-                      <div>
-                        <h2>Contas a receber</h2>
-                        <p>{financialRows.length} registros encontrados</p>
-                      </div>
-                    </div>
-                    <div className="table-wrap standardized-table financial-table">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>OS</th>
-                            <th>Cliente</th>
-                            <th>{"Previs\u00e3o"}</th>
-                            <th>Saldo Devedor</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {!financialRows.length && (
-                            <tr className="orders-empty-row">
-                              <td colSpan={5}>Nenhum recebivel encontrado.</td>
-                            </tr>
-                          )}
-                          {financialRows.map((row) => (
-                            <tr
-                              key={row.receivable.id}
-                              className={row.order ? "clickable-table-row" : ""}
-                              role={row.order ? "button" : undefined}
-                              tabIndex={row.order ? 0 : undefined}
-                              aria-label={row.order ? `Visualizar ${row.orderNumber}` : row.orderNumber}
-                              onClick={() => row.order && setOrderModal(row.order)}
-                              onKeyDown={(event) => {
-                                if (row.order && (event.key === "Enter" || event.key === " ")) {
-                                  event.preventDefault();
-                                  setOrderModal(row.order);
-                                }
-                              }}
-                            >
-                              <td><b>{row.orderNumber}</b></td>
-                              <td><b>{row.customerName}</b></td>
-                              <td>{brDate(row.dueDate)}</td>
-                              <td>{money(row.balance)}</td>
-                              <td>
-                                <span className={`status ${row.status === "Pago" ? "green" : row.status === "Atrasado" ? "red" : "amber"}`}>
-                                  {row.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
                 </section>
               </div>
             )}
@@ -2928,6 +3232,7 @@ export default function Home() {
                     >
                       <option value="">Todos</option>
                       <option>Em aberto</option>
+                      <option>Atrasado</option>
                       <option>Pago</option>
                     </select>
                   </Field>
@@ -2955,6 +3260,11 @@ export default function Home() {
                   <div className="wallet-grid">
                             {walletRows.map((item) => {
                               const balance = item.total - item.received;
+                              const walletStatus = balance <= 0
+                                ? "Pago"
+                                : item.items.some((entry) => entry.balance > 0 && dateTimestamp(entry.receivable.dueDate) < dateTimestamp(todayIso()))
+                                  ? "Atrasado"
+                                  : "Em aberto";
                               const history = item.items.flatMap((entry) =>
                                 financeData.receipts
                                   .filter((receipt) => receipt.accountReceivableId === entry.receivable.id && receipt.status === "Confirmado")
@@ -2981,9 +3291,9 @@ export default function Home() {
                                       <h2>{item.customer}</h2>
                                     </div>
                                     <span
-                                      className={`status ${balance ? "amber" : "green"}`}
+                                      className={`status ${walletStatus === "Pago" ? "green" : walletStatus === "Atrasado" ? "red" : "amber"}`}
                                     >
-                                      {balance ? "Em aberto" : "Pago"}
+                                      {walletStatus}
                                     </span>
                                   </div>
                                   <div className="wallet-summary wallet-summary-clean">
@@ -2992,10 +3302,11 @@ export default function Home() {
                                     <span className={balance > 0 ? "pending" : ""}>Saldo <b>{money(balance)}</b></span>
                                   </div>
                                   <div className="wallet-orders">
-                                    <strong className="wallet-section-title">HISTÓRICO DE EMISSÕES</strong>
+                                    <strong className="wallet-section-title">HISTÓRICO DE PEDIDOS</strong>
                                     <div className="wallet-orders-head">
                                       <span>OS</span>
-                                      <span>Data de emissão</span>
+                                      <span>Data do pedido</span>
+                                      <span>Data de vencimento</span>
                                       <span>Valor</span>
                                     </div>
                                     {item.items
@@ -3014,7 +3325,8 @@ export default function Home() {
                                         }}
                                       >
                                         <b>{entry.orderNumber}</b>
-                                        <span>{brDate(entry.issuedAt)}</span>
+                                        <span className="wallet-order-date" data-label="Data do pedido">{brDate(entry.issuedAt)}</span>
+                                        <span className="wallet-order-date" data-label="Vencimento">{brDate(entry.receivable.dueDate)}</span>
                                         <strong>{money(entry.total)}</strong>
                                       </div>
                                     ))}
@@ -3079,7 +3391,7 @@ export default function Home() {
                 )}
               </div>
             )}
-            {screen === "reports" && (
+            {false && screen === "reports" && (
               <div className="page">
                 <Heading
                   eyebrow="ANÁLISE"
@@ -3113,7 +3425,8 @@ export default function Home() {
                       <option value="">Todos</option>
                       <option>Pago</option>
                       <option>Pagamento parcial</option>
-                      <option>Aguardando pagamento</option>
+                      <option>Em aberto</option>
+                      <option>Atrasado</option>
                     </select>
                   </Field>
                   <button
@@ -3301,6 +3614,68 @@ export default function Home() {
           </div>
         </Modal>
       )}
+      {viewingType && (
+        <Modal title="Visualizar tipo" page pageLabel="" close={() => { if (!typeSaving) setViewingType(null); }}>
+          <div className="record-view">
+            <div className="record-view-grid"><div className="type-form-row">
+              <ReviewField label="Tipo" value={viewingType.name} />
+              <ReviewField label="Status" value={viewingType.active ? "Ativo" : "Inativo"} />
+            </div></div>
+            <div className="record-view-footer record-view-actions-row">
+              <button className="record-back-button system-back-button" disabled={typeSaving} onClick={() => setViewingType(null)}>Voltar</button>
+              <button className="record-edit-button" disabled={typeSaving} onClick={() => { setEditingType(viewingType); setViewingType(null); setTypeModal(true); }}>Editar</button>
+              <button className={viewingType.active ? "record-inactivate" : "record-activate"} disabled={typeSaving} onClick={() => { void toggleType(viewingType); }}>
+                {typeSaving ? "Salvando..." : viewingType.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {typeModal && (
+        <Modal title={editingType ? "Editar tipo" : "Cadastrar tipo"} page pageLabel="" close={() => { if (!typeSaving) { setTypeModal(false); setEditingType(null); } }}>
+          <form className="customer-page-form" onSubmit={saveType}>
+            <div className="form-grid type-form-row">
+              <Field label="Tipo *"><input name="name" required maxLength={80} defaultValue={editingType?.name || ""} disabled={typeSaving} /></Field>
+              <Field label="Status"><input value={editingType?.active === false ? "Inativo" : "Ativo"} readOnly /></Field>
+            </div>
+            <div className="form-actions registration-actions">
+              <button type="button" className="cancel-button" disabled={typeSaving} onClick={() => { const type = editingType; setTypeModal(false); setEditingType(null); if (type) setViewingType(type); }}>Cancelar</button>
+              <button type="submit" className="primary-button" disabled={typeSaving}>{typeSaving ? "Salvando..." : "Salvar"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {viewingLine && (
+        <Modal title="Visualizar linha" page pageLabel="" close={() => { if (!lineSaving) setViewingLine(null); }}>
+          <div className="record-view">
+            <div className="record-view-grid"><div className="type-form-row">
+              <ReviewField label="Linha" value={viewingLine.name} />
+              <ReviewField label="Status" value={viewingLine.active ? "Ativo" : "Inativo"} />
+            </div></div>
+            <div className="record-view-footer record-view-actions-row">
+              <button className="record-back-button system-back-button" disabled={lineSaving} onClick={() => setViewingLine(null)}>Voltar</button>
+              <button className="record-edit-button" disabled={lineSaving} onClick={() => { setEditingLine(viewingLine); setViewingLine(null); setLineModal(true); }}>Editar</button>
+              <button className={viewingLine.active ? "record-inactivate" : "record-activate"} disabled={lineSaving} onClick={() => { void toggleLine(viewingLine); }}>
+                {lineSaving ? "Salvando..." : viewingLine.active ? "Inativar" : "Ativar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {lineModal && (
+        <Modal title={editingLine ? "Editar linha" : "Cadastrar linha"} page pageLabel="" close={() => { if (!lineSaving) { setLineModal(false); setEditingLine(null); } }}>
+          <form className="customer-page-form" onSubmit={saveLine}>
+            <div className="form-grid type-form-row">
+              <Field label="Linha *"><input name="name" required maxLength={200} defaultValue={editingLine?.name || ""} disabled={lineSaving} /></Field>
+              <Field label="Status"><input value={editingLine?.active === false ? "Inativo" : "Ativo"} readOnly /></Field>
+            </div>
+            <div className="form-actions registration-actions">
+              <button type="button" className="cancel-button" disabled={lineSaving} onClick={() => { const type = editingLine; setLineModal(false); setEditingLine(null); if (type) setViewingLine(type); }}>Cancelar</button>
+              <button type="submit" className="primary-button" disabled={lineSaving}>{lineSaving ? "Salvando..." : "Salvar"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {viewingProduct && (
         <Modal
           title="Visualizar peça"
@@ -3312,11 +3687,11 @@ export default function Home() {
             <div className="record-view-grid">
               <div className="product-view-row">
                 <ReviewField label="Código" value={viewingProduct.code} />
-                <ReviewField label="Tipo" value={viewingProduct.pieceType || "Pino"} />
+                <ReviewField label="Tipo" value={viewingProduct.pieceType || "—"} />
                 <ReviewField label="Valor" value={money(viewingProduct.price)} />
                 <ReviewField label="Status" value={viewingProduct.active ? "Ativo" : "Inativo"} />
-                <ReviewField label="Descrição" value={viewingProduct.name} />
-                <ReviewField label="Aplicação" value={viewingProduct.measure} />
+                <ReviewField label="Linha" value={viewingProduct.name} />
+                <ReviewField label="Medidas" value={viewingProduct.measure} />
               </div>
             </div>
             <section className="product-image-editor" aria-label="Imagem da peça">
@@ -3473,10 +3848,11 @@ export default function Home() {
               <Field label="Tipo de peça *">
                 <select name="pieceType" required defaultValue={editingProduct?.pieceType || ""}>
                   <option value="">Selecione</option>
-                  {pieceTypeOptions.map((type) => (
-                    <option key={type}>{type}</option>
+                  {selectablePieceTypes.map((type) => (
+                    <option key={type.id} value={type.name}>{type.name}{type.active ? "" : " (inativo)"}</option>
                   ))}
                 </select>
+{!pieceTypes.some((type) => type.active) && <small>Cadastre ou ative um tipo em Configurações → Tipos.</small>}
               </Field>
               <Field label="Valor *">
                 <input
@@ -3492,10 +3868,11 @@ export default function Home() {
               <Field label="Status">
                 <input value={editingProduct?.active === false ? "Inativo" : "Ativo"} readOnly />
               </Field>
-              <Field label="Descrição *">
-                <input name="name" required defaultValue={editingProduct?.name || ""} />
+              <Field label="Linha *">
+                <select name="name" required defaultValue={editingProduct?.name || ""}><option value="">Selecione</option>{selectablePieceLines.map((line) => <option key={line.id} value={line.name}>{line.name}{line.active ? "" : " (inativa)"}</option>)}</select>
+                {!pieceLines.some((line) => line.active) && <small>Cadastre ou ative uma linha em Configurações → Linhas.</small>}
               </Field>
-              <Field label="Aplicação *">
+              <Field label="Medidas *">
                 <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
             </div>
@@ -3677,7 +4054,7 @@ export default function Home() {
             </div>
             <div className="form-grid order-payment-grid review-payment-grid">
               <ReviewField label="Forma de entrega" value={orderModal.deliveryType} />
-              <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${paymentStatus(orderModal)}`} />
+              <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${orderDisplayStatus(orderModal)}`} />
               <ReviewField label="Valor recebido" value={money(orderModal.received)} />
               <div className={`payment-summary ${isDistributor(orderModal.customerType) ? "four-columns" : "two-columns"}`}>
                 {isDistributor(orderModal.customerType) && (
@@ -3707,7 +4084,7 @@ export default function Home() {
             </div>
             <ReviewField
               label="Observações adicionais"
-              value={completeOrderNotes(orderModal, "\n")}
+              value={completeOrderNotes(orderModal, "\n", financeData.receipts)}
               multiline
             />
           </div>
@@ -3723,16 +4100,16 @@ export default function Home() {
             </button>
             <button
               className="cancel-button order-cancel-button"
-              title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : paymentStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
-              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : orderDisplayStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
+              disabled={orderModal.productionStatus === "Cancelada" || orderDisplayStatus(orderModal) === "Pago"}
               onClick={() => cancelOrder(orderModal)}
             >
               Cancelar
             </button>
             <button
               className="primary-button"
-              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : paymentStatus(orderModal) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
-              disabled={orderModal.productionStatus === "Cancelada" || paymentStatus(orderModal) === "Pago"}
+              title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : orderDisplayStatus(orderModal) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}
+              disabled={orderModal.productionStatus === "Cancelada" || orderDisplayStatus(orderModal) === "Pago"}
               onClick={() => editOrder(orderModal, "review")}
             >
               Editar
@@ -3910,12 +4287,12 @@ function OrderList({
           <button className="order-row" key={o.id} onClick={() => onOpen(o)}>
             <div className="date-box">
               <strong>{brDate(o.createdAt)}</strong>
-              <span>Emissão</span>
+              <span>Data do pedido</span>
             </div>
             <div className="order-main">
               <strong>{o.customerName}</strong>
               <span>
-                {o.number} · Emitida em {brDate(o.createdAt)} · {orderItemSummary(o)}{" "}
+                {o.number} · Data do pedido: {brDate(o.createdAt)} · {orderItemSummary(o)}{" "}
                 · {money(o.total)}
               </span>
             </div>

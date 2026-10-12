@@ -20,13 +20,13 @@ test("sidebar keeps operational entries first and support records under Configur
   assert.ok(page.includes('["orders", "▤", "OS"]'));
   assert.ok(page.includes('["wallet", "▣", "Carteira"]'));
   assert.ok(page.includes('["financial", "$", "Financeiro"]'));
-  assert.ok(page.includes('["reports", "▥", "Relatórios"]'));
+  assert.ok(page.includes('title="Relatórios"'));
   assert.ok(page.includes('["catalog", "▦", "Catálogo"]'));
   assert.ok(page.includes('["customers", "♙", "Clientes"]'));
   assert.ok(page.includes('["products", "⬡", "Peças"]'));
   assert.ok(page.includes('["company", "⌂", "Empresa"]'));
   assert.ok(page.includes('["users", "◉", "Usuários"]'));
-  assert.equal(page.includes('["piece-types",'), false);
+  assert.equal(page.includes('["piece-types",'), true);
   assert.equal(page.includes('["order-status",'), false);
   assert.equal(page.includes('["payment-status",'), false);
   assert.equal(page.includes('["payment-methods",'), false);
@@ -36,13 +36,13 @@ test("sidebar keeps operational entries first and support records under Configur
 });
 
 test("piece registration has required type, listing column, and migration default", () => {
-  assert.ok(page.includes('const basePieceTypes = ["Pino", "Bucha"]'));
+  assert.ok(page.includes("selectablePieceTypes.map"));
   assert.ok(page.includes('name="pieceType" required'));
-  assert.ok(catalogApi.includes("Selecione o tipo de peça"));
+  assert.ok(catalogApi.includes("validateProductType"));
   assert.ok(page.includes("<th>Tipo</th>"));
   assert.equal(page.includes("<th>Ações</th>"), false, "Pieces should open by row click without a visual action button");
   assert.ok(page.includes("productTypeFilter"));
-  assert.ok(schema.includes('pieceType: text("piece_type").notNull().default("Pino")'));
+  assert.ok(schema.includes("references(() => pieceTypes.name"));
   assert.ok(migration.includes("ADD COLUMN IF NOT EXISTS piece_type"));
   assert.ok(migration.includes("DEFAULT 'Pino'"));
 });
