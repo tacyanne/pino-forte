@@ -382,10 +382,6 @@ const getOrderItems = (order: Order) => {
     },
   ];
 };
-const orderCodes = (order: Order) =>
-  getOrderItems(order)
-    .map((item) => item.code)
-    .join(", ");
 const orderItemSummary = (order: Order) =>
   getOrderItems(order)
     .map((item) => `${item.code} — ${item.quantity} un.`)
@@ -475,13 +471,13 @@ export default function Home() {
     receipts: [],
     cashMovements: [],
   });
-  const [financeLoading, setFinanceLoading] = useState(false);
+  const [, setFinanceLoading] = useState(false);
   const [financeError, setFinanceError] = useState("");
   const [payableModal, setPayableModal] = useState(false);
   const [payableStatus, setPayableStatus] = useState("Pendente");
   const [walletQuery, setWalletQuery] = useState("");
   const [walletStatusFilter, setWalletStatusFilter] = useState("");
-  const [dashboardMonth, setDashboardMonth] = useState(todayIso().slice(0, 7));
+  const [dashboardMonth] = useState(todayIso().slice(0, 7));
   const [orderModal, setOrderModal] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editOrderReturnTo, setEditOrderReturnTo] = useState<"orders" | "review">("review");
@@ -1122,7 +1118,6 @@ export default function Home() {
   async function saveCustomer(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
-    const f = new FormData(e.currentTarget);
     try {
       if (!customerName.trim()) throw new Error("Informe o nome do cliente.");
       if (phone.replace(/\D/g, "").length < 10)
@@ -2542,7 +2537,6 @@ export default function Home() {
                   <Card n="2" title="Peças do pedido">
                     <div className="multi-items">
                       {orderItems.map((item, index) => {
-                        const p = products.find((x) => x.code === item.code);
                         return (
                           <div className="item-row" key={index}>
                             <Field label={`Peça ${index + 1} *`}>
