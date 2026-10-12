@@ -60,6 +60,15 @@ test("Carteira remains available on the OS but not when registering a receipt", 
   assert.ok(financeApi.includes('newBalance === 0 ? { payment_method: paymentMethod } : {}'));
 });
 
+test("small residual balances settle the order at the received amount", () => {
+  assert.ok(financeLib.includes("RESIDUAL_SETTLE_CENTS"));
+  assert.ok(financeLib.includes("settleResidualTotal"));
+  assert.ok(ordersApi.includes("settleResidualTotal(totals.total, received)"));
+  assert.ok(ordersApi.includes("settleResidualTotal(projectedTotal, projectedReceived)"));
+  assert.ok(financeApi.includes("RESIDUAL_SETTLE_CENTS"));
+  assert.ok(financeApi.includes("original_amount_cents: newOriginal"));
+});
+
 test("cash movement types match the Supabase migration constraint", () => {
   assert.ok(financeApi.includes('row.type === "entrada"'));
   assert.ok(financeApi.includes('row.type === "saida"'));

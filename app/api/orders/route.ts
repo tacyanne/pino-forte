@@ -2,7 +2,7 @@ import { desc, eq, max } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
-import { receivableDueDateFromIssuedAt, receivableStatus } from "../../../lib/finance";
+import { receivableDueDateFromIssuedAt, receivableStatus, settleResidualTotal } from "../../../lib/finance";
 import { camelizeRow, camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
@@ -202,15 +202,16 @@ export async function POST(request: Request) {
       normalizedItems,
       body.discountRate,
     );
+    const orderTotal = settleResidualTotal(totals.total, received);
     const moveToWallet =
       ["Pix", "Boleto", "Cartão"].includes(paymentMethod) &&
-      received < totals.total;
+      received < orderTotal;
     const storedPaymentMethod = moveToWallet ? "Carteira" : paymentMethod;
     const initialWalletHistory =
       moveToWallet && received > 0
         ? JSON.stringify([
             {
-              amount: Math.min(received, totals.total),
+              amount: Math.min(received, orderTotal),
               method: paymentMethod,
               date: String(body.createdAt || new Date().toISOString().slice(0, 10)),
             },
@@ -258,8 +259,8 @@ export async function POST(request: Request) {
         unitPrice,
         subtotal: totals.subtotal,
         discountRate: totals.discountRate,
-        total: totals.total,
-        received: Math.min(received, totals.total),
+        total: orderTotal,
+        received: Math.min(received, orderTotal),
         deliveryDate: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
         deliveryType,
         paymentMethod: storedPaymentMethod,
@@ -391,6 +392,10 @@ export async function PATCH(request: Request) {
         { error: "Nenhuma alteração informada." },
         { status: 400 },
       );
+    const projectedTotal = changes.total !== undefined ? Number(changes.total) : current.total;
+    const projectedReceived = changes.received !== undefined ? Number(changes.received) : current.received;
+    const settledTotal = settleResidualTotal(projectedTotal, projectedReceived);
+    if (settledTotal !== projectedTotal) changes.total = settledTotal;
     const [order] = await db
       .update(serviceOrders)
       .set(changes)
@@ -466,11 +471,12 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     normalizedItems,
     body.discountRate,
   );
-  const moveToWallet = ["Pix", "Boleto", "Cartão"].includes(paymentMethod) && received < totals.total;
+  const orderTotal = settleResidualTotal(totals.total, received);
+  const moveToWallet = ["Pix", "Boleto", "Cartão"].includes(paymentMethod) && received < orderTotal;
   const storedPaymentMethod = moveToWallet ? "Carteira" : paymentMethod;
   const initialWalletHistory =
     moveToWallet && received > 0
-      ? JSON.stringify([{ amount: Math.min(received, totals.total), method: paymentMethod, date: String(body.createdAt || new Date().toISOString().slice(0, 10)) }])
+      ? JSON.stringify([{ amount: Math.min(received, orderTotal), method: paymentMethod, date: String(body.createdAt || new Date().toISOString().slice(0, 10)) }])
       : String(body.commercialStatus || "");
   const orderCreatedAt = String(body.createdAt || new Date().toISOString().slice(0, 10));
   const issuedAt = orderCreatedAt.slice(0, 10);
@@ -495,8 +501,8 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     unit_price: unitPrice,
     subtotal: totals.subtotal,
     discount_rate: totals.discountRate,
-    total: totals.total,
-    received: Math.min(received, totals.total),
+    total: orderTotal,
+    received: Math.min(received, orderTotal),
     delivery_date: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
     delivery_type: deliveryType,
     payment_method: storedPaymentMethod,
@@ -588,6 +594,10 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
     changes.wallet_month = "";
   }
   if (!Object.keys(changes).length) return Response.json({ error: "Nenhuma alteracao informada." }, { status: 400 });
+  const projectedTotal = changes.total !== undefined ? Number(changes.total) : current.total;
+  const projectedReceived = changes.received !== undefined ? Number(changes.received) : current.received;
+  const settledTotal = settleResidualTotal(projectedTotal, projectedReceived);
+  if (settledTotal !== projectedTotal) changes.total = settledTotal;
   const order = await supabasePatch<Record<string, unknown>>("service_orders", { id: `eq.${id}` }, changes);
   const totalCents = Math.round(Number(order.total || 0) * 100);
   const subtotalCents = Math.round(Number(order.subtotal || order.total || 0) * 100);
