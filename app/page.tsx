@@ -2566,7 +2566,7 @@ export default function Home() {
                                   )
                                   .map((p) => (
                                     <option key={p.id} value={p.code}>
-                                      {pieceLabel(p)}
+                                      {[p.code, pieceLabel(p), p.measure].filter(Boolean).join(" · ")}
                                     </option>
                                   ))}
                               </select>
