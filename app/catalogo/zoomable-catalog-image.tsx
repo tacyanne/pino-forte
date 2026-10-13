@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { CatalogImage } from "./catalog-image";
 
 export function ZoomableCatalogImage({ src, alt }: { src: string; alt: string }) {
-  const [open, setOpen] = useState(false);
+  // Guarda qual src está aberto: trocar de imagem fecha o zoom sem setState em efeito.
+  const [openSrc, setOpenSrc] = useState<string | null>(null);
+  const open = openSrc === src;
+  const setOpen = (value: boolean) => setOpenSrc(value ? src : null);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const modal = dialog.current;
@@ -17,7 +20,6 @@ export function ZoomableCatalogImage({ src, alt }: { src: string; alt: string })
       document.body.style.overflow = overflow;
     };
   }, [open]);
-  useEffect(() => { setOpen(false); }, [src]);
   return (
     <>
       <button type="button" className="catalog-image-zoom-trigger" aria-label={`Ampliar imagem de ${alt}`} onClick={() => setOpen(true)}>
