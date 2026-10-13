@@ -4038,7 +4038,7 @@ export default function Home() {
                 const unitPrice = item.unitPrice || selectedProduct?.price || 0;
                 return (
                   <div className="review-item-row" key={`${item.code}-${index}`}>
-                    <ReviewField label={`Peça ${index + 1}`} value={pieceLabel(selectedProduct, item.code)} />
+                    <ReviewField label={`Peça ${index + 1}`} value={[item.code, pieceLabel(selectedProduct, item.code), selectedProduct?.measure].filter(Boolean).join(" · ")} />
                     <ReviewField label="Quantidade" value={String(item.quantity)} />
                     <ReviewField label="Valor unitário" value={money(unitPrice)} />
                     <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />
