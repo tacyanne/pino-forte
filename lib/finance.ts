@@ -66,7 +66,7 @@ export function receivableStatus(balanceCents: number, dueDate: string, today = 
 }
 
 export async function syncReceivablesFromOrders(db: WritableDb, userId?: number) {
-  const orders = await db.select().from(serviceOrders);
+  const orders = await db.select().from(serviceOrders).orderBy(serviceOrders.id).for("update");
   let synced = 0;
 
   for (const order of orders) {
@@ -92,21 +92,12 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
         status,
         notes: order.notes,
       })
-      .onConflictDoUpdate({
-        target: accountsReceivable.serviceOrderId,
-        set: {
-          customerId: order.customerId,
-          issuedAt,
-          dueDate,
-          originalAmountCents: totalCents,
-          receivedAmountCents: Math.min(receivedCents, totalCents),
-          balanceCents,
-          status,
-          notes: order.notes,
-          updatedAt: new Date().toISOString(),
-        },
-      })
+      .onConflictDoNothing({ target: accountsReceivable.serviceOrderId })
       .returning();
+
+    // Once created, the account is authoritative. Reads must not overwrite it
+    // or manufacture a second initial receipt from its cumulative payments.
+    if (!receivable) continue;
 
     await db
       .update(serviceOrders)

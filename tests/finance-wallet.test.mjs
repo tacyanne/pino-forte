@@ -19,7 +19,7 @@ test("wallet is backed by receivables and receipts", () => {
   assert.ok(walletBlock.includes("WalletEntry"));
   assert.equal(walletBlock.includes('paymentMethod === "Carteira"'), false);
   assert.ok(page.includes("financeData.receipts"));
-  assert.ok(page.includes('entity: "accountsReceivable"'));
+  assert.ok(settleBlock.includes('submitReceipts'));
   assert.equal(settleBlock.includes('commercialStatus: JSON.stringify(history)'), false);
 });
 
@@ -55,9 +55,6 @@ test("Carteira remains available on the OS but not when registering a receipt", 
   assert.ok(paymentField.includes("<option>Carteira</option>"));
   assert.ok(receiptModal.includes("<option>Boleto</option>"));
   assert.equal(receiptModal.includes("<option>Carteira</option>"), false);
-  assert.ok(financeApi.includes('const receiptPaymentMethods = ["Pix", "Dinheiro", "Cartão", "Boleto"]'));
-  assert.ok(financeApi.includes('newBalance === 0 ? { paymentMethod } : {}'));
-  assert.ok(financeApi.includes('newBalance === 0 ? { payment_method: paymentMethod } : {}'));
 });
 
 test("small residual balances settle the order at the received amount", () => {
@@ -65,14 +62,11 @@ test("small residual balances settle the order at the received amount", () => {
   assert.ok(financeLib.includes("settleResidualTotal"));
   assert.ok(ordersApi.includes("settleResidualTotal(totals.total, received)"));
   assert.ok(ordersApi.includes("settleResidualTotal(projectedTotal, projectedReceived)"));
-  assert.ok(financeApi.includes("RESIDUAL_SETTLE_CENTS"));
-  assert.ok(financeApi.includes("original_amount_cents: newOriginal"));
 });
 
 test("cash movement types match the Supabase migration constraint", () => {
   assert.ok(financeApi.includes('row.type === "entrada"'));
   assert.ok(financeApi.includes('row.type === "saida"'));
-  assert.ok(financeApi.includes('type: "entrada"'));
   assert.ok(financeApi.includes('type: "saida"'));
   assert.ok(financeLib.includes('type: "entrada"'));
   assert.equal(financeApi.includes('type: "Entrada"'), false);

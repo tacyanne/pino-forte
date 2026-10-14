@@ -35,11 +35,9 @@ em producao. Os testes nao executam exclusoes reais.
 3. Somente apos aprovacao da usuaria, seguir o processo de merge e publicacao,
    registrando o commit implantado. Nao testar este DELETE contra dados reais.
 
-## Trabalho financeiro ainda pendente
+## Recebimentos
 
-Este patch corrige a autorizacao da exclusao. Nao corrige as gravacoes separadas
-de recebimentos via REST nem a ausencia de idempotencia/bloqueio explicito no
-caminho Postgres. A entrega financeira precisa de transacao atomica nos dois
-adaptadores e testes de recebimento parcial, quitacao, caixa, repeticao, rollback
-e concorrencia em banco isolado. Nao considerar esses riscos resolvidos por este
-PR. Nao aplicar migracoes ou alterar dados reais durante essa validacao.
+O complemento financeiro esta descrito em [receipts-integrity.md](receipts-integrity.md).
+Ele requer a migracao de recebimentos antes da publicacao do aplicativo. A
+exclusao administrativa, isoladamente, nao exige migracao. A validacao de locks
+com multiplas conexoes e a integracao PostgREST permanecem pendentes.
