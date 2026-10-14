@@ -419,6 +419,15 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
+  // Authorize before selecting either database adapter or performing any write.
+  if (auth.role !== "admin") {
+    return Response.json({ error: "Somente administradores podem limpar as ordens." }, { status: 403 });
+  }
+  // This destructive maintenance endpoint has no UI caller. Require an explicit
+  // non-simple header so an accidental request or cross-site form cannot clear OS.
+  if (request.headers.get("x-confirm-delete-orders") !== "delete-all") {
+    return Response.json({ error: "Confirme explicitamente a exclusao de todas as ordens." }, { status: 400 });
+  }
   try {
     if (hasSupabaseRest()) {
       await supabaseDelete("service_orders", { id: "gte.0" });
@@ -428,12 +437,19 @@ export async function DELETE(request: Request) {
     await db.delete(serviceOrders);
     return Response.json({ success: true });
   } catch (error) {
+    // Both adapters rely on the existing RESTRICT foreign keys. Never cascade
+    // or remove financial records in order to make a bulk deletion succeed.
+    const databaseError = error as { code?: string; cause?: { code?: string } };
+    let code = databaseError?.code || databaseError?.cause?.code;
+    if (!code && error instanceof Error) {
+      try { code = JSON.parse(error.message)?.code; } catch { /* Not a REST error. */ }
+    }
+    if (code === "23503") {
+      return Response.json({ error: "Existem ordens vinculadas a outros registros. A exclusao foi cancelada." }, { status: 409 });
+    }
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Não foi possível limpar as ordens.",
+        error: "Não foi possível limpar as ordens.",
       },
       { status: 500 },
     );
