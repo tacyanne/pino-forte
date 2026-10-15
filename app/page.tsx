@@ -1338,7 +1338,9 @@ export default function Home() {
         throw new Error("Informe o valor recebido.");
       const orderDate = String(f.get("orderDate") || "");
       if (!isValidBrDate(orderDate)) throw new Error("Informe uma data do pedido válida.");
+      const keepBoletoOnEdit = Boolean(editingOrder) && paymentMethod === "Boleto";
       const moveToWallet =
+        !keepBoletoOnEdit &&
         ["Pix", "Boleto", "Cartão"].includes(paymentMethod) &&
         received < total;
       const initialWalletHistory =
