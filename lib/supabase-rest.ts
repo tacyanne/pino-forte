@@ -109,3 +109,10 @@ export async function supabaseDelete(
   });
   await parseResponse<null>(response);
 }
+
+export async function supabaseRpc<T>(name: string, args: Record<string, unknown>) {
+  const response = await fetch(restUrl(`rpc/${name}`), {
+    method: "POST", headers: headers(), body: JSON.stringify(args), cache: "no-store",
+  });
+  return parseResponse<T>(response);
+}

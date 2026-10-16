@@ -1,4 +1,5 @@
 "use client";
+import { submitReceipts } from "../lib/receipt-client";
 import { BrandImage } from "./brand-image";
 import type { PieceLine } from "../lib/piece-lines";
 
@@ -1469,32 +1470,11 @@ export default function Home() {
     if (!window.confirm(`Confirmar o recebimento de ${money(balanceCents / 100)} referente ao boleto da ${order.number}?`)) return;
     setSaving(true);
     try {
-      if (receivable) {
-        const response = await fetch("/api/finance", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            entity: "accountsReceivable",
-            id: receivable.id,
-            amountCents: balanceCents,
-            paymentMethod: "Boleto",
-            receiptDate: todayIso(),
-          }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Nao foi possivel confirmar o boleto.");
-      } else {
-        let history: { amount: number; method: string; date: string }[] = [];
-        try {
-          const value = JSON.parse(order.commercialStatus);
-          if (Array.isArray(value)) history = value;
-        } catch {}
-        history.push({ amount: order.total - order.received, method: "Boleto", date: todayIso() });
-        await updateOrder(order.id, {
-          received: order.total,
-          commercialStatus: JSON.stringify(history),
-        });
-      }
+      if (!receivable) throw new Error("Atualize o financeiro antes de registrar o recebimento.");
+      await submitReceipts(auth.user!.id, [{
+        id: receivable.id, amountCents: balanceCents, expectedBalanceCents: receivable.balanceCents,
+        paymentMethod: "Boleto", receiptDate: todayIso(), notes: "",
+      }]);
       await loadAll();
       flash("Pagamento do boleto confirmado.");
     } catch (error) {
@@ -1582,7 +1562,7 @@ export default function Home() {
     if (walletPayAmount <= 0 || walletPayAmount > balance)
       return flash("Informe um valor pago válido, até o limite do saldo.");
     setSaving(true);
-    let remaining = walletPayAmount;
+    let remaining = Math.round(walletPayAmount * 100);
     try {
       const oldestOpenReceivables = walletPayment.items
         .filter((item) => item.balance > 0)
@@ -1591,25 +1571,19 @@ export default function Home() {
           if (dateDifference !== 0) return dateDifference;
           return a.orderNumber.localeCompare(b.orderNumber, "pt-BR", { numeric: true });
         });
+      const payments = [];
       for (const item of oldestOpenReceivables) {
         if (remaining <= 0) break;
-        const portion = Math.min(remaining, item.balance);
-        const r = await fetch("/api/finance", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            entity: "accountsReceivable",
-            id: item.receivable.id,
-            amount: portion,
-            paymentMethod: walletPayMethod,
-            receiptDate: toIsoDate(walletPayDate),
-            notes: "Recebimento registrado pela Carteira.",
-          }),
+        const portion = Math.min(remaining, item.receivable.balanceCents);
+        payments.push({
+          id: item.receivable.id, amountCents: portion,
+          expectedBalanceCents: item.receivable.balanceCents,
+          paymentMethod: walletPayMethod, receiptDate: toIsoDate(walletPayDate),
+          notes: "Recebimento registrado pela Carteira.",
         });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error || "Nao foi possivel registrar o recebimento.");
         remaining -= portion;
       }
+      await submitReceipts(auth.user!.id, payments);
       const [ordersResponse] = await Promise.all([
         fetch("/api/orders", { cache: "no-store" }).then((response) => response.json()),
         refreshFinance(),

@@ -1,3 +1,4 @@
+import { receivePayments } from "../../../lib/receive-payments";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import {
@@ -7,9 +8,8 @@ import {
   cashMovements,
   financialCategories,
   receipts,
-  serviceOrders,
 } from "../../../db/schema";
-import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso, toCents } from "../../../lib/finance";
+import { centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso, toCents } from "../../../lib/finance";
 import { requireUser } from "../../../lib/auth";
 import { camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
@@ -22,7 +22,6 @@ const isInMonth = (date: string | null | undefined, month: string) =>
 const jsonError = (message: string, status = 400) =>
   Response.json({ error: message }, { status });
 
-const receiptPaymentMethods = ["Pix", "Dinheiro", "Cartão", "Boleto"];
 
 async function audit(
   db: Awaited<ReturnType<typeof getDb>>,
@@ -385,95 +384,12 @@ export async function PATCH(request: Request) {
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    if (body.entity === "accountsReceivable") return await receivePayments(request, auth.id, body);
     if (hasSupabaseRest()) return patchFinanceWithRest(auth, body);
     const db = await getDb();
     const entity = String(body.entity || "");
     const id = Number(body.id);
     if (!id) return jsonError("Informe o registro financeiro.");
-
-    if (entity === "accountsReceivable") {
-      const amountCents = centsFromBody(body);
-      const paymentMethod = String(body.paymentMethod || "").trim();
-      const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
-      if (amountCents <= 0 || !receiptPaymentMethods.includes(paymentMethod))
-        return jsonError("Informe valor e forma de recebimento.");
-
-      const result = await db.transaction(async (tx) => {
-        const [current] = await tx.select().from(accountsReceivable).where(eq(accountsReceivable.id, id)).limit(1);
-        if (!current) throw new Error("Conta a receber nao encontrada.");
-        if (current.status === "Pago") throw new Error("Esta conta a receber ja esta paga.");
-        if (amountCents > current.balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
-
-        const newReceived = current.receivedAmountCents + amountCents;
-        const rawBalance = Math.max(0, current.originalAmountCents - newReceived);
-        // Resíduo pequeno é quitado: o total da OS passa a ser o valor recebido.
-        const writeOff = rawBalance > 0 && rawBalance <= RESIDUAL_SETTLE_CENTS;
-        const newOriginal = writeOff ? newReceived : current.originalAmountCents;
-        const newBalance = writeOff ? 0 : rawBalance;
-        const status = receivableStatus(newBalance, current.dueDate);
-        const [receipt] = await tx
-          .insert(receipts)
-          .values({
-            accountReceivableId: current.id,
-            serviceOrderId: current.serviceOrderId,
-            receiptDate,
-            amountCents,
-            paymentMethod,
-            notes: String(body.notes || ""),
-            createdBy: auth.id,
-          })
-          .returning();
-
-        const [updated] = await tx
-          .update(accountsReceivable)
-          .set({
-            originalAmountCents: newOriginal,
-            receivedAmountCents: newReceived,
-            balanceCents: newBalance,
-            status,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(eq(accountsReceivable.id, id))
-          .returning();
-
-        await tx
-          .update(serviceOrders)
-          .set({
-            receivedCents: newReceived,
-            received: newReceived / 100,
-            balanceCents: newBalance,
-            financialStatus: status,
-            ...(newBalance === 0 ? { paymentMethod } : {}),
-            updatedAt: new Date().toISOString(),
-            ...(writeOff ? { totalCents: newReceived, total: newReceived / 100 } : {}),
-          })
-          .where(eq(serviceOrders.id, current.serviceOrderId));
-
-        await tx.insert(cashMovements).values({
-          type: "entrada",
-          origin: "Recebimento",
-          originId: current.id,
-          movementDate: receiptDate,
-          amountCents,
-          paymentMethod,
-          description: `Recebimento da OS ${current.serviceOrderId}`,
-          legacySourceKey: `receipt:${receipt.id}`,
-          createdBy: auth.id,
-        });
-
-        await tx.insert(auditLogs).values({
-          userId: auth.id,
-          action: "receive",
-          entity: "accounts_receivable",
-          entityId: id,
-          afterValues: JSON.stringify({ updated, receipt }),
-        });
-
-        return { accountReceivable: updated, receipt };
-      });
-
-      return Response.json(result);
-    }
 
     if (entity === "accountsPayable") {
       const result = await db.transaction(async (tx) => {
@@ -639,68 +555,6 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
   const entity = String(body.entity || "");
   const id = Number(body.id);
   if (!id) return jsonError("Informe o registro financeiro.");
-
-  if (entity === "accountsReceivable") {
-    const amountCents = centsFromBody(body);
-    const paymentMethod = String(body.paymentMethod || "").trim();
-    const receiptDate = String(body.receiptDate || todayIso()).slice(0, 10);
-    if (amountCents <= 0 || !receiptPaymentMethods.includes(paymentMethod))
-      return jsonError("Informe valor e forma de recebimento.");
-    const current = await supabaseGetOne<Record<string, unknown>>("accounts_receivable", {
-      select: "*",
-      id: `eq.${id}`,
-    });
-    if (!current) throw new Error("Conta a receber nao encontrada.");
-    if (current.status === "Pago") throw new Error("Esta conta a receber ja esta paga.");
-    const balanceCents = Number(current.balance_cents || 0);
-    if (amountCents > balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
-    const originalAmountCents = Number(current.original_amount_cents || 0);
-    const newReceived = Number(current.received_amount_cents || 0) + amountCents;
-    const rawBalance = Math.max(0, originalAmountCents - newReceived);
-    // Resíduo pequeno é quitado: o total da OS passa a ser o valor recebido.
-    const writeOff = rawBalance > 0 && rawBalance <= RESIDUAL_SETTLE_CENTS;
-    const newOriginal = writeOff ? newReceived : originalAmountCents;
-    const newBalance = writeOff ? 0 : rawBalance;
-    const status = receivableStatus(newBalance, String(current.due_date || ""));
-    const receipt = await supabaseInsert<Record<string, unknown>>("receipts", {
-      account_receivable_id: id,
-      service_order_id: Number(current.service_order_id || 0),
-      receipt_date: receiptDate,
-      amount_cents: amountCents,
-      payment_method: paymentMethod,
-      notes: String(body.notes || ""),
-      created_by: auth.id,
-    });
-    const updated = await supabasePatch<Record<string, unknown>>("accounts_receivable", { id: `eq.${id}` }, {
-      original_amount_cents: newOriginal,
-      received_amount_cents: newReceived,
-      balance_cents: newBalance,
-      status,
-      updated_at: new Date().toISOString(),
-    });
-    await supabasePatch("service_orders", { id: `eq.${Number(current.service_order_id || 0)}` }, {
-      received_cents: newReceived,
-      received: newReceived / 100,
-      balance_cents: newBalance,
-      financial_status: status,
-      ...(newBalance === 0 ? { payment_method: paymentMethod } : {}),
-      updated_at: new Date().toISOString(),
-      ...(writeOff ? { total_cents: newReceived, total: newReceived / 100 } : {}),
-    });
-    await supabaseInsert("cash_movements", {
-      type: "entrada",
-      origin: "Recebimento",
-      origin_id: id,
-      movement_date: receiptDate,
-      amount_cents: amountCents,
-      payment_method: paymentMethod,
-      description: `Recebimento da OS ${current.service_order_id}`,
-      legacy_source_key: `receipt:${receipt.id}`,
-      created_by: auth.id,
-    });
-    await auditRest(auth, "receive", "accounts_receivable", id, { updated, receipt });
-    return Response.json({ accountReceivable: camelizeRows([updated])[0], receipt: camelizeRows([receipt])[0] });
-  }
 
   if (entity === "accountsPayable") {
     const current = await supabaseGetOne<Record<string, unknown>>("accounts_payable", {
