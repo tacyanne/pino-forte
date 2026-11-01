@@ -1,6 +1,7 @@
 "use client";
 import { BrandImage } from "./brand-image";
 import type { PieceLine } from "../lib/piece-lines";
+import { BOLETO_STEP_DAYS, BOLETO_TERMS, installmentCount, planInstallments, splitCents } from "../lib/boleto-installments";
 
 import {
   Children,
@@ -57,6 +58,12 @@ type Customer = {
   active: boolean;
   createdAt: string;
 };
+const boletoLabel = (order: { paymentMethod: string; boletoTermDays?: number | null }) => {
+  if (order.paymentMethod !== "Boleto" || !order.boletoTermDays) return order.paymentMethod;
+  const count = installmentCount(order.boletoTermDays);
+  const days = Array.from({ length: count }, (_, index) => BOLETO_STEP_DAYS * (index + 1)).join("/");
+  return `Boleto ${count}x (${days} dias)`;
+};
 type Product = {
   imageData?: string | null;
   id: number;
@@ -90,6 +97,7 @@ type Order = {
   commercialStatus: string;
   notes: string;
   createdAt: string;
+  boletoTermDays?: number | null;
 };
 type FinanceSummary = {
   month: string;
@@ -114,6 +122,18 @@ type AccountReceivable = {
   balanceCents: number;
   status: string;
   notes: string;
+};
+type ReceivableInstallment = {
+  id: number;
+  accountReceivableId: number;
+  serviceOrderId: number;
+  number: number;
+  totalInstallments: number;
+  dueDate: string;
+  amountCents: number;
+  receivedCents: number;
+  balanceCents: number;
+  status: string;
 };
 type AccountPayable = {
   id: number;
@@ -156,6 +176,7 @@ type AuthUser = {
 type FinanceData = {
   summary: FinanceSummary | null;
   accountsReceivable: AccountReceivable[];
+  receivableInstallments: ReceivableInstallment[];
   accountsPayable: AccountPayable[];
   receipts: Receipt[];
   cashMovements: CashMovement[];
@@ -467,6 +488,7 @@ export default function Home() {
   const [financeData, setFinanceData] = useState<FinanceData>({
     summary: null,
     accountsReceivable: [],
+    receivableInstallments: [],
     accountsPayable: [],
     receipts: [],
     cashMovements: [],
@@ -506,6 +528,7 @@ export default function Home() {
   const [received, setReceived] = useState(0);
   const [selectedDeliveryType, setSelectedDeliveryType] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
+  const [selectedBoletoTerm, setSelectedBoletoTerm] = useState("");
   const [discountOverride, setDiscountOverride] = useState("");
   const [orderItems, setOrderItems] = useState<
     { code: string; quantity: number; unitPrice?: number }[]
@@ -521,6 +544,7 @@ export default function Home() {
       setFinanceData({
         summary: data.summary || null,
         accountsReceivable: data.accountsReceivable || [],
+        receivableInstallments: data.receivableInstallments || [],
         accountsPayable: data.accountsPayable || [],
         receipts: data.receipts || [],
         cashMovements: data.cashMovements || [],
@@ -797,32 +821,60 @@ export default function Home() {
     () => new Map(orders.map((order) => [order.id, order])),
     [orders],
   );
+  const installmentsByReceivable = new Map<number, ReceivableInstallment[]>();
+  for (const installment of financeData.receivableInstallments) {
+    if (installment.status === "Cancelado") continue;
+    const list = installmentsByReceivable.get(installment.accountReceivableId) || [];
+    list.push(installment);
+    installmentsByReceivable.set(installment.accountReceivableId, list);
+  }
+  const openInstallmentsOf = (receivableId: number) =>
+    (installmentsByReceivable.get(receivableId) || [])
+      .filter((item) => item.balanceCents > 0)
+      .sort((a, b) => a.number - b.number);
   const financialRows = financeData.accountsReceivable
-    .map((receivable) => {
+    .flatMap((receivable) => {
       const order = ordersById.get(receivable.serviceOrderId);
       const customer = receivable.customerId
         ? customers.find((item) => item.id === receivable.customerId)
         : undefined;
-      const balance = receivable.balanceCents / 100;
-      const status =
-        receivable.status === "Pago"
-          ? "Pago"
-          : receivable.status === "Vencido" || dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso())
-            ? "Atrasado"
-            : "Em aberto";
-      return {
+      const base = {
         receivable,
         order,
         orderNumber: order?.number || `CR-${String(receivable.id).padStart(5, "0")}`,
         customerName: order?.customerName || customer?.name || "Cliente nao identificado",
         paymentMethod: order?.paymentMethod || "Nao informado",
+        issuedAt: receivable.issuedAt,
+      };
+      const openInstallments = openInstallmentsOf(receivable.id);
+      if (openInstallments.length) {
+        return openInstallments.map((installment) => ({
+          ...base,
+          key: `${receivable.id}-${installment.number}`,
+          installmentLabel: `Parcela ${installment.number}/${installment.totalInstallments}`,
+          total: installment.amountCents / 100,
+          received: installment.receivedCents / 100,
+          balance: installment.balanceCents / 100,
+          dueDate: installment.dueDate,
+          status: (dateTimestamp(installment.dueDate) < dateTimestamp(todayIso()) ? "Atrasado" : "Em aberto") as string,
+        }));
+      }
+      const status: string =
+        receivable.status === "Pago"
+          ? "Pago"
+          : receivable.status === "Vencido" || dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso())
+            ? "Atrasado"
+            : "Em aberto";
+      return [{
+        ...base,
+        key: String(receivable.id),
+        installmentLabel: "",
         total: receivable.originalAmountCents / 100,
         received: receivable.receivedAmountCents / 100,
-        balance,
+        balance: receivable.balanceCents / 100,
         dueDate: receivable.dueDate,
-        issuedAt: receivable.issuedAt,
         status,
-      };
+      }];
     })
     .filter((row) => (
       row.balance > 0 &&
@@ -836,15 +888,22 @@ export default function Home() {
       if (orderDifference !== 0) return orderDifference;
       const dateDifference = dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
       if (dateDifference !== 0) return dateDifference;
-      return b.receivable.id - a.receivable.id;
+      const numberDifference = a.key.localeCompare(b.key, "pt-BR", { numeric: true });
+      return numberDifference !== 0 ? numberDifference : b.receivable.id - a.receivable.id;
     });
+  // Previsto/recebido contam a conta inteira uma única vez; em aberto/atrasado somam por parcela.
+  const financialTotalsSeen = new Set<number>();
   const financialTotals = financialRows.reduce(
-    (summary, row) => ({
-      forecast: summary.forecast + row.total,
-      received: summary.received + row.received,
-      pending: summary.pending + (row.status === "Em aberto" ? row.balance : 0),
-      overdue: summary.overdue + (row.status === "Atrasado" ? row.balance : 0),
-    }),
+    (summary, row) => {
+      const firstOfReceivable = !financialTotalsSeen.has(row.receivable.id);
+      financialTotalsSeen.add(row.receivable.id);
+      return {
+        forecast: summary.forecast + (firstOfReceivable ? row.receivable.originalAmountCents / 100 : 0),
+        received: summary.received + (firstOfReceivable ? row.receivable.receivedAmountCents / 100 : 0),
+        pending: summary.pending + (row.status === "Em aberto" ? row.balance : 0),
+        overdue: summary.overdue + (row.status === "Atrasado" ? row.balance : 0),
+      };
+    },
     { forecast: 0, received: 0, pending: 0, overdue: 0 },
   );
   const dashboardReceivables = financeData.accountsReceivable
@@ -854,21 +913,28 @@ export default function Home() {
         receivable.status !== "Cancelado" &&
         receivable.balanceCents > 0,
     )
-    .map((receivable) => {
+    .flatMap((receivable) => {
       const order = ordersById.get(receivable.serviceOrderId);
       const customer = receivable.customerId
         ? customers.find((item) => item.id === receivable.customerId)
         : undefined;
-      const isOverdue = dateTimestamp(receivable.dueDate) < dateTimestamp(todayIso());
-      return {
+      const openInstallments = openInstallmentsOf(receivable.id);
+      const parcels = openInstallments.length
+        ? openInstallments.map((installment) => ({
+            key: `${receivable.id}-${installment.number}`,
+            dueDate: installment.dueDate,
+            balance: installment.balanceCents / 100,
+            installmentLabel: `Parcela ${installment.number}/${installment.totalInstallments}`,
+          }))
+        : [{ key: String(receivable.id), dueDate: receivable.dueDate, balance: receivable.balanceCents / 100, installmentLabel: "" }];
+      return parcels.map((parcel) => ({
         receivable,
         order,
         orderNumber: order?.number || `CR-${String(receivable.id).padStart(5, "0")}`,
         customerName: order?.customerName || customer?.name || "Cliente não identificado",
-        dueDate: receivable.dueDate,
-        balance: receivable.balanceCents / 100,
-        status: isOverdue ? "Atrasado" : "Em aberto",
-      };
+        ...parcel,
+        status: dateTimestamp(parcel.dueDate) < dateTimestamp(todayIso()) ? "Atrasado" : "Em aberto",
+      }));
     })
     .sort((a, b) => {
       const dueDifference = dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
@@ -999,6 +1065,7 @@ export default function Home() {
       setReceived(0);
       setSelectedDeliveryType("");
       setSelectedPaymentMethod("");
+      setSelectedBoletoTerm("");
       setDiscountOverride("");
       setSelectedCode("");
       setOrderItems([{ code: "", quantity: 1 }]);
@@ -1338,10 +1405,10 @@ export default function Home() {
         throw new Error("Informe o valor recebido.");
       const orderDate = String(f.get("orderDate") || "");
       if (!isValidBrDate(orderDate)) throw new Error("Informe uma data do pedido válida.");
-      const keepBoletoOnEdit = Boolean(editingOrder) && paymentMethod === "Boleto";
+      if (paymentMethod === "Boleto" && !selectedBoletoTerm)
+        throw new Error("Escolha o prazo do boleto: 25, 50 ou 75 dias.");
       const moveToWallet =
-        !keepBoletoOnEdit &&
-        ["Pix", "Boleto", "Cartão"].includes(paymentMethod) &&
+        ["Pix", "Cartão"].includes(paymentMethod) &&
         received < total;
       const initialWalletHistory =
         moveToWallet && received > 0
@@ -1371,6 +1438,7 @@ export default function Home() {
           received,
           deliveryType,
           paymentMethod: moveToWallet ? "Carteira" : paymentMethod,
+          boletoTermDays: paymentMethod === "Boleto" ? Number(selectedBoletoTerm) : null,
           commercialStatus: initialWalletHistory,
           notes: f.get("notes"),
         }),
@@ -1457,16 +1525,20 @@ export default function Home() {
     setReceived(order.received);
     setSelectedDeliveryType(order.deliveryType);
     setSelectedPaymentMethod(order.paymentMethod);
+    setSelectedBoletoTerm(order.paymentMethod === "Boleto" ? String(order.boletoTermDays || BOLETO_STEP_DAYS) : "");
     setDiscountOverride(String(order.discountRate ?? 0));
     setOrderModal(null);
     setScreen("new-order");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  async function settleBoleto(order: Order) {
+  async function settleBoleto(order: Order, installment?: ReceivableInstallment) {
     const receivable = financeData.accountsReceivable.find((item) => item.serviceOrderId === order.id);
-    const balanceCents = receivable?.balanceCents ?? Math.max(0, Math.round((order.total - order.received) * 100));
+    const balanceCents = installment?.balanceCents ?? receivable?.balanceCents ?? Math.max(0, Math.round((order.total - order.received) * 100));
     if (balanceCents <= 0) return flash("Este boleto ja esta quitado.");
-    if (!window.confirm(`Confirmar o recebimento de ${money(balanceCents / 100)} referente ao boleto da ${order.number}?`)) return;
+    const confirmText = installment
+      ? `Confirmar o recebimento de ${money(balanceCents / 100)} da parcela ${installment.number}/${installment.totalInstallments} (vence em ${brDate(installment.dueDate)}) do boleto da ${order.number}?`
+      : `Confirmar o recebimento de ${money(balanceCents / 100)} referente ao boleto da ${order.number}?`;
+    if (!window.confirm(confirmText)) return;
     setSaving(true);
     try {
       if (receivable) {
@@ -1476,6 +1548,7 @@ export default function Home() {
           body: JSON.stringify({
             entity: "accountsReceivable",
             id: receivable.id,
+            installmentId: installment?.id,
             amountCents: balanceCents,
             paymentMethod: "Boleto",
             receiptDate: todayIso(),
@@ -1496,7 +1569,7 @@ export default function Home() {
         });
       }
       await loadAll();
-      flash("Pagamento do boleto confirmado.");
+      flash(installment ? `Parcela ${installment.number}/${installment.totalInstallments} do boleto confirmada.` : "Pagamento do boleto confirmado.");
     } catch (error) {
       flash(error instanceof Error ? error.message : "Nao foi possivel confirmar o boleto.", "error");
     } finally {
@@ -1655,7 +1728,7 @@ export default function Home() {
     const customer = findBestCustomer(customers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
     const number = customer.whatsapp.replace(/\D/g, "");
-    const text = `Olá, ${customer.name}! Segue a ${order.number}. Forma de pagamento: ${order.paymentMethod}.`;
+    const text = `Olá, ${customer.name}! Segue a ${order.number}. Forma de pagamento: ${boletoLabel(order)}.`;
     window.open(
       `https://wa.me/55${number}?text=${encodeURIComponent(text)}`,
       "_blank",
@@ -1876,7 +1949,7 @@ export default function Home() {
     pdf.text(`CPF/CNPJ: ${customer ? formatDocument(customer.document).replace(/^(CPF|CNPJ): /, "") : "—"}`, 18, 64);
     pdf.text(`WhatsApp: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 105, 64);
     pdf.text(`E-mail: ${customer?.email || "—"}`, 18, 72);
-    pdf.text(`Pagamento: ${order.paymentMethod}`, 105, 72);
+    pdf.text(`Pagamento: ${boletoLabel(order)}`, 105, 72);
 
     const columns = [15, 39, 118, 135, 162, 195];
     pdf.rect(15, 79, 180, 132);
@@ -1912,8 +1985,25 @@ export default function Home() {
 
     pdf.rect(15, 211, 180, 28);
     pdf.setFontSize(9);
-    pdf.text(`Forma de pagamento: ${order.paymentMethod}`, 18, 219);
+    pdf.text(`Forma de pagamento: ${boletoLabel(order)}`, 18, 219);
     pdf.text(`Forma de entrega: ${order.deliveryType}`, 105, 219);
+    if (order.paymentMethod === "Boleto" && order.boletoTermDays) {
+      const parcels = planInstallments({
+        totalCents: Math.round(order.total * 100),
+        receivedCents: 0,
+        issuedAt: order.createdAt.slice(0, 10),
+        termDays: order.boletoTermDays,
+        today: todayIso(),
+      });
+      pdf.setFontSize(8);
+      pdf.text(
+        parcels.map((parcel) => `${parcel.number}/${parcel.totalInstallments}: ${brDate(parcel.dueDate)} - ${money(parcel.amountCents / 100)}`).join("   |   "),
+        18,
+        226,
+        { maxWidth: 172 },
+      );
+      pdf.setFontSize(9);
+    }
     pdf.text(order.notes ? `Observações: ${order.notes}` : "Observações: —", 18, 235, { maxWidth: 172 });
 
     pdf.line(24, 250, 88, 250);
@@ -1999,7 +2089,24 @@ export default function Home() {
       pdf.text(`CPF/CNPJ: ${customer ? formatDocument(customer.document).replace(/^(CPF|CNPJ): /, "") : "—"}`, 8, at(46));
       pdf.text(`Telefone: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 106, at(46));
       pdf.text(`Endereço: ${address || "—"}`, 8, at(52), { maxWidth: 130 });
-      pdf.text(`Pagamento: ${order.paymentMethod}`, 150, at(46));
+      pdf.text(`Pagamento: ${boletoLabel(order)}`, 150, at(46));
+      if (order.paymentMethod === "Boleto" && order.boletoTermDays) {
+        const parcels = planInstallments({
+          totalCents: Math.round(order.total * 100),
+          receivedCents: 0,
+          issuedAt: order.createdAt.slice(0, 10),
+          termDays: order.boletoTermDays,
+          today: todayIso(),
+        });
+        pdf.setFontSize(6);
+        pdf.text(
+          parcels.map((parcel) => `${parcel.number}/${parcel.totalInstallments} ${brDate(parcel.dueDate)} ${money(parcel.amountCents / 100)}`).join("   "),
+          150,
+          at(49.6),
+          { maxWidth: 56, lineHeightFactor: 1.05 },
+        );
+        pdf.setFontSize(7.5);
+      }
 
       pdf.rect(left, at(55), 200, 53);
       columns.slice(1, -1).forEach((x) => pdf.line(x, at(55), x, at(108)));
@@ -2068,7 +2175,7 @@ export default function Home() {
     } catch {}
     const customer = findBestCustomer(currentCustomers, order.customerName);
     if (!customer?.whatsapp) return flash("Cliente sem WhatsApp cadastrado.");
-    const text = `Olá, ${customer.name}! Segue a ${order.number}. Forma de pagamento: ${order.paymentMethod}.`;
+    const text = `Olá, ${customer.name}! Segue a ${order.number}. Forma de pagamento: ${boletoLabel(order)}.`;
     await downloadPdf(order);
     const number = customer.whatsapp.replace(/\D/g, "");
     window.open(
@@ -2213,7 +2320,7 @@ export default function Home() {
     const w = window.open("", "_blank");
     if (!w) return flash("Permita pop-ups para gerar o PDF.");
     w.document.write(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Data do pedido</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${orderDisplayStatus(order)}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${order.paymentMethod} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><title>${order.number}</title><style>@page{size:A4;margin:15mm}body{font-family:Arial;color:#203235;font-size:12px}header{display:flex;justify-content:space-between;border-bottom:4px solid #080808;padding-bottom:18px}h1{color:#080808;margin:0}.n{color:#ff5c00;font-size:20px;font-weight:bold}section{margin-top:24px}h2{font-size:12px;border-bottom:1px solid #ddd;padding-bottom:7px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}table{width:100%;border-collapse:collapse}th{background:#080808;color:white;padding:10px;text-align:left}td{padding:10px;border-bottom:1px solid #ddd}.right{text-align:right}.total{text-align:right;font-size:16px;margin-top:18px}.actions{position:fixed;right:20px;top:20px}@media print{.actions{display:none}}</style></head><body><button class="actions" onclick="print()">Imprimir / Salvar PDF</button><header><div><h1>Pino Forte</h1><span>Fabricação de Peças para Suspensão</span></div><div><div>ORDEM DE SERVIÇO</div><div class="n">${order.number}</div></div></header><section><h2>CLIENTE E SERVIÇO</h2><div class="grid"><div><b>Cliente</b><br>${order.customerName}</div><div><b>Data do pedido</b><br>${brDate(order.createdAt)}</div><div><b>Status</b><br>${orderDisplayStatus(order)}</div></div></section><section><h2>ITEM</h2><table><tr><th>Código</th><th>Descrição da peça</th><th class="right">Qtd.</th><th class="right">Unitário</th><th class="right">Subtotal</th></tr><tr><td>${order.productCode}</td><td>${pieceLabel(p, order.productCode)} · ${p?.measure || ""}</td><td class="right">${order.quantity}</td><td class="right">${money(order.unitPrice)}</td><td class="right">${money(order.subtotal || order.total)}</td></tr></table><div class="total">${order.discountRate > 0 ? `Subtotal: ${money(order.subtotal || order.total)}<br>Desconto distribuidor (${order.discountRate}%): - ${money((order.subtotal || order.total) - order.total)}<br>` : ""}Total: <b>${money(order.total)}</b><br>Recebido: ${money(order.received)}<br>Saldo: <b>${money(Math.max(0, order.total - order.received))}</b></div></section><section><h2>PAGAMENTO E OBSERVAÇÕES</h2><p>${boletoLabel(order)} · ${order.deliveryType}</p><p>${order.notes || "Sem observações."}</p></section><script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`,
     );
     w.document.close();
   }
@@ -2435,7 +2542,7 @@ export default function Home() {
                       {dashboardReceivables.length ? dashboardReceivables.map((row) => (
                         <div
                           className={`dashboard-receivable-row ${row.order ? "clickable" : ""}`}
-                          key={row.receivable.id}
+                          key={row.key}
                           role={row.order ? "button" : undefined}
                           tabIndex={row.order ? 0 : undefined}
                           onClick={() => row.order && setOrderModal(row.order)}
@@ -2448,7 +2555,7 @@ export default function Home() {
                         >
                           <div className="dashboard-receivable-customer">
                             <b>{row.orderNumber}</b>
-                            <small>{row.customerName}</small>
+                            <small>{row.customerName}{row.installmentLabel ? ` · ${row.installmentLabel}` : ""}</small>
                           </div>
                           <span data-label="Data de vencimento">{brDate(row.dueDate)}</span>
                           <strong data-label="Saldo Devedor">{money(row.balance)}</strong>
@@ -2663,6 +2770,28 @@ export default function Home() {
                           <option>Carteira</option>
                         </select>
                       </Field>
+                      {selectedPaymentMethod === "Boleto" && (
+                        <>
+                          <Field label="Prazo do boleto *">
+                            <select name="boletoTerm" required value={selectedBoletoTerm} onChange={(e) => setSelectedBoletoTerm(e.target.value)}>
+                              <option value="">Selecione</option>
+                              {BOLETO_TERMS.map((term) => (
+                                <option key={term} value={term}>{term} dias ({installmentCount(term)}x)</option>
+                              ))}
+                            </select>
+                          </Field>
+                          {selectedBoletoTerm && (
+                            <div className="boleto-installments-preview">
+                              {splitCents(Math.round(total * 100), installmentCount(Number(selectedBoletoTerm))).map((cents, index, list) => (
+                                <span key={index}>
+                                  <small>Parcela {index + 1}/{list.length} · {BOLETO_STEP_DAYS * (index + 1)} dias</small>
+                                  <b>{money(cents / 100)}</b>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                       <Field label={["Pix", "Dinheiro", "Cartão"].includes(selectedPaymentMethod) ? "Valor recebido *" : "Valor recebido"}>
                         <input
                           required={["Pix", "Dinheiro", "Cartão"].includes(selectedPaymentMethod)}
@@ -3147,8 +3276,8 @@ export default function Home() {
                   <article className="panel finance-attention-panel">
                     <div className="panel-title"><div><h2>Atenção agora</h2><p>Recebimentos atrasados que exigem ação</p></div><span className="insight-count">{attentionRows.length}</span></div>
                     {!attentionRows.length ? <p className="positive-empty">Nenhuma pendência atrasada no filtro atual.</p> : attentionRows.map((row) => (
-                      <button type="button" className="attention-row" key={row.receivable.id} onClick={() => row.order && setOrderModal(row.order)}>
-                        <span><b>{row.customerName}</b><small>{row.orderNumber} · venceu em {brDate(row.dueDate)}</small></span>
+                      <button type="button" className="attention-row" key={row.key} onClick={() => row.order && setOrderModal(row.order)}>
+                        <span><b>{row.customerName}</b><small>{row.orderNumber}{row.installmentLabel ? ` · ${row.installmentLabel}` : ""} · venceu em {brDate(row.dueDate)}</small></span>
                         <strong>{money(row.balance)}</strong>
                       </button>
                     ))}
@@ -4050,7 +4179,7 @@ export default function Home() {
             </div>
             <div className="form-grid order-payment-grid review-payment-grid">
               <ReviewField label="Forma de entrega" value={orderModal.deliveryType} />
-              <ReviewField label="Forma de pagamento" value={`${orderModal.paymentMethod} · ${orderDisplayStatus(orderModal)}`} />
+              <ReviewField label="Forma de pagamento" value={`${boletoLabel(orderModal)} · ${orderDisplayStatus(orderModal)}`} />
               <ReviewField label="Valor recebido" value={money(orderModal.received)} />
               <div className={`payment-summary ${isDistributor(orderModal.customerType) ? "four-columns" : "two-columns"}`}>
                 {isDistributor(orderModal.customerType) && (
@@ -4068,14 +4197,58 @@ export default function Home() {
                 ) : (
                   <span className="pending">Saldo devedor <strong>{money(Math.max(0, orderModal.total - orderModal.received))}</strong></span>
                 )}
-                {orderModal.paymentMethod === "Boleto" && orderModal.received < orderModal.total && (
-                  <div className="boleto-payment-card">
-                    <span><b>Boleto aguardando pagamento</b><small>Confirme somente após identificar o recebimento.</small></span>
-                    <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
-                      ✓ Confirmar pagamento
-                    </button>
-                  </div>
-                )}
+                {orderModal.paymentMethod === "Boleto" && (() => {
+                  const parcels = financeData.receivableInstallments
+                    .filter((item) => item.serviceOrderId === orderModal.id)
+                    .sort((a, b) => a.number - b.number);
+                  if (parcels.length) {
+                    return (
+                      <div className="boleto-installments">
+                        {parcels.map((parcel) => {
+                          const overdue = parcel.balanceCents > 0 && parcel.dueDate < todayIso();
+                          return (
+                            <div className="boleto-installment-row" key={parcel.id}>
+                              <span>
+                                <b>Parcela {parcel.number}/{parcel.totalInstallments} · {money(parcel.amountCents / 100)}</b>
+                                <small>
+                                  Vence em {brDate(parcel.dueDate)}
+                                  {parcel.receivedCents > 0 && parcel.balanceCents > 0 ? ` · recebido ${money(parcel.receivedCents / 100)}` : ""}
+                                </small>
+                              </span>
+                              {parcel.status === "Cancelado" ? (
+                                <span className="status red">Cancelada</span>
+                              ) : parcel.balanceCents <= 0 ? (
+                                <span className="status green">Paga</span>
+                              ) : (
+                                <>
+                                  <span className={`status ${overdue ? "red" : "amber"}`}>{overdue ? "Atrasada" : "Em aberto"}</span>
+                                  <button
+                                    className="boleto-pay"
+                                    disabled={saving || orderModal.productionStatus === "Cancelada"}
+                                    onClick={() => settleBoleto(orderModal, parcel)}
+                                  >
+                                    ✓ Confirmar pagamento
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+                  if (orderModal.received < orderModal.total) {
+                    return (
+                      <div className="boleto-payment-card">
+                        <span><b>Boleto aguardando pagamento</b><small>Confirme somente após identificar o recebimento.</small></span>
+                        <button className="boleto-pay" onClick={() => settleBoleto(orderModal)}>
+                          ✓ Confirmar pagamento
+                        </button>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
             <ReviewField

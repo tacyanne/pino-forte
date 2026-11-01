@@ -83,6 +83,7 @@ export const serviceOrders = pgTable("service_orders", {
   balanceCents: integer("balance_cents").notNull().default(0),
   issuedAt: text("issued_at").notNull().default(""),
   dueDate: text("due_date").notNull().default(""),
+  boletoTermDays: integer("boleto_term_days"),
   deliveryDate: text("delivery_date").notNull(),
   deliveryType: text("delivery_type").notNull(),
   paymentMethod: text("payment_method").notNull(),
@@ -193,12 +194,33 @@ export const receipts = pgTable("receipts", {
   notes: text("notes").notNull().default(""),
   status: text("status").notNull().default("Confirmado"),
   reversalOfReceiptId: integer("reversal_of_receipt_id"),
+  installmentId: integer("installment_id"),
   legacySourceKey: text("legacy_source_key"),
   createdBy: integer("created_by"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => ({
   legacySourceKeyUnique: uniqueIndex("receipts_legacy_source_key_unique").on(table.legacySourceKey),
   accountReceivableIdx: index("receipts_account_receivable_idx").on(table.accountReceivableId),
+}));
+
+export const receivableInstallments = pgTable("receivable_installments", {
+  id: serial("id").primaryKey(),
+  accountReceivableId: integer("account_receivable_id").notNull().references(() => accountsReceivable.id),
+  serviceOrderId: integer("service_order_id").notNull().references(() => serviceOrders.id),
+  number: integer("number").notNull(),
+  totalInstallments: integer("total_installments").notNull(),
+  dueDate: text("due_date").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  receivedCents: integer("received_cents").notNull().default(0),
+  balanceCents: integer("balance_cents").notNull().default(0),
+  status: text("status").notNull().default("Pendente"),
+  paidAt: text("paid_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => ({
+  receivableNumberUnique: uniqueIndex("receivable_installments_receivable_number_unique").on(table.accountReceivableId, table.number),
+  serviceOrderIdx: index("receivable_installments_service_order_idx").on(table.serviceOrderId),
+  dueStatusIdx: index("receivable_installments_due_status_idx").on(table.dueDate, table.status),
 }));
 
 export const accountsPayable = pgTable("accounts_payable", {

@@ -779,3 +779,12 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .record-view-grid .review-field>strong{min-height:44px;padding:0 12px;font-weight:400;overflow-wrap:anywhere}
 .record-view-grid .review-field.multiline>strong{padding:11px 12px}
 @media(max-width:760px){.piece-type-table table{min-width:0}.type-form-row{grid-template-columns:1fr}}
+.boleto-installments-preview{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.boleto-installments-preview>span{display:grid;gap:2px;padding:10px 12px;border:1px solid #e3a47f;border-radius:10px;background:#fff8f3;color:#87431f}
+.boleto-installments-preview small{font-size:11px;color:var(--muted);font-weight:600}
+.boleto-installments{grid-column:1/-1;display:grid;gap:8px}
+.boleto-installment-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid #e3a47f;border-radius:10px;background:#fff8f3}
+.boleto-installment-row>span:first-child{display:grid;gap:3px;color:#87431f;min-width:0}
+.boleto-installment-row small{font-size:11px;color:var(--muted);font-weight:600}
+.boleto-installment-row .boleto-pay{flex:0 0 auto;min-width:170px}
+@media(max-width:760px){.boleto-installment-row{flex-direction:column;align-items:stretch}.boleto-installment-row .boleto-pay{min-width:0;width:100%}}

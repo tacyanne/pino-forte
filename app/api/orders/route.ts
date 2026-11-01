@@ -2,7 +2,13 @@ import { desc, eq, max } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
+import { boletoFirstDueDate, parseBoletoTerm } from "../../../lib/boleto-installments";
 import { receivableDueDateFromIssuedAt, receivableStatus, settleResidualTotal } from "../../../lib/finance";
+import {
+  assertBoletoTermChangeAllowedDb,
+  assertBoletoTermChangeAllowedRest,
+  syncInstallmentsRest,
+} from "../../../lib/receivable-installments";
 import { camelizeRow, camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
@@ -178,6 +184,9 @@ export async function POST(request: Request) {
     const deliveryType = String(body.deliveryType || "");
     if (!["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(paymentMethod))
       return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
+    const boletoTermDays = paymentMethod === "Boleto" ? parseBoletoTerm(body.boletoTermDays) : null;
+    if (paymentMethod === "Boleto" && !boletoTermDays)
+      return Response.json({ error: "Escolha o prazo do boleto: 25, 50 ou 75 dias." }, { status: 400 });
     if (!["Retirada no local", "Entrega"].includes(deliveryType))
       return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
     if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
@@ -204,7 +213,7 @@ export async function POST(request: Request) {
     );
     const orderTotal = settleResidualTotal(totals.total, received);
     const moveToWallet =
-      ["Pix", "Boleto", "Cartão"].includes(paymentMethod) &&
+      ["Pix", "Cartão"].includes(paymentMethod) &&
       received < orderTotal;
     const storedPaymentMethod = moveToWallet ? "Carteira" : paymentMethod;
     const initialWalletHistory =
@@ -241,7 +250,7 @@ export async function POST(request: Request) {
       .from(serviceOrders);
     const number = `OS-${new Date().getFullYear()}-${String(Number(lastId || 0) + 1).padStart(6, "0")}`;
     const issuedAt = orderCreatedAt.slice(0, 10);
-    const dueDate = receivableDueDateFromIssuedAt(issuedAt);
+    const dueDate = boletoTermDays ? boletoFirstDueDate(issuedAt) : receivableDueDateFromIssuedAt(issuedAt);
     const [order] = await db
       .insert(serviceOrders)
       .values({
@@ -252,6 +261,7 @@ export async function POST(request: Request) {
         createdAt: orderCreatedAt,
         issuedAt,
         dueDate,
+        boletoTermDays,
         productCode: items.length
           ? JSON.stringify(items)
           : String(body.productCode),
@@ -317,6 +327,15 @@ export async function PATCH(request: Request) {
     if (validatesPayment && ["Pix", "Dinheiro", "Cartão"].includes(effectivePaymentMethod) && effectiveReceived <= 0)
       return Response.json({ error: "Informe o valor recebido." }, { status: 400 });
     const changes: Partial<typeof serviceOrders.$inferInsert> = {};
+    if (body.paymentMethod !== undefined || body.boletoTermDays !== undefined) {
+      const nextTerm =
+        effectivePaymentMethod === "Boleto" ? parseBoletoTerm(body.boletoTermDays ?? current.boletoTermDays) : null;
+      if (effectivePaymentMethod === "Boleto" && !nextTerm)
+        return Response.json({ error: "Escolha o prazo do boleto: 25, 50 ou 75 dias." }, { status: 400 });
+      const blocked = await assertBoletoTermChangeAllowedDb(db, id, nextTerm);
+      if (blocked) return Response.json({ error: blocked }, { status: 400 });
+      changes.boletoTermDays = nextTerm;
+    }
     if (
       body.productionStatus &&
       allowedProduction.includes(String(body.productionStatus))
@@ -453,6 +472,9 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
   const deliveryType = String(body.deliveryType || "");
   if (!["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(paymentMethod))
     return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
+  const boletoTermDays = paymentMethod === "Boleto" ? parseBoletoTerm(body.boletoTermDays) : null;
+  if (paymentMethod === "Boleto" && !boletoTermDays)
+    return Response.json({ error: "Escolha o prazo do boleto: 25, 50 ou 75 dias." }, { status: 400 });
   if (!["Retirada no local", "Entrega"].includes(deliveryType))
     return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
   if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
@@ -472,7 +494,7 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     body.discountRate,
   );
   const orderTotal = settleResidualTotal(totals.total, received);
-  const moveToWallet = ["Pix", "Boleto", "Cartão"].includes(paymentMethod) && received < orderTotal;
+  const moveToWallet = ["Pix", "Cartão"].includes(paymentMethod) && received < orderTotal;
   const storedPaymentMethod = moveToWallet ? "Carteira" : paymentMethod;
   const initialWalletHistory =
     moveToWallet && received > 0
@@ -480,7 +502,7 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
       : String(body.commercialStatus || "");
   const orderCreatedAt = String(body.createdAt || new Date().toISOString().slice(0, 10));
   const issuedAt = orderCreatedAt.slice(0, 10);
-  const dueDate = receivableDueDateFromIssuedAt(issuedAt);
+  const dueDate = boletoTermDays ? boletoFirstDueDate(issuedAt) : receivableDueDateFromIssuedAt(issuedAt);
   const [lastOrder] = await supabaseSelect<{ id: number }>("service_orders", {
     select: "id",
     order: "id.desc",
@@ -496,6 +518,7 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     created_at: orderCreatedAt,
     issued_at: issuedAt,
     due_date: dueDate,
+    boleto_term_days: boletoTermDays,
     product_code: items.length ? JSON.stringify(items) : String(body.productCode),
     quantity: totals.quantity,
     unit_price: unitPrice,
@@ -517,7 +540,7 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     const receivedAmountCents = Math.min(Math.round(received * 100), originalAmountCents);
     const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);
     try {
-      await supabaseInsert("accounts_receivable", {
+      const receivableRow = await supabaseInsert<Record<string, unknown>>("accounts_receivable", {
         service_order_id: serviceOrderId,
         customer_id: totals.customerId,
         issued_at: issuedAt,
@@ -528,6 +551,15 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
         status: balanceCents <= 0 ? "Pago" : "Pendente",
         notes: String(body.notes || ""),
       });
+      if (boletoTermDays && receivableRow?.id)
+        await syncInstallmentsRest({
+          accountReceivableId: Number(receivableRow.id),
+          serviceOrderId,
+          totalCents: originalAmountCents,
+          receivedCents: receivedAmountCents,
+          issuedAt,
+          termDays: boletoTermDays,
+        });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || "");
       if (!/duplicate|23505|unique/i.test(message)) {
@@ -548,6 +580,16 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
   if (!current) return Response.json({ error: "OS nao encontrada." }, { status: 404 });
   const allowedProduction = ["Fila de produção", "Aguardando", "Em produção", "Pronta", "Entregue", "Cancelada"];
   const changes: Record<string, string | number | null> = {};
+  if (body.paymentMethod !== undefined || body.boletoTermDays !== undefined) {
+    const effectiveMethod = String(body.paymentMethod ?? current.payment_method ?? "");
+    const nextTerm =
+      effectiveMethod === "Boleto" ? parseBoletoTerm(body.boletoTermDays ?? current.boleto_term_days) : null;
+    if (effectiveMethod === "Boleto" && !nextTerm)
+      return Response.json({ error: "Escolha o prazo do boleto: 25, 50 ou 75 dias." }, { status: 400 });
+    const blocked = await assertBoletoTermChangeAllowedRest(id, nextTerm);
+    if (blocked) return Response.json({ error: blocked }, { status: 400 });
+    changes.boleto_term_days = nextTerm;
+  }
   if (body.productionStatus && allowedProduction.includes(String(body.productionStatus)))
     changes.production_status = String(body.productionStatus);
   if (body.received !== undefined) changes.received = Math.max(0, Number(body.received));
@@ -633,13 +675,31 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
     notes: String(order.notes || ""),
     updated_at: new Date().toISOString(),
   };
+  let receivableId = receivable ? Number(receivable.id) : 0;
   if (receivable) {
-    await supabasePatch("accounts_receivable", { id: `eq.${Number(receivable.id)}` }, receivableValues);
+    await supabasePatch("accounts_receivable", { id: `eq.${receivableId}` }, receivableValues);
   } else {
-    await supabaseInsert("accounts_receivable", {
+    const inserted = await supabaseInsert<Record<string, unknown>>("accounts_receivable", {
       service_order_id: id,
       ...receivableValues,
     });
+    receivableId = Number(inserted?.id || 0);
   }
+  const termDays = parseBoletoTerm(order.boleto_term_days);
+  if (termDays && receivableId) {
+    // Boleto parcelado: parcelas, vencimento e status da conta saem do plano de parcelas.
+    await syncInstallmentsRest({
+      accountReceivableId: receivableId,
+      serviceOrderId: id,
+      totalCents,
+      receivedCents,
+      issuedAt,
+      termDays,
+      canceled: String(order.production_status || "") === "Cancelada",
+    });
+    const finalOrder = await supabaseGetOne<Record<string, unknown>>("service_orders", { select: "*", id: `eq.${id}` });
+    return Response.json({ order: camelizeRow(finalOrder || syncedOrder) });
+  }
+  if (body.paymentMethod !== undefined) await supabaseDelete("receivable_installments", { service_order_id: `eq.${id}` });
   return Response.json({ order: camelizeRow(syncedOrder) });
 }

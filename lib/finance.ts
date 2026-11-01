@@ -6,6 +6,7 @@ import {
   receipts,
   serviceOrders,
 } from "../db/schema";
+import { syncInstallmentsDb } from "./receivable-installments";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -121,6 +122,18 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
         updatedAt: new Date().toISOString(),
       })
       .where(eq(serviceOrders.id, order.id));
+
+    // Boleto parcelado: vencimento e status da conta passam a vir das parcelas.
+    if (order.boletoTermDays && receivable) {
+      await syncInstallmentsDb(db, {
+        accountReceivableId: receivable.id,
+        serviceOrderId: order.id,
+        totalCents,
+        receivedCents: Math.min(receivedCents, totalCents),
+        issuedAt,
+        termDays: order.boletoTermDays,
+      });
+    }
 
     if (receivedCents > 0 && receivable) {
       const legacySourceKey = `service_order:${order.id}:initial_receipt`;

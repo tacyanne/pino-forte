@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import {
   accountsPayable,
@@ -7,10 +7,13 @@ import {
   cashMovements,
   financialCategories,
   receipts,
+  receivableInstallments,
   serviceOrders,
 } from "../../../db/schema";
 import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso, toCents } from "../../../lib/finance";
+import { parseBoletoTerm } from "../../../lib/boleto-installments";
 import { requireUser } from "../../../lib/auth";
+import { syncInstallmentsDb, syncInstallmentsRest } from "../../../lib/receivable-installments";
 import { camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
@@ -23,6 +26,23 @@ const jsonError = (message: string, status = 400) =>
   Response.json({ error: message }, { status });
 
 const receiptPaymentMethods = ["Pix", "Dinheiro", "Cartão", "Boleto"];
+
+// Vencido de conta com parcelas = só parcelas em aberto já vencidas (parcela futura não é atraso).
+function receivableOverdueTotal(
+  open: Record<string, unknown>[],
+  installments: Record<string, unknown>[],
+  today: string,
+) {
+  const withInstallments = new Set(installments.map((item) => Number(item.accountReceivableId)));
+  const fromInstallments = installments
+    .filter((item) => Number(item.balanceCents) > 0 && String(item.status) !== "Cancelado")
+    .filter((item) => String(item.dueDate) < today)
+    .reduce((sum, item) => sum + Number(item.balanceCents), 0);
+  const fromReceivables = open
+    .filter((row) => !withInstallments.has(Number(row.id)) && String(row.dueDate) < today)
+    .reduce((sum, row) => sum + Number(row.balanceCents), 0);
+  return fromInstallments + fromReceivables;
+}
 
 async function audit(
   db: Awaited<ReturnType<typeof getDb>>,
@@ -54,13 +74,14 @@ export async function GET(request: Request) {
     const month = url.searchParams.get("month") || currentMonth();
     const today = todayIso();
 
-    const [categoryRows, receivableRows, payableRows, receiptRows, movementRows] =
+    const [categoryRows, receivableRows, payableRows, receiptRows, movementRows, installmentRows] =
       await Promise.all([
         db.select().from(financialCategories).orderBy(financialCategories.type, financialCategories.name),
         db.select().from(accountsReceivable).orderBy(desc(accountsReceivable.dueDate)).limit(300),
         db.select().from(accountsPayable).orderBy(desc(accountsPayable.dueDate)).limit(300),
         db.select().from(receipts).orderBy(desc(receipts.receiptDate)).limit(300),
         db.select().from(cashMovements).orderBy(desc(cashMovements.movementDate)).limit(300),
+        db.select().from(receivableInstallments).orderBy(receivableInstallments.dueDate).limit(1000),
       ]);
 
     const monthReceipts = receiptRows.filter(
@@ -75,9 +96,7 @@ export async function GET(request: Request) {
     const summary = {
       month,
       receivableOpenCents: openReceivables.reduce((sum, row) => sum + row.balanceCents, 0),
-      receivableOverdueCents: openReceivables
-        .filter((row) => row.dueDate < today)
-        .reduce((sum, row) => sum + row.balanceCents, 0),
+      receivableOverdueCents: receivableOverdueTotal(openReceivables, installmentRows, today),
       receivableReceivedCents: monthReceipts.reduce((sum, row) => sum + row.amountCents, 0),
       payableOpenCents: openPayables.reduce((sum, row) => sum + row.amountCents, 0),
       payableOverdueCents: openPayables
@@ -102,6 +121,7 @@ export async function GET(request: Request) {
         },
         categories: categoryRows,
         accountsReceivable: receivableRows,
+        receivableInstallments: installmentRows,
         accountsPayable: payableRows,
         receipts: receiptRows,
         cashMovements: movementRows,
@@ -128,6 +148,7 @@ async function getFinanceFromRest(request: Request) {
       payableRowsRaw,
       receiptRowsRaw,
       movementRowsRaw,
+      installmentRowsRaw,
     ] = await Promise.all([
       supabaseSelect<Record<string, unknown>>("financial_categories", {
         select: "*",
@@ -153,6 +174,11 @@ async function getFinanceFromRest(request: Request) {
         order: "movement_date.desc",
         limit: "300",
       }),
+      supabaseSelect<Record<string, unknown>>("receivable_installments", {
+        select: "*",
+        order: "due_date.asc",
+        limit: "1000",
+      }),
     ]);
 
     const categoryRows = camelizeRows<Record<string, unknown>>(categoryRowsRaw);
@@ -160,6 +186,7 @@ async function getFinanceFromRest(request: Request) {
     const payableRows = camelizeRows<Record<string, unknown>>(payableRowsRaw);
     const receiptRows = camelizeRows<Record<string, unknown>>(receiptRowsRaw);
     const movementRows = camelizeRows<Record<string, unknown>>(movementRowsRaw);
+    const installmentRows = camelizeRows<Record<string, unknown>>(installmentRowsRaw);
 
     const amount = (row: Record<string, unknown>, key: string) => Number(row[key] || 0);
     const date = (row: Record<string, unknown>, key: string) => String(row[key] || "");
@@ -177,9 +204,7 @@ async function getFinanceFromRest(request: Request) {
     const summary = {
       month,
       receivableOpenCents: openReceivables.reduce((sum, row) => sum + amount(row, "balanceCents"), 0),
-      receivableOverdueCents: openReceivables
-        .filter((row) => date(row, "dueDate") < today)
-        .reduce((sum, row) => sum + amount(row, "balanceCents"), 0),
+      receivableOverdueCents: receivableOverdueTotal(openReceivables, installmentRows, today),
       receivableReceivedCents: monthReceipts.reduce((sum, row) => sum + amount(row, "amountCents"), 0),
       payableOpenCents: openPayables.reduce((sum, row) => sum + amount(row, "amountCents"), 0),
       payableOverdueCents: openPayables
@@ -204,6 +229,7 @@ async function getFinanceFromRest(request: Request) {
         },
         categories: categoryRows,
         accountsReceivable: receivableRows,
+        receivableInstallments: installmentRows,
         accountsPayable: payableRows,
         receipts: receiptRows,
         cashMovements: movementRows,
@@ -221,7 +247,7 @@ async function getFinanceFromRest(request: Request) {
 async function syncReceivablesFromOrdersRest() {
   const [orders, existingReceivables] = await Promise.all([
     supabaseSelect<Record<string, unknown>>("service_orders", {
-      select: "id,customer_id,issued_at,created_at,due_date,total,total_cents,received,received_cents,production_status,notes",
+      select: "id,customer_id,issued_at,created_at,due_date,boleto_term_days,total,total_cents,received,received_cents,production_status,notes",
       order: "id.desc",
       limit: "1000",
     }),
@@ -253,7 +279,7 @@ async function syncReceivablesFromOrdersRest() {
     const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);
 
     try {
-      await supabaseInsert("accounts_receivable", {
+      const created = await supabaseInsert<Record<string, unknown>>("accounts_receivable", {
         service_order_id: serviceOrderId,
         customer_id: order.customer_id ? Number(order.customer_id) : null,
         issued_at: issuedAt,
@@ -264,6 +290,16 @@ async function syncReceivablesFromOrdersRest() {
         status: receivableStatus(balanceCents, dueDate),
         notes: String(order.notes || ""),
       });
+      const termDays = parseBoletoTerm(order.boleto_term_days);
+      if (termDays && created?.id)
+        await syncInstallmentsRest({
+          accountReceivableId: Number(created.id),
+          serviceOrderId,
+          totalCents: originalAmountCents,
+          receivedCents: receivedAmountCents,
+          issuedAt,
+          termDays,
+        });
       registeredOrderIds.add(serviceOrderId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || "");
@@ -403,6 +439,17 @@ export async function PATCH(request: Request) {
         if (!current) throw new Error("Conta a receber nao encontrada.");
         if (current.status === "Pago") throw new Error("Esta conta a receber ja esta paga.");
         if (amountCents > current.balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
+        const installmentId = Number(body.installmentId || 0);
+        let installment: typeof receivableInstallments.$inferSelect | undefined;
+        if (installmentId) {
+          [installment] = await tx
+            .select()
+            .from(receivableInstallments)
+            .where(and(eq(receivableInstallments.id, installmentId), eq(receivableInstallments.accountReceivableId, current.id)))
+            .limit(1);
+          if (!installment) throw new Error("Parcela nao encontrada.");
+          if (amountCents > installment.balanceCents) throw new Error("O recebimento excede o saldo da parcela.");
+        }
 
         const newReceived = current.receivedAmountCents + amountCents;
         const rawBalance = Math.max(0, current.originalAmountCents - newReceived);
@@ -415,6 +462,7 @@ export async function PATCH(request: Request) {
           .insert(receipts)
           .values({
             accountReceivableId: current.id,
+            installmentId: installment?.id ?? null,
             serviceOrderId: current.serviceOrderId,
             receiptDate,
             amountCents,
@@ -448,6 +496,27 @@ export async function PATCH(request: Request) {
             ...(writeOff ? { totalCents: newReceived, total: newReceived / 100 } : {}),
           })
           .where(eq(serviceOrders.id, current.serviceOrderId));
+
+        const [receivedOrder] = await tx.select().from(serviceOrders).where(eq(serviceOrders.id, current.serviceOrderId)).limit(1);
+        if (receivedOrder?.boletoTermDays) {
+          if (installment)
+            await tx
+              .update(receivableInstallments)
+              .set({
+                receivedCents: installment.receivedCents + amountCents,
+                balanceCents: installment.balanceCents - amountCents,
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(receivableInstallments.id, installment.id));
+          await syncInstallmentsDb(tx, {
+            accountReceivableId: current.id,
+            serviceOrderId: current.serviceOrderId,
+            totalCents: newOriginal,
+            receivedCents: newReceived,
+            issuedAt: current.issuedAt,
+            termDays: receivedOrder.boletoTermDays,
+          });
+        }
 
         await tx.insert(cashMovements).values({
           type: "entrada",
@@ -654,6 +723,17 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
     if (current.status === "Pago") throw new Error("Esta conta a receber ja esta paga.");
     const balanceCents = Number(current.balance_cents || 0);
     if (amountCents > balanceCents) throw new Error("O recebimento excede o saldo em aberto.");
+    const installmentId = Number(body.installmentId || 0);
+    const installment = installmentId
+      ? await supabaseGetOne<Record<string, unknown>>("receivable_installments", {
+          select: "*",
+          id: `eq.${installmentId}`,
+          account_receivable_id: `eq.${id}`,
+        })
+      : null;
+    if (installmentId && !installment) throw new Error("Parcela nao encontrada.");
+    if (installment && amountCents > Number(installment.balance_cents || 0))
+      throw new Error("O recebimento excede o saldo da parcela.");
     const originalAmountCents = Number(current.original_amount_cents || 0);
     const newReceived = Number(current.received_amount_cents || 0) + amountCents;
     const rawBalance = Math.max(0, originalAmountCents - newReceived);
@@ -664,6 +744,7 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
     const status = receivableStatus(newBalance, String(current.due_date || ""));
     const receipt = await supabaseInsert<Record<string, unknown>>("receipts", {
       account_receivable_id: id,
+      installment_id: installment ? Number(installment.id) : null,
       service_order_id: Number(current.service_order_id || 0),
       receipt_date: receiptDate,
       amount_cents: amountCents,
@@ -687,6 +768,27 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
       updated_at: new Date().toISOString(),
       ...(writeOff ? { total_cents: newReceived, total: newReceived / 100 } : {}),
     });
+    const receivedOrder = await supabaseGetOne<Record<string, unknown>>("service_orders", {
+      select: "boleto_term_days",
+      id: `eq.${Number(current.service_order_id || 0)}`,
+    });
+    const termDays = parseBoletoTerm(receivedOrder?.boleto_term_days);
+    if (termDays) {
+      if (installment)
+        await supabasePatch("receivable_installments", { id: `eq.${Number(installment.id)}` }, {
+          received_cents: Number(installment.received_cents || 0) + amountCents,
+          balance_cents: Number(installment.balance_cents || 0) - amountCents,
+          updated_at: new Date().toISOString(),
+        });
+      await syncInstallmentsRest({
+        accountReceivableId: id,
+        serviceOrderId: Number(current.service_order_id || 0),
+        totalCents: newOriginal,
+        receivedCents: newReceived,
+        issuedAt: String(current.issued_at || "").slice(0, 10),
+        termDays,
+      });
+    }
     await supabaseInsert("cash_movements", {
       type: "entrada",
       origin: "Recebimento",
