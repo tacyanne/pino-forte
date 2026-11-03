@@ -2124,9 +2124,11 @@ export default function Home() {
       pdf.text(`Status: ${order.productionStatus}`, 8, at(114));
       pdf.text(`Forma de entrega: ${order.deliveryType}`, 65, at(114));
       pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 132, at(114));
-      // Pagamento no rodapé; no boleto parcelado, uma parcela por linha.
+      // Pagamento na linha da previsão, à direita (sem passar da borda); boleto: uma parcela por linha.
+      const paymentLabel = `Pagamento: ${boletoLabel(order)}`;
       pdf.setFontSize(7);
-      pdf.text(`Pagamento: ${boletoLabel(order)}`, 140, at(118.5));
+      const paymentX = Math.min(162, 201 - pdf.getTextWidth(paymentLabel));
+      pdf.text(paymentLabel, paymentX, at(114));
       if (order.paymentMethod === "Boleto" && order.boletoTermDays) {
         const parcels = planInstallments({
           totalCents: Math.round(order.total * 100),
@@ -2135,12 +2137,12 @@ export default function Home() {
           termDays: order.boletoTermDays,
           today: todayIso(),
         });
-        pdf.setFontSize(6.2);
+        pdf.setFontSize(6);
         parcels.forEach((parcel, index) => {
           pdf.text(
             `${parcel.number}/${parcel.totalInstallments} ${brDate(parcel.dueDate)} ${money(parcel.amountCents / 100)}`,
-            140,
-            at(121.2 + index * 2.4),
+            paymentX,
+            at(116.8 + index * 2.1),
           );
         });
       }
