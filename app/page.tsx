@@ -2089,24 +2089,6 @@ export default function Home() {
       pdf.text(`CPF/CNPJ: ${customer ? formatDocument(customer.document).replace(/^(CPF|CNPJ): /, "") : "—"}`, 8, at(46));
       pdf.text(`Telefone: ${customer ? formatPhone(customer.whatsapp) : "—"}`, 106, at(46));
       pdf.text(`Endereço: ${address || "—"}`, 8, at(52), { maxWidth: 130 });
-      pdf.text(`Pagamento: ${boletoLabel(order)}`, 150, at(46));
-      if (order.paymentMethod === "Boleto" && order.boletoTermDays) {
-        const parcels = planInstallments({
-          totalCents: Math.round(order.total * 100),
-          receivedCents: 0,
-          issuedAt: order.createdAt.slice(0, 10),
-          termDays: order.boletoTermDays,
-          today: todayIso(),
-        });
-        pdf.setFontSize(6);
-        pdf.text(
-          parcels.map((parcel) => `${parcel.number}/${parcel.totalInstallments} ${brDate(parcel.dueDate)} ${money(parcel.amountCents / 100)}`).join("   "),
-          150,
-          at(49.6),
-          { maxWidth: 56, lineHeightFactor: 1.05 },
-        );
-        pdf.setFontSize(7.5);
-      }
 
       pdf.rect(left, at(55), 200, 53);
       columns.slice(1, -1).forEach((x) => pdf.line(x, at(55), x, at(108)));
@@ -2142,6 +2124,26 @@ export default function Home() {
       pdf.text(`Status: ${order.productionStatus}`, 8, at(114));
       pdf.text(`Forma de entrega: ${order.deliveryType}`, 65, at(114));
       pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 132, at(114));
+      // Pagamento no rodapé; no boleto parcelado, uma parcela por linha.
+      pdf.setFontSize(7);
+      pdf.text(`Pagamento: ${boletoLabel(order)}`, 140, at(118.5));
+      if (order.paymentMethod === "Boleto" && order.boletoTermDays) {
+        const parcels = planInstallments({
+          totalCents: Math.round(order.total * 100),
+          receivedCents: 0,
+          issuedAt: order.createdAt.slice(0, 10),
+          termDays: order.boletoTermDays,
+          today: todayIso(),
+        });
+        pdf.setFontSize(6.2);
+        parcels.forEach((parcel, index) => {
+          pdf.text(
+            `${parcel.number}/${parcel.totalInstallments} ${brDate(parcel.dueDate)} ${money(parcel.amountCents / 100)}`,
+            140,
+            at(121.2 + index * 2.4),
+          );
+        });
+      }
       pdf.setFontSize(6.2);
       pdf.text(observationLines, 8, at(119), { lineHeightFactor: 1.05 });
 
