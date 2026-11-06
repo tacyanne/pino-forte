@@ -75,3 +75,9 @@ test("sincronização de recebíveis ignora OS em fila sem pagamento", () => {
   assert.match(finance, /isQueuedWithoutPayment\(order\)\) continue/);
   assert.match(route, /isQueuedWithoutPayment\(\{ productionStatus: order\.production_status/);
 });
+
+test("painel principal mostra a fila de produção", () => {
+  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /<h2>Fila de produção<\/h2>/);
+  assert.match(page, /normalizeOrderStatus\(order\.productionStatus\) === ORDER_STATUS\.queue/);
+});

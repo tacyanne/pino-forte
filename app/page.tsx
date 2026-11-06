@@ -738,6 +738,14 @@ export default function Home() {
     );
     return { sales, received, pending: Math.max(0, sales - received) };
   }, [orders, dashboardMonth]);
+  // OS aguardando produção/entrega, da mais antiga para a mais nova.
+  const queueOrders = useMemo(
+    () =>
+      orders
+        .filter((order) => normalizeOrderStatus(order.productionStatus) === ORDER_STATUS.queue)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id),
+    [orders],
+  );
   const dashboardHistory = useMemo(() => {
     const grouped = orders.reduce(
       (months, order) => {
@@ -2586,6 +2594,26 @@ export default function Home() {
                     alert={dashboardFinance.pending > 0}
                     tone="red"
                   />
+                </section>
+                <section className="panel queue-panel">
+                  <div className="panel-title">
+                    <div>
+                      <h2>Fila de produção</h2>
+                      <p>OS aguardando produção e entrega</p>
+                    </div>
+                    <span className="insight-count">{queueOrders.length}</span>
+                  </div>
+                  {queueOrders.length ? queueOrders.map((order) => (
+                    <button type="button" className="attention-row" key={order.id} onClick={() => setOrderModal(order)}>
+                      <span>
+                        <b>{order.customerName}</b>
+                        <small>{order.number} · {orderItemSummary(order)} · pedido em {brDate(order.createdAt)}</small>
+                      </span>
+                      <strong>{getOrderItems(order).reduce((sum, item) => sum + item.quantity, 0)} un.</strong>
+                    </button>
+                  )) : (
+                    <p className="positive-empty">Nenhuma OS na fila de produção.</p>
+                  )}
                 </section>
                 <section className="content-grid">
                   <div className="panel">
