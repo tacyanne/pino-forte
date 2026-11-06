@@ -2621,7 +2621,7 @@ export default function Home() {
                       <div>
                         <h2>OS a Receber</h2>
                       </div>
-                      <button onClick={() => go("financial")}>Ver todas</button>
+                      <button onClick={() => go("orders")}>Ver todas</button>
                     </div>
                     <div className="dashboard-receivables">
                       <div className="dashboard-receivables-head" aria-hidden="true">
