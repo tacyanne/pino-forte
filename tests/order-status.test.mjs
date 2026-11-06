@@ -75,3 +75,11 @@ test("sincronização de recebíveis ignora OS em fila sem pagamento", () => {
   assert.match(finance, /isQueuedWithoutPayment\(order\)\) continue/);
   assert.match(route, /isQueuedWithoutPayment\(\{ productionStatus: order\.production_status/);
 });
+
+test("PDF e envio só após a entrega; botão de entrega se chama Entregar", () => {
+  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /O PDF da OS só é gerado depois da entrega/);
+  assert.match(page, /ORDER_STATUS\.delivered && \(\s*<button\s+className="outline-button"\s+onClick=\{\(\) => downloadPdf\(orderModal\)\}/);
+  assert.match(page, /\n\s+Entregar\r?\n/);
+  assert.equal(/Marcar como entregue/.test(page), false);
+});

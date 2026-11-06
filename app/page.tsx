@@ -2227,6 +2227,9 @@ export default function Home() {
     return pdf;
   }
   async function downloadPdf(order: Order) {
+    // O PDF da OS só é gerado depois da entrega.
+    if (normalizeOrderStatus(order.productionStatus) !== ORDER_STATUS.delivered)
+      return flash("O PDF só pode ser gerado depois que a OS for entregue.");
     const pdf = await createPdf(order);
     pdf.save(`${order.number}.pdf`);
   }
@@ -4349,12 +4352,14 @@ export default function Home() {
             <button className="outline-button system-back-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
-            <button
-              className="outline-button"
-              onClick={() => downloadPdf(orderModal)}
-            >
-              Baixar PDF
-            </button>
+            {normalizeOrderStatus(orderModal.productionStatus) === ORDER_STATUS.delivered && (
+              <button
+                className="outline-button"
+                onClick={() => downloadPdf(orderModal)}
+              >
+                Baixar PDF
+              </button>
+            )}
             <button
               className="cancel-button order-cancel-button"
               title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : orderDisplayStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
@@ -4368,7 +4373,7 @@ export default function Home() {
                 className="primary-button"
                 onClick={() => editOrder(orderModal, "review", ORDER_STATUS.delivered)}
               >
-                Marcar como entregue
+                Entregar
               </button>
             )}
             <button
@@ -4379,7 +4384,7 @@ export default function Home() {
             >
               Editar
             </button>
-            {orderModal.productionStatus !== "Cancelada" && (
+            {normalizeOrderStatus(orderModal.productionStatus) === ORDER_STATUS.delivered && (
                 <button
                   className="whatsapp-button"
                   onClick={() => shareOrder(orderModal)}
