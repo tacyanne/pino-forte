@@ -66,3 +66,13 @@ export function revertToQueueBlockedReason(info: { receivedCents: number; receip
     return "Esta OS já tem pagamento registrado. Não é possível voltar para a fila de produção.";
   return null;
 }
+
+/**
+ * PDF só depois da entrega. OS cancelada depois de entregue (tem forma de pagamento gravada)
+ * também gera, com a marca CANCELADA; cancelada ainda na fila nunca teve o que registrar.
+ */
+export function canGenerateOrderPdf(order: { productionStatus?: unknown; paymentMethod?: unknown }) {
+  const status = normalizeOrderStatus(order.productionStatus);
+  if (status === ORDER_STATUS.delivered) return true;
+  return status === ORDER_STATUS.canceled && !!String(order.paymentMethod || "").trim();
+}

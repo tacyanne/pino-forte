@@ -1,7 +1,7 @@
 "use client";
 import { BrandImage } from "./brand-image";
 import type { PieceLine } from "../lib/piece-lines";
-import { ORDER_STATUS, isQueuedWithoutPayment, normalizeOrderStatus } from "../lib/order-status";
+import { ORDER_STATUS, canGenerateOrderPdf, isQueuedWithoutPayment, normalizeOrderStatus } from "../lib/order-status";
 import { BOLETO_STEP_DAYS, BOLETO_TERMS, installmentCount, planInstallments, splitCents } from "../lib/boleto-installments";
 
 import {
@@ -2235,6 +2235,9 @@ export default function Home() {
     return pdf;
   }
   async function downloadPdf(order: Order) {
+    // O PDF da OS só é gerado depois da entrega.
+    if (!canGenerateOrderPdf(order))
+      return flash("O PDF só pode ser gerado depois que a OS for entregue.");
     const pdf = await createPdf(order);
     pdf.save(`${order.number}.pdf`);
   }
@@ -4377,12 +4380,14 @@ export default function Home() {
             <button className="outline-button system-back-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
-            <button
-              className="outline-button"
-              onClick={() => downloadPdf(orderModal)}
-            >
-              Baixar PDF
-            </button>
+            {canGenerateOrderPdf(orderModal) && (
+              <button
+                className="outline-button"
+                onClick={() => downloadPdf(orderModal)}
+              >
+                Baixar PDF
+              </button>
+            )}
             <button
               className="cancel-button order-cancel-button"
               title={orderModal.productionStatus === "Cancelada" ? "OS já cancelada" : orderDisplayStatus(orderModal) === "Pago" ? "Cancelamento indisponível para OS paga" : "Cancelar"}
@@ -4396,7 +4401,7 @@ export default function Home() {
                 className="primary-button"
                 onClick={() => editOrder(orderModal, "review", ORDER_STATUS.delivered)}
               >
-                Marcar como entregue
+                Entregar
               </button>
             )}
             <button
@@ -4407,7 +4412,7 @@ export default function Home() {
             >
               Editar
             </button>
-            {orderModal.productionStatus !== "Cancelada" && (
+            {canGenerateOrderPdf(orderModal) && orderModal.productionStatus !== "Cancelada" && (
                 <button
                   className="whatsapp-button"
                   onClick={() => shareOrder(orderModal)}
