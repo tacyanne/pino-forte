@@ -19,7 +19,8 @@ body { margin:0; color:var(--ink); background:var(--canvas); font-family:Inter, 
 button, input, select, textarea { font:inherit; }
 button { cursor:pointer; }
 .app-shell { min-height:100vh; display:flex; }
-.sidebar { position:fixed; inset:0 auto 0 0; width:244px; background:#050505; color:white; padding:20px 16px; display:flex; flex-direction:column; z-index:20; border-right:1px solid #292929; overflow-y:auto; }
+.sidebar { position:fixed; inset:0 auto 0 0; width:244px; background:#050505; color:white; padding:20px 16px; display:flex; flex-direction:column; z-index:20; border-right:1px solid #292929; overflow-y:auto; scrollbar-width:none; -ms-overflow-style:none; }
+.sidebar::-webkit-scrollbar { display:none; }
 .brand { display:flex; flex:0 0 auto; align-items:center; justify-content:center; padding:0 0 18px; border-bottom:1px solid #292929; margin-bottom:17px; overflow:hidden; }
 .brand-home{width:100%;background:transparent;color:inherit;cursor:pointer}
 .brand-home:focus-visible,.mobile-logo-home:focus-visible{outline:3px solid #ff5c00;outline-offset:3px}
