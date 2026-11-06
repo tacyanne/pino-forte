@@ -851,7 +851,7 @@ export default function Home() {
         return openInstallments.map((installment) => ({
           ...base,
           key: `${receivable.id}-${installment.number}`,
-          installmentLabel: `Parcela ${installment.number}/${installment.totalInstallments}`,
+          installmentLabel: installment.totalInstallments > 1 ? `Parcela ${installment.number}/${installment.totalInstallments}` : "",
           total: installment.amountCents / 100,
           received: installment.receivedCents / 100,
           balance: installment.balanceCents / 100,
@@ -924,7 +924,7 @@ export default function Home() {
             key: `${receivable.id}-${installment.number}`,
             dueDate: installment.dueDate,
             balance: installment.balanceCents / 100,
-            installmentLabel: `Parcela ${installment.number}/${installment.totalInstallments}`,
+            installmentLabel: installment.totalInstallments > 1 ? `Parcela ${installment.number}/${installment.totalInstallments}` : "",
           }))
         : [{ key: String(receivable.id), dueDate: receivable.dueDate, balance: receivable.balanceCents / 100, installmentLabel: "" }];
       return parcels.map((parcel) => ({
@@ -4213,7 +4213,7 @@ export default function Home() {
                           return (
                             <div className="boleto-installment-row" key={parcel.id}>
                               <span>
-                                <b>Parcela {parcel.number}/{parcel.totalInstallments} · {money(parcel.amountCents / 100)}</b>
+                                <b>{parcel.totalInstallments > 1 ? `Parcela ${parcel.number}/${parcel.totalInstallments} · ` : ""}{money(parcel.amountCents / 100)}</b>
                                 <small>
                                   Vence em {brDate(parcel.dueDate)}
                                   {parcel.receivedCents > 0 && parcel.balanceCents > 0 ? ` · recebido ${money(parcel.receivedCents / 100)}` : ""}

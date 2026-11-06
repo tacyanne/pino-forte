@@ -1,4 +1,4 @@
-import { desc, eq, max } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
@@ -245,10 +245,11 @@ export async function POST(request: Request) {
         openWalletOrder?.createdAt.slice(0, 7) ||
         orderCreatedAt.slice(0, 7);
     }
-    const [{ lastId }] = await db
-      .select({ lastId: max(serviceOrders.id) })
+    // Numeração baseada no maior número já emitido (não no id, que diverge após exclusões).
+    const [{ lastSeq }] = await db
+      .select({ lastSeq: sql<number>`coalesce(max(cast(substring(${serviceOrders.number} from '[0-9]+$') as integer)), 0)` })
       .from(serviceOrders);
-    const number = `OS-${new Date().getFullYear()}-${String(Number(lastId || 0) + 1).padStart(6, "0")}`;
+    const number = `OS-${new Date().getFullYear()}-${String(Number(lastSeq || 0) + 1).padStart(6, "0")}`;
     const issuedAt = orderCreatedAt.slice(0, 10);
     const dueDate = boletoTermDays ? boletoFirstDueDate(issuedAt) : receivableDueDateFromIssuedAt(issuedAt);
     const [order] = await db
@@ -503,12 +504,14 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
   const orderCreatedAt = String(body.createdAt || new Date().toISOString().slice(0, 10));
   const issuedAt = orderCreatedAt.slice(0, 10);
   const dueDate = boletoTermDays ? boletoFirstDueDate(issuedAt) : receivableDueDateFromIssuedAt(issuedAt);
-  const [lastOrder] = await supabaseSelect<{ id: number }>("service_orders", {
-    select: "id",
-    order: "id.desc",
+  // Numeração baseada no maior número já emitido (não no id, que diverge após exclusões).
+  const [lastOrder] = await supabaseSelect<{ number: string }>("service_orders", {
+    select: "number",
+    order: "number.desc",
     limit: "1",
   });
-  const number = `OS-${new Date().getFullYear()}-${String(Number(lastOrder?.id || 0) + 1).padStart(6, "0")}`;
+  const lastSeq = Number(String(lastOrder?.number || "").match(/(\d+)$/)?.[1] || 0);
+  const number = `OS-${new Date().getFullYear()}-${String(lastSeq + 1).padStart(6, "0")}`;
   const order = await supabaseInsert<Record<string, unknown>>("service_orders", {
     number,
     customer_id: totals.customerId,
