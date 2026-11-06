@@ -77,9 +77,10 @@ test("sincronização de recebíveis ignora OS em fila sem pagamento", () => {
   assert.match(route, /isQueuedWithoutPayment\(\{ productionStatus: order\.production_status/);
 });
 
-test("painel principal mostra a fila de produção", () => {
+test("painel principal mostra a fila como linhas da tabela existente", () => {
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /<h2>Fila de produção<\/h2>/);
+  assert.equal(/queue-panel/.test(page), false);
+  assert.match(page, /status: "Na fila"/);
   assert.match(page, /normalizeOrderStatus\(order\.productionStatus\) === ORDER_STATUS\.queue/);
 });
 
@@ -97,4 +98,12 @@ test("PDF: entregue sim; cancelada só se já foi entregue (tem pagamento); fila
   assert.equal(canGenerateOrderPdf({ productionStatus: "Cancelada", paymentMethod: "" }), false);
   assert.equal(canGenerateOrderPdf({ productionStatus: "Fila de produção", paymentMethod: "" }), false);
   assert.equal(canGenerateOrderPdf({ productionStatus: "Fila de produção", paymentMethod: "Boleto" }), false);
+});
+
+test("em fila o valor é calculado e mostrado (sem zerar preço)", () => {
+  const api = readFileSync(new URL("../app/api/orders/route.ts", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.equal(/queuedItems/.test(api), false);
+  assert.equal(/delivered \? totals\.subtotal : 0/.test(api), false);
+  assert.equal(/isQueuedWithoutPayment\(order\) \? "—" : money\(order\.total\)/.test(page), false);
 });

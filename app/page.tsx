@@ -963,6 +963,20 @@ export default function Home() {
       return b.receivable.id - a.receivable.id;
     })
     .slice(0, 6);
+  // OS em fila entram como linhas da mesma tabela, sempre no topo.
+  const dashboardRows = [
+    ...queueOrders.map((order) => ({
+      key: `queue-${order.id}`,
+      order: order as Order | undefined,
+      orderNumber: order.number,
+      customerName: order.customerName,
+      installmentLabel: "",
+      dueDate: "",
+      balance: order.total,
+      status: "Na fila",
+    })),
+    ...dashboardReceivables.map((row) => ({ ...row, order: row.order as Order | undefined })),
+  ];
   const payableRows = financeData.accountsPayable
     .filter((payable) =>
       payable.status !== "Cancelado" &&
@@ -1439,7 +1453,10 @@ export default function Home() {
           ...baseBody,
           productionStatus: ORDER_STATUS.queue,
           productCode: selectedCode,
-          items: orderItems.map((item) => ({ ...item, unitPrice: 0 })),
+          quantity,
+          unitPrice: product.price,
+          items: orderItems.map((item) => ({ ...item, unitPrice: itemUnitPrice(item) })),
+          discountRate,
         };
       } else {
         const items = orderItems.map((item) => ({
@@ -2598,26 +2615,6 @@ export default function Home() {
                     tone="red"
                   />
                 </section>
-                <section className="panel queue-panel">
-                  <div className="panel-title">
-                    <div>
-                      <h2>Fila de produção</h2>
-                      <p>OS aguardando produção e entrega</p>
-                    </div>
-                    <span className="insight-count">{queueOrders.length}</span>
-                  </div>
-                  {queueOrders.length ? queueOrders.map((order) => (
-                    <button type="button" className="attention-row" key={order.id} onClick={() => setOrderModal(order)}>
-                      <span>
-                        <b>{order.customerName}</b>
-                        <small>{order.number} · {orderItemSummary(order)} · pedido em {brDate(order.createdAt)}</small>
-                      </span>
-                      <strong>{getOrderItems(order).reduce((sum, item) => sum + item.quantity, 0)} un.</strong>
-                    </button>
-                  )) : (
-                    <p className="positive-empty">Nenhuma OS na fila de produção.</p>
-                  )}
-                </section>
                 <section className="content-grid">
                   <div className="panel">
                     <div className="panel-title">
@@ -2633,7 +2630,7 @@ export default function Home() {
                         <span>Saldo Devedor</span>
                         <span>Status</span>
                       </div>
-                      {dashboardReceivables.length ? dashboardReceivables.map((row) => (
+                      {dashboardRows.length ? dashboardRows.map((row) => (
                         <div
                           className={`dashboard-receivable-row ${row.order ? "clickable" : ""}`}
                           key={row.key}
@@ -2651,9 +2648,9 @@ export default function Home() {
                             <b>{row.orderNumber}</b>
                             <small>{row.customerName}{row.installmentLabel ? ` · ${row.installmentLabel}` : ""}</small>
                           </div>
-                          <span data-label="Data de vencimento">{brDate(row.dueDate)}</span>
+                          <span data-label="Data de vencimento">{row.dueDate ? brDate(row.dueDate) : "—"}</span>
                           <strong data-label="Saldo Devedor">{money(row.balance)}</strong>
-                          <span className={`status ${row.status === "Atrasado" ? "red" : "amber"}`}>{row.status}</span>
+                          <span className={`status ${row.status === "Atrasado" ? "red" : row.status === "Na fila" ? "blue" : "amber"}`}>{row.status}</span>
                         </div>
                       )) : (
                         <p className="dashboard-receivables-empty">Não há contas pendentes.</p>
@@ -2805,20 +2802,16 @@ export default function Home() {
                                 }}
                               />
                             </Field>
-                            {showFinancialFields && (
-                              <>
-                                <div className="order-item-value">
-                                  <span>Valor unitário</span>
-                                  <strong>{money(itemUnitPrice(item))}</strong>
-                                </div>
-                                <div className="subtotal">
-                                  <span>Valor total</span>
-                                  <strong>
-                                    {money(itemUnitPrice(item) * item.quantity)}
-                                  </strong>
-                                </div>
-                              </>
-                            )}
+                            <div className="order-item-value">
+                              <span>Valor unitário</span>
+                              <strong>{money(itemUnitPrice(item))}</strong>
+                            </div>
+                            <div className="subtotal">
+                              <span>Valor total</span>
+                              <strong>
+                                {money(itemUnitPrice(item) * item.quantity)}
+                              </strong>
+                            </div>
                             {index === orderItems.length - 1 && (
                               <button
                                 type="button"
@@ -2858,7 +2851,7 @@ export default function Home() {
                       })}
                     </div>
                   </Card>
-                  <Card n="3" title={showFinancialFields ? "Entrega, pagamento e observações" : "Observações"}>
+                  <Card n="3" title={showFinancialFields ? "Entrega, pagamento e observações" : "Valor e observações"}>
                     {showFinancialFields && (
                     <div className="form-grid order-payment-grid">
                       <Field label="Forma de entrega *">
@@ -2927,6 +2920,17 @@ export default function Home() {
                         )}
                       </div>
                     </div>
+                    )}
+                    {!showFinancialFields && (
+                      <div className={`payment-summary ${discountRate > 0 ? "three-columns" : "two-columns"}`}>
+                        {discountRate > 0 && (
+                          <>
+                            <span>Subtotal <strong>{money(subtotal)}</strong></span>
+                            <span>Desconto distribuidor ({discountRate}%) <strong>- {money(discountAmount)}</strong></span>
+                          </>
+                        )}
+                        <span>Total da OS <strong>{money(total)}</strong></span>
+                      </div>
                     )}
                     <div className="order-notes">
                       <Field label="Observações adicionais">
@@ -3052,7 +3056,7 @@ export default function Home() {
                           <td><b>{order.number}</b></td>
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
-                          <td>{isQueuedWithoutPayment(order) ? "—" : money(order.total)}</td>
+                          <td>{money(order.total)}</td>
                           <td>{order.paymentMethod || "—"}</td>
                           <td><span className={`status ${orderDisplayTone(order)}`}>{orderDisplayStatus(order)}</span></td>
                         </tr>
@@ -4280,12 +4284,8 @@ export default function Home() {
                   <div className="review-item-row" key={`${item.code}-${index}`}>
                     <ReviewField label={`Peça ${index + 1}`} value={[item.code, pieceLabel(selectedProduct, item.code), selectedProduct?.measure].filter(Boolean).join(" · ")} />
                     <ReviewField label="Quantidade" value={String(item.quantity)} />
-                    {!isQueuedWithoutPayment(orderModal) && (
-                      <>
-                        <ReviewField label="Valor unitário" value={money(unitPrice)} />
-                        <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />
-                      </>
-                    )}
+                    <ReviewField label="Valor unitário" value={money(unitPrice)} />
+                    <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />
                   </div>
                 );
               })}
@@ -4293,6 +4293,18 @@ export default function Home() {
             {isQueuedWithoutPayment(orderModal) ? (
               <div className="form-grid order-payment-grid review-payment-grid">
                 <ReviewField label="Status" value="Fila de produção" />
+                <div className={`payment-summary ${isDistributor(orderModal.customerType) ? "three-columns" : "two-columns"}`}>
+                  {isDistributor(orderModal.customerType) && (
+                    <>
+                      <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
+                      <span>
+                        Desconto ({orderModal.discountRate || 0}%)
+                        <strong>- {money((orderModal.subtotal || orderModal.total) - orderModal.total)}</strong>
+                      </span>
+                    </>
+                  )}
+                  <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
+                </div>
               </div>
             ) : (
             <div className="form-grid order-payment-grid review-payment-grid">
