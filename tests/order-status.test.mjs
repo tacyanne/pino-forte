@@ -107,3 +107,16 @@ test("em fila o valor é calculado e mostrado (sem zerar preço)", () => {
   assert.equal(/delivered \? totals\.subtotal : 0/.test(api), false);
   assert.equal(/isQueuedWithoutPayment\(order\) \? "—" : money\(order\.total\)/.test(page), false);
 });
+
+test("caminho Drizzle (o de produção): voltar para a fila apaga recebível e parcelas e confere recebimentos", () => {
+  const api = readFileSync(new URL("../app/api/orders/route.ts", import.meta.url), "utf8");
+  assert.match(api, /db\.delete\(receivableInstallments\)/);
+  assert.match(api, /db\.delete\(accountsReceivable\)/);
+  assert.match(api, /receiptCount: Number\(receiptCount \|\| 0\)/);
+  assert.equal(/receiptCount: 0 \}/.test(api), false);
+});
+
+test("caminho Drizzle mantém os centavos acompanhando o valor da OS", () => {
+  const api = readFileSync(new URL("../app/api/orders/route.ts", import.meta.url), "utf8");
+  assert.match(api, /discountCents: Math\.max\(0, subtotalCents - totalCents\)/);
+});
