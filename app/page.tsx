@@ -1,6 +1,7 @@
 "use client";
 import { BrandImage } from "./brand-image";
 import type { PieceLine } from "../lib/piece-lines";
+import { ORDER_STATUS, isQueuedWithoutPayment, normalizeOrderStatus } from "../lib/order-status";
 import { BOLETO_STEP_DAYS, BOLETO_TERMS, installmentCount, planInstallments, splitCents } from "../lib/boleto-installments";
 
 import {
@@ -380,6 +381,8 @@ const formatDocument = (value: string) => {
 const paymentStatus = (order: Order) =>
   order.productionStatus === "Cancelada"
     ? "Cancelada"
+    : isQueuedWithoutPayment(order)
+    ? "Na fila"
     : order.received >= order.total
     ? "Pago"
     : order.received > 0
@@ -388,6 +391,8 @@ const paymentStatus = (order: Order) =>
 const paymentTone = (order: Order) =>
   order.productionStatus === "Cancelada"
     ? "red"
+    : isQueuedWithoutPayment(order)
+    ? "blue"
     : order.received >= order.total ? "green" : order.received > 0 ? "blue" : "amber";
 const getOrderItems = (order: Order) => {
   try {
@@ -529,6 +534,7 @@ export default function Home() {
   const [selectedDeliveryType, setSelectedDeliveryType] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
   const [selectedBoletoTerm, setSelectedBoletoTerm] = useState("");
+  const [selectedOrderStatus, setSelectedOrderStatus] = useState<string>(ORDER_STATUS.queue);
   const [discountOverride, setDiscountOverride] = useState("");
   const [orderItems, setOrderItems] = useState<
     { code: string; quantity: number; unitPrice?: number }[]
@@ -714,9 +720,16 @@ export default function Home() {
       : automaticDiscountRate;
   const discountAmount = subtotal * discountRate / 100;
   const total = Math.round((subtotal - discountAmount) * 100) / 100;
+  // Em "Fila de produção" o formulário tem só cliente, peças, data e observações.
+  // OS antigas em fila que já têm pagamento continuam com o formulário completo.
+  const legacyQueueWithPayment =
+    !!editingOrder &&
+    normalizeOrderStatus(editingOrder.productionStatus) === ORDER_STATUS.queue &&
+    !!String(editingOrder.paymentMethod || "").trim();
+  const showFinancialFields = selectedOrderStatus === ORDER_STATUS.delivered || legacyQueueWithPayment;
   const dashboardFinance = useMemo(() => {
     const monthOrders = orders.filter(
-      (order) => order.productionStatus !== "Cancelada" && monthInSaoPaulo(order.createdAt) === dashboardMonth,
+      (order) => order.productionStatus === ORDER_STATUS.delivered && monthInSaoPaulo(order.createdAt) === dashboardMonth,
     );
     const sales = monthOrders.reduce((sum, order) => sum + order.total, 0);
     const received = monthOrders.reduce(
@@ -728,7 +741,7 @@ export default function Home() {
   const dashboardHistory = useMemo(() => {
     const grouped = orders.reduce(
       (months, order) => {
-        if (order.productionStatus === "Cancelada") return months;
+        if (order.productionStatus !== ORDER_STATUS.delivered) return months;
         const month = monthInSaoPaulo(order.createdAt);
         if (month === dashboardMonth) return months;
         const summary = months[month] || { sales: 0, received: 0 };
@@ -805,7 +818,7 @@ export default function Home() {
     (o) => {
       const status = orderDisplayStatus(o);
       return (
-        o.productionStatus !== "Cancelada" &&
+        o.productionStatus === ORDER_STATUS.delivered &&
         (!reportMonth || monthInSaoPaulo(o.createdAt) === reportMonth) &&
         (!reportCustomer || o.customerName.toLowerCase().includes(reportCustomer.toLowerCase())) &&
         (!reportPaymentStatus || status === reportPaymentStatus)
@@ -815,7 +828,7 @@ export default function Home() {
   const reportSales = reportOrders.reduce((sum, o) => sum + o.total, 0);
   const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
   const reportMonths = Array.from(
-    new Set(orders.filter((o) => o.productionStatus !== "Cancelada").map((o) => monthInSaoPaulo(o.createdAt))),
+    new Set(orders.filter((o) => o.productionStatus === ORDER_STATUS.delivered).map((o) => monthInSaoPaulo(o.createdAt))),
   ).filter(Boolean).sort((a, b) => b.localeCompare(a));
   const ordersById = useMemo(
     () => new Map(orders.map((order) => [order.id, order])),
@@ -1066,6 +1079,7 @@ export default function Home() {
       setSelectedDeliveryType("");
       setSelectedPaymentMethod("");
       setSelectedBoletoTerm("");
+      setSelectedOrderStatus(ORDER_STATUS.queue);
       setDiscountOverride("");
       setSelectedCode("");
       setOrderItems([{ code: "", quantity: 1 }]);
@@ -1393,43 +1407,72 @@ export default function Home() {
       if (!selectedCustomer) throw new Error("Selecione um cliente.");
       if (!orderItems.length) throw new Error("Adicione pelo menos uma peça.");
       if (orderItems.some((item) => !item.code)) throw new Error("Selecione todas as peças da OS.");
-      const items = orderItems.map((item) => ({
-        ...item,
-        unitPrice: itemUnitPrice(item),
-      }));
-      const paymentMethod = String(f.get("paymentMethod") || "");
-      const deliveryType = String(f.get("deliveryType") || "");
-      if (!deliveryType) throw new Error("Selecione a forma de entrega.");
-      if (!paymentMethod) throw new Error("Selecione a forma de pagamento.");
-      if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
-        throw new Error("Informe o valor recebido.");
       const orderDate = String(f.get("orderDate") || "");
       if (!isValidBrDate(orderDate)) throw new Error("Informe uma data do pedido válida.");
-      if (paymentMethod === "Boleto" && !selectedBoletoTerm)
-        throw new Error("Escolha o prazo do boleto: 25, 50 ou 75 dias.");
-      const moveToWallet =
-        ["Pix", "Cartão"].includes(paymentMethod) &&
-        received < total;
-      const initialWalletHistory =
-        moveToWallet && received > 0
-          ? JSON.stringify([
-              {
-                amount: received,
-                method: paymentMethod,
-                date: toIsoDate(orderDate),
-              },
-            ])
-          : editingOrder?.commercialStatus || "";
-      const r = await fetch("/api/orders", {
-        method: editingOrder ? "PATCH" : "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id: editingOrder?.id,
-          customerId: orderCustomer?.id,
-          customerType: orderCustomer?.customerType || selectedOrderCustomerType,
-          customerName: selectedCustomer,
-          createdAt: toIsoDate(orderDate),
-          deliveryDate: editingOrder?.deliveryDate || todayIso(),
+      const wasDelivered = !!editingOrder && normalizeOrderStatus(editingOrder.productionStatus) === ORDER_STATUS.delivered;
+      const baseBody = {
+        id: editingOrder?.id,
+        customerId: orderCustomer?.id,
+        customerType: orderCustomer?.customerType || selectedOrderCustomerType,
+        customerName: selectedCustomer,
+        createdAt: toIsoDate(orderDate),
+        notes: f.get("notes"),
+      };
+      let requestBody: Record<string, unknown>;
+      if (!showFinancialFields) {
+        // Em fila: só cliente, peças, data e observações. Preço e pagamento ficam para a entrega.
+        if (wasDelivered && !window.confirm(
+          `Voltar a ${editingOrder?.number} para a fila de produção? O recebível e as parcelas serão removidos.`,
+        )) {
+          setSaving(false);
+          return;
+        }
+        requestBody = {
+          ...baseBody,
+          productionStatus: ORDER_STATUS.queue,
+          productCode: selectedCode,
+          items: orderItems.map((item) => ({ ...item, unitPrice: 0 })),
+        };
+      } else {
+        const items = orderItems.map((item) => ({
+          ...item,
+          unitPrice: itemUnitPrice(item),
+        }));
+        const paymentMethod = String(f.get("paymentMethod") || "");
+        const deliveryType = String(f.get("deliveryType") || "");
+        if (!deliveryType) throw new Error("Selecione a forma de entrega.");
+        if (!paymentMethod) throw new Error("Selecione a forma de pagamento.");
+        if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
+          throw new Error("Informe o valor recebido.");
+        if (paymentMethod === "Boleto" && !selectedBoletoTerm)
+          throw new Error("Escolha o prazo do boleto: 25, 50 ou 75 dias.");
+        const moveToWallet =
+          ["Pix", "Cartão"].includes(paymentMethod) &&
+          received < total;
+        const initialWalletHistory =
+          moveToWallet && received > 0
+            ? JSON.stringify([
+                {
+                  amount: received,
+                  method: paymentMethod,
+                  date: toIsoDate(orderDate),
+                },
+              ])
+            : editingOrder?.commercialStatus || "";
+        const delivering = selectedOrderStatus === ORDER_STATUS.delivered && !wasDelivered;
+        if (delivering) {
+          const methodLabel = paymentMethod === "Boleto"
+            ? `Boleto em ${selectedBoletoTerm} dias (${installmentCount(Number(selectedBoletoTerm))}x)`
+            : moveToWallet ? "Carteira" : paymentMethod;
+          if (!window.confirm(`Confirmar entrega?\nTotal: ${money(total)}\nPagamento: ${methodLabel}`)) {
+            setSaving(false);
+            return;
+          }
+        }
+        requestBody = {
+          ...baseBody,
+          deliveryDate: delivering ? todayIso() : editingOrder?.deliveryDate || todayIso(),
+          productionStatus: selectedOrderStatus === ORDER_STATUS.delivered ? ORDER_STATUS.delivered : ORDER_STATUS.queue,
           productCode: selectedCode,
           quantity,
           unitPrice: product.price,
@@ -1440,8 +1483,12 @@ export default function Home() {
           paymentMethod: moveToWallet ? "Carteira" : paymentMethod,
           boletoTermDays: paymentMethod === "Boleto" ? Number(selectedBoletoTerm) : null,
           commercialStatus: initialWalletHistory,
-          notes: f.get("notes"),
-        }),
+        };
+      }
+      const r = await fetch("/api/orders", {
+        method: editingOrder ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(requestBody),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
@@ -1452,6 +1499,7 @@ export default function Home() {
             : [j.order, ...currentOrders],
         ),
       );
+      await refreshFinance();
       setReceived(0);
       flash(editingOrder ? `${j.order.number} atualizada com sucesso.` : `${j.order.number} criada com sucesso.`);
       setEditingOrder(null);
@@ -1492,7 +1540,7 @@ export default function Home() {
       flash(`${order.number} cancelada.`);
     }
   }
-  function editOrder(order: Order, returnTo: "orders" | "review" = "review") {
+  function editOrder(order: Order, returnTo: "orders" | "review" = "review", presetStatus?: string) {
     const items = getOrderItems(order).map(({ code, quantity, unitPrice }) => ({
       code,
       quantity,
@@ -1526,6 +1574,10 @@ export default function Home() {
     setSelectedDeliveryType(order.deliveryType);
     setSelectedPaymentMethod(order.paymentMethod);
     setSelectedBoletoTerm(order.paymentMethod === "Boleto" ? String(order.boletoTermDays || BOLETO_STEP_DAYS) : "");
+    setSelectedOrderStatus(
+      presetStatus ||
+        (normalizeOrderStatus(order.productionStatus) === ORDER_STATUS.delivered ? ORDER_STATUS.delivered : ORDER_STATUS.queue),
+    );
     setDiscountOverride(String(order.discountRate ?? 0));
     setOrderModal(null);
     setScreen("new-order");
@@ -2098,8 +2150,11 @@ export default function Home() {
       pdf.text("CÓDIGO", 8, at(60));
       pdf.text("DESCRIÇÃO DA PEÇA", 34, at(60));
       pdf.text("QTD.", 129, at(60), { align: "center" });
-      pdf.text("VALOR UNIT.", 155, at(60), { align: "center" });
-      pdf.text("VALOR TOTAL", 201, at(60), { align: "right" });
+      const queuedCopy = isQueuedWithoutPayment(order);
+      if (!queuedCopy) {
+        pdf.text("VALOR UNIT.", 155, at(60), { align: "center" });
+        pdf.text("VALOR TOTAL", 201, at(60), { align: "right" });
+      }
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(items.length > 5 ? 5.5 : 7);
       let itemY = 69;
@@ -2109,27 +2164,31 @@ export default function Home() {
         pdf.text(item.code, 8, at(itemY));
         pdf.text(`${pieceLabel(product, item.code)} · ${product?.measure || ""}`, 34, at(itemY), { maxWidth: 82 });
         pdf.text(String(item.quantity), 129, at(itemY), { align: "center" });
-        pdf.text(money(item.unitPrice), 168, at(itemY), { align: "right" });
-        pdf.text(money(item.unitPrice * item.quantity), 201, at(itemY), { align: "right" });
+        if (!queuedCopy) {
+          pdf.text(money(item.unitPrice), 168, at(itemY), { align: "right" });
+          pdf.text(money(item.unitPrice * item.quantity), 201, at(itemY), { align: "right" });
+        }
         itemY += rowHeight;
       });
       pdf.line(left, at(100), right, at(100));
       pdf.setFont("helvetica", "bold");
-      pdf.text(order.discountRate > 0 ? `SUBTOTAL ${money(order.subtotal || order.total)} · DESCONTO ${order.discountRate}%` : "TOTAL DA ORDEM", 75, at(105), { align: "center" });
+      pdf.text(queuedCopy ? "QUANTIDADE TOTAL" : order.discountRate > 0 ? `SUBTOTAL ${money(order.subtotal || order.total)} · DESCONTO ${order.discountRate}%` : "TOTAL DA ORDEM", 75, at(105), { align: "center" });
       pdf.text(String(items.reduce((sum, item) => sum + item.quantity, 0)), 129, at(105), { align: "center" });
-      pdf.text(money(order.total), 201, at(105), { align: "right" });
+      if (!queuedCopy) pdf.text(money(order.total), 201, at(105), { align: "right" });
 
       pdf.rect(left, at(108), 200, 18);
       pdf.setFont("helvetica", "normal");
-      pdf.text(`Status: ${order.productionStatus}`, 8, at(114));
-      pdf.text(`Forma de entrega: ${order.deliveryType}`, 65, at(114));
-      pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 132, at(114));
+      pdf.text(`Status: ${normalizeOrderStatus(order.productionStatus)}`, 8, at(114));
+      if (!queuedCopy) {
+        pdf.text(`Forma de entrega: ${order.deliveryType}`, 65, at(114));
+        pdf.text(`Previsão: ${brDate(order.deliveryDate)}`, 132, at(114));
+      }
       // Pagamento na linha da previsão, à direita (sem passar da borda); boleto: uma parcela por linha.
       const paymentLabel = `Pagamento: ${boletoLabel(order)}`;
       pdf.setFontSize(7);
       const paymentX = Math.min(162, 201 - pdf.getTextWidth(paymentLabel));
-      pdf.text(paymentLabel, paymentX, at(114));
-      if (order.paymentMethod === "Boleto" && order.boletoTermDays) {
+      if (!queuedCopy) pdf.text(paymentLabel, paymentX, at(114));
+      if (!queuedCopy && order.paymentMethod === "Boleto" && order.boletoTermDays) {
         const parcels = planInstallments({
           totalCents: Math.round(order.total * 100),
           receivedCents: 0,
@@ -2636,6 +2695,15 @@ export default function Home() {
                           placeholder="Selecione o cliente"
                         />
                       </Field>
+                      <Field label="Status">
+                        <select
+                          value={selectedOrderStatus}
+                          onChange={(e) => setSelectedOrderStatus(e.target.value)}
+                        >
+                          <option value={ORDER_STATUS.queue}>Fila de produção</option>
+                          <option value={ORDER_STATUS.delivered}>Entregue</option>
+                        </select>
+                      </Field>
                       <Field label="Data do pedido *">
                         <input
                           name="orderDate"
@@ -2706,16 +2774,20 @@ export default function Home() {
                                 }}
                               />
                             </Field>
-                            <div className="order-item-value">
-                              <span>Valor unitário</span>
-                              <strong>{money(itemUnitPrice(item))}</strong>
-                            </div>
-                            <div className="subtotal">
-                              <span>Valor total</span>
-                              <strong>
-                                {money(itemUnitPrice(item) * item.quantity)}
-                              </strong>
-                            </div>
+                            {showFinancialFields && (
+                              <>
+                                <div className="order-item-value">
+                                  <span>Valor unitário</span>
+                                  <strong>{money(itemUnitPrice(item))}</strong>
+                                </div>
+                                <div className="subtotal">
+                                  <span>Valor total</span>
+                                  <strong>
+                                    {money(itemUnitPrice(item) * item.quantity)}
+                                  </strong>
+                                </div>
+                              </>
+                            )}
                             {index === orderItems.length - 1 && (
                               <button
                                 type="button"
@@ -2755,7 +2827,8 @@ export default function Home() {
                       })}
                     </div>
                   </Card>
-                  <Card n="3" title="Pagamento e observações">
+                  <Card n="3" title={showFinancialFields ? "Entrega, pagamento e observações" : "Observações"}>
+                    {showFinancialFields && (
                     <div className="form-grid order-payment-grid">
                       <Field label="Forma de entrega *">
                         <select name="deliveryType" required value={selectedDeliveryType} onChange={(e) => setSelectedDeliveryType(e.target.value)}>
@@ -2823,6 +2896,7 @@ export default function Home() {
                         )}
                       </div>
                     </div>
+                    )}
                     <div className="order-notes">
                       <Field label="Observações adicionais">
                         <textarea name="notes" rows={2} defaultValue={editingOrder?.notes || ""} />
@@ -2894,7 +2968,7 @@ export default function Home() {
                   <Field label="Status">
                     <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}>
                       <option>Todos</option>
-                      {["Pago", "Pagamento parcial", "Em aberto", "Atrasado", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
+                      {["Na fila", "Pago", "Pagamento parcial", "Em aberto", "Atrasado", "Cancelada"].map((s) => <option key={s}>{s}</option>)}
                     </select>
                   </Field>
                   <Field label="Forma de pagamento">
@@ -2947,8 +3021,8 @@ export default function Home() {
                           <td><b>{order.number}</b></td>
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
-                          <td>{money(order.total)}</td>
-                          <td>{order.paymentMethod}</td>
+                          <td>{isQueuedWithoutPayment(order) ? "—" : money(order.total)}</td>
+                          <td>{order.paymentMethod || "—"}</td>
                           <td><span className={`status ${orderDisplayTone(order)}`}>{orderDisplayStatus(order)}</span></td>
                         </tr>
                       ))}
@@ -4175,12 +4249,21 @@ export default function Home() {
                   <div className="review-item-row" key={`${item.code}-${index}`}>
                     <ReviewField label={`Peça ${index + 1}`} value={[item.code, pieceLabel(selectedProduct, item.code), selectedProduct?.measure].filter(Boolean).join(" · ")} />
                     <ReviewField label="Quantidade" value={String(item.quantity)} />
-                    <ReviewField label="Valor unitário" value={money(unitPrice)} />
-                    <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />
+                    {!isQueuedWithoutPayment(orderModal) && (
+                      <>
+                        <ReviewField label="Valor unitário" value={money(unitPrice)} />
+                        <ReviewField label="Valor total" value={money(unitPrice * item.quantity)} />
+                      </>
+                    )}
                   </div>
                 );
               })}
             </div>
+            {isQueuedWithoutPayment(orderModal) ? (
+              <div className="form-grid order-payment-grid review-payment-grid">
+                <ReviewField label="Status" value="Fila de produção" />
+              </div>
+            ) : (
             <div className="form-grid order-payment-grid review-payment-grid">
               <ReviewField label="Forma de entrega" value={orderModal.deliveryType} />
               <ReviewField label="Forma de pagamento" value={`${boletoLabel(orderModal)} · ${orderDisplayStatus(orderModal)}`} />
@@ -4255,6 +4338,7 @@ export default function Home() {
                 })()}
               </div>
             </div>
+            )}
             <ReviewField
               label="Observações adicionais"
               value={completeOrderNotes(orderModal, "\n", financeData.receipts)}
@@ -4279,6 +4363,14 @@ export default function Home() {
             >
               Cancelar
             </button>
+            {orderModal.productionStatus !== "Cancelada" && normalizeOrderStatus(orderModal.productionStatus) === ORDER_STATUS.queue && (
+              <button
+                className="primary-button"
+                onClick={() => editOrder(orderModal, "review", ORDER_STATUS.delivered)}
+              >
+                Marcar como entregue
+              </button>
+            )}
             <button
               className="primary-button"
               title={orderModal.productionStatus === "Cancelada" ? "Edição indisponível para OS cancelada" : orderDisplayStatus(orderModal) === "Pago" ? "Edição indisponível para OS paga" : "Editar"}

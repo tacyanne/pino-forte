@@ -3,6 +3,14 @@ import { getDb } from "../../../db";
 import { customers, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
 import { boletoFirstDueDate, parseBoletoTerm } from "../../../lib/boleto-installments";
+import {
+  ORDER_STATUS,
+  deliveryFieldsError,
+  normalizeOrderStatus,
+  requestedCreationStatus,
+  requestedUpdateStatus,
+  revertToQueueBlockedReason,
+} from "../../../lib/order-status";
 import { receivableDueDateFromIssuedAt, receivableStatus, settleResidualTotal } from "../../../lib/finance";
 import {
   assertBoletoTermChangeAllowedDb,
@@ -87,10 +95,7 @@ export async function GET(request: Request) {
     return Response.json({
       orders: rows.map((order) => ({
         ...order,
-        productionStatus:
-          order.productionStatus === "Aguardando"
-            ? "Fila de produção"
-            : order.productionStatus,
+        productionStatus: normalizeOrderStatus(order.productionStatus),
       })),
     }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
@@ -154,10 +159,7 @@ async function getOrdersFromRest() {
   return Response.json({
     orders: camelizeRows<Record<string, unknown>>(rows).map((order) => ({
       ...order,
-      productionStatus:
-        order.productionStatus === "Aguardando"
-          ? "Fila de producao"
-          : order.productionStatus,
+      productionStatus: normalizeOrderStatus(order.productionStatus),
     })),
   }, { headers: { "cache-control": "no-store" } });
 }
@@ -175,26 +177,28 @@ export async function POST(request: Request) {
     const normalizedItems: OrderItem[] = items.length
       ? items
       : [{ code: String(body.productCode || ""), quantity: Math.max(1, Number(body.quantity || 1)), unitPrice: Math.max(0, Number(body.unitPrice || 0)) }];
+    const productionStatus = requestedCreationStatus(body.productionStatus);
+    const delivered = productionStatus === ORDER_STATUS.delivered;
+    const queuedItems = (list: OrderItem[]) => list.map((item) => ({ ...item, unitPrice: 0 }));
+    const pricedItems = delivered ? normalizedItems : queuedItems(normalizedItems);
+    const storedItems = delivered ? items : queuedItems(items);
     const quantity = normalizedItems.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
-    const unitPrice = items.length
+    const unitPrice = delivered && items.length
       ? Math.max(0, Number(items[0].unitPrice))
-      : Math.max(0, Number(body.unitPrice || 0));
-    const received = Math.max(0, Number(body.received || 0));
-    const paymentMethod = String(body.paymentMethod || "");
-    const deliveryType = String(body.deliveryType || "");
-    if (!["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(paymentMethod))
-      return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
+      : delivered
+        ? Math.max(0, Number(body.unitPrice || 0))
+        : 0;
+    // Em fila só existem cliente, peças, data e observações: sem pagamento, entrega nem preço.
+    const received = delivered ? Math.max(0, Number(body.received || 0)) : 0;
+    const paymentMethod = delivered ? String(body.paymentMethod || "") : "";
+    const deliveryType = delivered ? String(body.deliveryType || "") : "";
+    if (delivered) {
+      const fieldsError = deliveryFieldsError({ paymentMethod, deliveryType, received });
+      if (fieldsError) return Response.json({ error: fieldsError }, { status: 400 });
+    }
     const boletoTermDays = paymentMethod === "Boleto" ? parseBoletoTerm(body.boletoTermDays) : null;
     if (paymentMethod === "Boleto" && !boletoTermDays)
       return Response.json({ error: "Escolha o prazo do boleto: 25, 50 ou 75 dias." }, { status: 400 });
-    if (!["Retirada no local", "Entrega"].includes(deliveryType))
-      return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
-    if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
-      return Response.json({ error: "Informe o valor recebido." }, { status: 400 });
-    const requestedStatus = String(body.productionStatus || "Fila de produção");
-    const productionStatus = ["Fila de produção", "Em produção", "Pronta", "Entregue"].includes(requestedStatus)
-      ? requestedStatus
-      : "Fila de produção";
     if (!String(body.customerName || "").trim() || !normalizedItems.length || normalizedItems.some((item) => !item.code)) {
       return Response.json(
         { error: "Selecione o cliente e pelo menos uma peça." },
@@ -208,8 +212,8 @@ export async function POST(request: Request) {
       Number(body.customerId || 0),
       String(body.customerName),
       body.customerType,
-      normalizedItems,
-      body.discountRate,
+      pricedItems,
+      delivered ? body.discountRate : 0,
     );
     const orderTotal = settleResidualTotal(totals.total, received);
     const moveToWallet =
@@ -263,13 +267,13 @@ export async function POST(request: Request) {
         issuedAt,
         dueDate,
         boletoTermDays,
-        productCode: items.length
-          ? JSON.stringify(items)
+        productCode: storedItems.length
+          ? JSON.stringify(storedItems)
           : String(body.productCode),
         quantity,
         unitPrice,
-        subtotal: totals.subtotal,
-        discountRate: totals.discountRate,
+        subtotal: delivered ? totals.subtotal : 0,
+        discountRate: delivered ? totals.discountRate : 0,
         total: orderTotal,
         received: Math.min(received, orderTotal),
         deliveryDate: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
@@ -302,31 +306,43 @@ export async function PATCH(request: Request) {
     if (hasSupabaseRest()) return patchOrderWithRest(auth, body);
     const id = Number(body.id);
     if (!id) return Response.json({ error: "OS inválida." }, { status: 400 });
-    const allowedProduction = [
-      "Fila de produção",
-      "Aguardando",
-      "Em produção",
-      "Pronta",
-      "Entregue",
-      "Cancelada",
-    ];
+    const requestedStatus = body.productionStatus !== undefined ? requestedUpdateStatus(body.productionStatus) : null;
+    if (body.productionStatus !== undefined && body.productionStatus !== "" && !requestedStatus)
+      return Response.json({ error: "Status inválido." }, { status: 400 });
     const db = await getDb();
     const [current] = await db.select().from(serviceOrders).where(eq(serviceOrders.id, id)).limit(1);
     if (!current) return Response.json({ error: "OS não encontrada." }, { status: 404 });
+    const currentStatus = normalizeOrderStatus(current.productionStatus);
+    const nextStatus = requestedStatus ?? currentStatus;
+    // Em fila (sem pagamento definido) a OS guarda só cliente, peças, data e observações.
+    const isRevertToQueue = currentStatus === ORDER_STATUS.delivered && nextStatus === ORDER_STATUS.queue;
+    const queuedBasic =
+      nextStatus === ORDER_STATUS.queue &&
+      (isRevertToQueue || !String(body.paymentMethod ?? current.paymentMethod ?? "").trim());
     const effectivePaymentMethod = String(body.paymentMethod ?? current.paymentMethod);
     const effectiveDeliveryType = String(body.deliveryType ?? current.deliveryType);
     const effectiveReceived = Math.max(0, Number(body.received ?? current.received));
     const validatesPayment =
-      body.paymentMethod !== undefined ||
-      body.deliveryType !== undefined ||
-      body.received !== undefined ||
-      body.productCode !== undefined;
-    if (validatesPayment && !["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(effectivePaymentMethod))
-      return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
-    if (validatesPayment && !["Retirada no local", "Entrega"].includes(effectiveDeliveryType))
-      return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
-    if (validatesPayment && ["Pix", "Dinheiro", "Cartão"].includes(effectivePaymentMethod) && effectiveReceived <= 0)
-      return Response.json({ error: "Informe o valor recebido." }, { status: 400 });
+      !queuedBasic &&
+      (nextStatus === ORDER_STATUS.delivered ||
+        body.paymentMethod !== undefined ||
+        body.deliveryType !== undefined ||
+        body.received !== undefined ||
+        body.productCode !== undefined);
+    if (validatesPayment && nextStatus !== ORDER_STATUS.canceled) {
+      const fieldsError = deliveryFieldsError({
+        paymentMethod: effectivePaymentMethod,
+        deliveryType: effectiveDeliveryType,
+        received: effectiveReceived,
+      });
+      if (fieldsError) return Response.json({ error: fieldsError }, { status: 400 });
+    }
+    if (currentStatus === ORDER_STATUS.canceled && requestedStatus && requestedStatus !== ORDER_STATUS.canceled)
+      return Response.json({ error: "OS cancelada não pode ser reaberta." }, { status: 400 });
+    if (isRevertToQueue) {
+      const blocked = revertToQueueBlockedReason({ receivedCents: Math.round(current.received * 100), receiptCount: 0 });
+      if (blocked) return Response.json({ error: blocked }, { status: 400 });
+    }
     const changes: Partial<typeof serviceOrders.$inferInsert> = {};
     if (body.paymentMethod !== undefined || body.boletoTermDays !== undefined) {
       const nextTerm =
@@ -337,11 +353,18 @@ export async function PATCH(request: Request) {
       if (blocked) return Response.json({ error: blocked }, { status: 400 });
       changes.boletoTermDays = nextTerm;
     }
-    if (
-      body.productionStatus &&
-      allowedProduction.includes(String(body.productionStatus))
-    )
-      changes.productionStatus = String(body.productionStatus);
+    if (requestedStatus) changes.productionStatus = requestedStatus;
+    if (isRevertToQueue) {
+      // Volta para a fila: some tudo o que é preço, pagamento e entrega.
+      changes.paymentMethod = "";
+      changes.deliveryType = "";
+      changes.received = 0;
+      changes.total = 0;
+      changes.subtotal = 0;
+      changes.discountRate = 0;
+      changes.boletoTermDays = null;
+      changes.walletMonth = "";
+    }
     if (body.received !== undefined)
       changes.received = Math.max(0, Number(body.received));
     if (body.deliveryDate) changes.deliveryDate = String(body.deliveryDate);
@@ -362,22 +385,23 @@ export async function PATCH(request: Request) {
         : [];
       if (items.length) {
         const customerName = String(body.customerName ?? current.customerName);
+        const pricedItems = queuedBasic ? items.map((item) => ({ ...item, unitPrice: 0 })) : items;
         const totals = await calculateTotals(
           db,
           auth,
           Number(body.customerId || 0),
           customerName,
           body.customerType,
-          items,
-          body.discountRate,
+          pricedItems,
+          queuedBasic ? 0 : body.discountRate,
         );
-        changes.productCode = JSON.stringify(items);
+        changes.productCode = JSON.stringify(pricedItems);
         changes.quantity = totals.quantity;
-        changes.unitPrice = Math.max(0, Number(items[0].unitPrice));
-        changes.subtotal = totals.subtotal;
+        changes.unitPrice = Math.max(0, Number(pricedItems[0].unitPrice));
+        changes.subtotal = queuedBasic ? 0 : totals.subtotal;
         changes.customerType = totals.customerType;
-        changes.discountRate = totals.discountRate;
-        changes.total = totals.total;
+        changes.discountRate = queuedBasic ? 0 : totals.discountRate;
+        changes.total = queuedBasic ? 0 : totals.total;
       } else {
         changes.productCode = String(body.productCode);
       }
@@ -467,23 +491,27 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
   const normalizedItems: OrderItem[] = items.length
     ? items
     : [{ code: String(body.productCode || ""), quantity: Math.max(1, Number(body.quantity || 1)), unitPrice: Math.max(0, Number(body.unitPrice || 0)) }];
-  const unitPrice = items.length ? Math.max(0, Number(items[0].unitPrice)) : Math.max(0, Number(body.unitPrice || 0));
-  const received = Math.max(0, Number(body.received || 0));
-  const paymentMethod = String(body.paymentMethod || "");
-  const deliveryType = String(body.deliveryType || "");
-  if (!["Pix", "Dinheiro", "Cartão", "Boleto", "Carteira"].includes(paymentMethod))
-    return Response.json({ error: "Selecione a forma de pagamento." }, { status: 400 });
+  const productionStatus = requestedCreationStatus(body.productionStatus);
+  const delivered = productionStatus === ORDER_STATUS.delivered;
+  const queuedItems = (list: OrderItem[]) => list.map((item) => ({ ...item, unitPrice: 0 }));
+  const pricedItems = delivered ? normalizedItems : queuedItems(normalizedItems);
+  const storedItems = delivered ? items : queuedItems(items);
+  const unitPrice = delivered && items.length
+    ? Math.max(0, Number(items[0].unitPrice))
+    : delivered
+      ? Math.max(0, Number(body.unitPrice || 0))
+      : 0;
+  // Em fila só existem cliente, peças, data e observações: sem pagamento, entrega nem preço.
+  const received = delivered ? Math.max(0, Number(body.received || 0)) : 0;
+  const paymentMethod = delivered ? String(body.paymentMethod || "") : "";
+  const deliveryType = delivered ? String(body.deliveryType || "") : "";
+  if (delivered) {
+    const fieldsError = deliveryFieldsError({ paymentMethod, deliveryType, received });
+    if (fieldsError) return Response.json({ error: fieldsError }, { status: 400 });
+  }
   const boletoTermDays = paymentMethod === "Boleto" ? parseBoletoTerm(body.boletoTermDays) : null;
   if (paymentMethod === "Boleto" && !boletoTermDays)
     return Response.json({ error: "Escolha o prazo do boleto: 25, 50 ou 75 dias." }, { status: 400 });
-  if (!["Retirada no local", "Entrega"].includes(deliveryType))
-    return Response.json({ error: "Selecione a forma de entrega." }, { status: 400 });
-  if (["Pix", "Dinheiro", "Cartão"].includes(paymentMethod) && received <= 0)
-    return Response.json({ error: "Informe o valor recebido." }, { status: 400 });
-  const requestedStatus = String(body.productionStatus || "Fila de produção");
-  const productionStatus = ["Fila de produção", "Em produção", "Pronta", "Entregue"].includes(requestedStatus)
-    ? requestedStatus
-    : "Fila de produção";
   if (!String(body.customerName || "").trim() || !normalizedItems.length || normalizedItems.some((item) => !item.code))
     return Response.json({ error: "Selecione o cliente e pelo menos uma peca." }, { status: 400 });
   const totals = await calculateTotalsFromRest(
@@ -491,8 +519,8 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     Number(body.customerId || 0),
     String(body.customerName),
     body.customerType,
-    normalizedItems,
-    body.discountRate,
+    pricedItems,
+    delivered ? body.discountRate : 0,
   );
   const orderTotal = settleResidualTotal(totals.total, received);
   const moveToWallet = ["Pix", "Cartão"].includes(paymentMethod) && received < orderTotal;
@@ -522,11 +550,11 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     issued_at: issuedAt,
     due_date: dueDate,
     boleto_term_days: boletoTermDays,
-    product_code: items.length ? JSON.stringify(items) : String(body.productCode),
+    product_code: storedItems.length ? JSON.stringify(storedItems) : String(body.productCode),
     quantity: totals.quantity,
     unit_price: unitPrice,
-    subtotal: totals.subtotal,
-    discount_rate: totals.discountRate,
+    subtotal: delivered ? totals.subtotal : 0,
+    discount_rate: delivered ? totals.discountRate : 0,
     total: orderTotal,
     received: Math.min(received, orderTotal),
     delivery_date: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
@@ -538,7 +566,8 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     notes: String(body.notes || ""),
   });
   const serviceOrderId = Number(order.id || 0);
-  if (serviceOrderId) {
+  // Recebível e parcelas só nascem na entrega.
+  if (serviceOrderId && delivered) {
     const originalAmountCents = Math.round(totals.total * 100);
     const receivedAmountCents = Math.min(Math.round(received * 100), originalAmountCents);
     const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);
@@ -581,7 +610,85 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
     id: `eq.${id}`,
   });
   if (!current) return Response.json({ error: "OS nao encontrada." }, { status: 404 });
-  const allowedProduction = ["Fila de produção", "Aguardando", "Em produção", "Pronta", "Entregue", "Cancelada"];
+  const requestedStatus = body.productionStatus !== undefined ? requestedUpdateStatus(body.productionStatus) : null;
+  if (body.productionStatus !== undefined && body.productionStatus !== "" && !requestedStatus)
+    return Response.json({ error: "Status inválido." }, { status: 400 });
+  const currentStatus = normalizeOrderStatus(current.production_status);
+  const nextStatus = requestedStatus ?? currentStatus;
+  const currentPayment = String(current.payment_method ?? "").trim();
+  if (currentStatus === ORDER_STATUS.canceled && requestedStatus && requestedStatus !== ORDER_STATUS.canceled)
+    return Response.json({ error: "OS cancelada não pode ser reaberta." }, { status: 400 });
+  const isRevertToQueue = currentStatus === ORDER_STATUS.delivered && nextStatus === ORDER_STATUS.queue;
+  // Em fila (sem pagamento definido) a OS guarda só cliente, peças, data e observações:
+  // não existe recebível e nada financeiro é recalculado.
+  const queuedBasic =
+    (nextStatus === ORDER_STATUS.queue || nextStatus === ORDER_STATUS.canceled) &&
+    currentStatus !== ORDER_STATUS.delivered &&
+    !currentPayment &&
+    body.paymentMethod === undefined;
+  if (currentStatus !== ORDER_STATUS.delivered && nextStatus === ORDER_STATUS.delivered) {
+    const fieldsError = deliveryFieldsError({
+      paymentMethod: String(body.paymentMethod ?? current.payment_method ?? ""),
+      deliveryType: String(body.deliveryType ?? current.delivery_type ?? ""),
+      received: Math.max(0, Number(body.received ?? current.received ?? 0)),
+    });
+    if (fieldsError) return Response.json({ error: fieldsError }, { status: 400 });
+    if (!Array.isArray(body.items) || !body.items.length)
+      return Response.json({ error: "Informe as peças com valor para entregar a OS." }, { status: 400 });
+  }
+  if (isRevertToQueue) {
+    const receipts = await supabaseSelect<{ id: number }>("receipts", {
+      select: "id",
+      service_order_id: `eq.${id}`,
+      limit: "1",
+    });
+    const blocked = revertToQueueBlockedReason({
+      receivedCents: Math.max(Math.round(Number(current.received_cents || 0)), Math.round(Number(current.received || 0) * 100)),
+      receiptCount: receipts.length,
+    });
+    if (blocked) return Response.json({ error: blocked }, { status: 400 });
+    await supabaseDelete("receivable_installments", { service_order_id: `eq.${id}` });
+    await supabaseDelete("accounts_receivable", { service_order_id: `eq.${id}` });
+    let zeroedProductCode = String(current.product_code || "");
+    let revertedQuantity = Number(current.quantity || 0);
+    const incomingItems = Array.isArray(body.items) ? (body.items as OrderItem[]).filter((item) => item.code) : [];
+    try {
+      const parsed = incomingItems.length ? incomingItems : JSON.parse(zeroedProductCode);
+      if (Array.isArray(parsed)) {
+        zeroedProductCode = JSON.stringify((parsed as OrderItem[]).map((item) => ({ ...item, unitPrice: 0 })));
+        revertedQuantity = (parsed as OrderItem[]).reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
+      }
+    } catch {}
+    // Edições feitas no mesmo salvamento (cliente, data, observações) também valem.
+    const revertedIssuedAt = body.createdAt !== undefined ? String(body.createdAt).slice(0, 10) : null;
+    const reverted = await supabasePatch<Record<string, unknown>>("service_orders", { id: `eq.${id}` }, {
+      production_status: ORDER_STATUS.queue,
+      payment_method: "",
+      delivery_type: "",
+      boleto_term_days: null,
+      wallet_month: "",
+      received: 0,
+      received_cents: 0,
+      total: 0,
+      total_cents: 0,
+      subtotal: 0,
+      subtotal_cents: 0,
+      discount_rate: 0,
+      discount_cents: 0,
+      balance_cents: 0,
+      unit_price: 0,
+      financial_status: "Pendente",
+      product_code: zeroedProductCode,
+      quantity: revertedQuantity,
+      ...(body.notes !== undefined ? { notes: String(body.notes) } : {}),
+      ...(body.customerName !== undefined ? { customer_name: String(body.customerName) } : {}),
+      ...(revertedIssuedAt
+        ? { created_at: String(body.createdAt), issued_at: revertedIssuedAt, due_date: receivableDueDateFromIssuedAt(revertedIssuedAt) }
+        : {}),
+      updated_at: new Date().toISOString(),
+    });
+    return Response.json({ order: camelizeRow(reverted) });
+  }
   const changes: Record<string, string | number | null> = {};
   if (body.paymentMethod !== undefined || body.boletoTermDays !== undefined) {
     const effectiveMethod = String(body.paymentMethod ?? current.payment_method ?? "");
@@ -593,8 +700,7 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
     if (blocked) return Response.json({ error: blocked }, { status: 400 });
     changes.boleto_term_days = nextTerm;
   }
-  if (body.productionStatus && allowedProduction.includes(String(body.productionStatus)))
-    changes.production_status = String(body.productionStatus);
+  if (requestedStatus) changes.production_status = requestedStatus;
   if (body.received !== undefined) changes.received = Math.max(0, Number(body.received));
   if (body.deliveryDate) changes.delivery_date = String(body.deliveryDate);
   if (body.notes !== undefined) changes.notes = String(body.notes);
@@ -612,27 +718,34 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
   if (body.productCode !== undefined) {
     const items = Array.isArray(body.items) ? (body.items as { code: string; quantity: number; unitPrice: number }[]) : [];
     if (items.length) {
+      const pricedItems = queuedBasic ? items.map((item) => ({ ...item, unitPrice: 0 })) : items;
       const totals = await calculateTotalsFromRest(
         auth,
         Number(body.customerId || 0),
-        String(body.customerName ?? current.customerName),
+        String(body.customerName ?? current.customer_name ?? ""),
         body.customerType,
-        items,
-        body.discountRate,
+        pricedItems,
+        queuedBasic ? 0 : body.discountRate,
       );
-      changes.product_code = JSON.stringify(items);
+      changes.product_code = JSON.stringify(pricedItems);
       changes.quantity = totals.quantity;
-      changes.unit_price = Math.max(0, Number(items[0].unitPrice));
-      changes.subtotal = totals.subtotal;
+      changes.unit_price = Math.max(0, Number(pricedItems[0].unitPrice));
+      changes.subtotal = queuedBasic ? 0 : totals.subtotal;
       changes.customer_type = totals.customerType;
-      changes.discount_rate = totals.discountRate;
-      changes.total = totals.total;
+      changes.discount_rate = queuedBasic ? 0 : totals.discountRate;
+      changes.total = queuedBasic ? 0 : totals.total;
       changes.customer_id = totals.customerId;
     } else {
       changes.product_code = String(body.productCode);
     }
   }
-  if (String(body.paymentMethod ?? current.paymentMethod) === "Carteira") {
+  if (queuedBasic) {
+    if (!Object.keys(changes).length) return Response.json({ error: "Nenhuma alteracao informada." }, { status: 400 });
+    changes.updated_at = new Date().toISOString();
+    const queuedOrder = await supabasePatch<Record<string, unknown>>("service_orders", { id: `eq.${id}` }, changes);
+    return Response.json({ order: camelizeRow(queuedOrder) });
+  }
+  if (String(body.paymentMethod ?? current.payment_method ?? "") === "Carteira") {
     const effectiveCreatedAt = String(body.createdAt ?? current.createdAt);
     changes.wallet_month = current.walletMonth || effectiveCreatedAt.slice(0, 7);
   } else if (body.paymentMethod !== undefined) {
