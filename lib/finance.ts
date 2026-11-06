@@ -1,3 +1,4 @@
+import { isQueuedWithoutPayment } from "./order-status";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import {
@@ -72,6 +73,8 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
 
   for (const order of orders) {
     if (order.productionStatus === "Cancelada") continue;
+    // OS em fila (sem pagamento) ainda não tem recebível: ele nasce na entrega.
+    if (isQueuedWithoutPayment(order)) continue;
 
     const totalCents = order.totalCents || toCents(order.total);
     const receivedCents = order.receivedCents || toCents(order.received);

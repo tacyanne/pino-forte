@@ -1,3 +1,4 @@
+import { isQueuedWithoutPayment } from "../../../lib/order-status";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import {
@@ -247,7 +248,7 @@ async function getFinanceFromRest(request: Request) {
 async function syncReceivablesFromOrdersRest() {
   const [orders, existingReceivables] = await Promise.all([
     supabaseSelect<Record<string, unknown>>("service_orders", {
-      select: "id,customer_id,issued_at,created_at,due_date,boleto_term_days,total,total_cents,received,received_cents,production_status,notes",
+      select: "id,customer_id,issued_at,created_at,due_date,boleto_term_days,total,total_cents,received,received_cents,production_status,payment_method,notes",
       order: "id.desc",
       limit: "1000",
     }),
@@ -266,7 +267,9 @@ async function syncReceivablesFromOrdersRest() {
     if (
       !serviceOrderId ||
       registeredOrderIds.has(serviceOrderId) ||
-      String(order.production_status || "") === "Cancelada"
+      String(order.production_status || "") === "Cancelada" ||
+      // OS em fila (sem pagamento) ainda não tem recebível: ele nasce na entrega.
+      isQueuedWithoutPayment({ productionStatus: order.production_status, paymentMethod: order.payment_method })
     ) continue;
 
     const issuedAt = String(order.issued_at || order.created_at || todayIso()).slice(0, 10);

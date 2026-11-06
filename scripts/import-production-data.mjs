@@ -142,7 +142,7 @@ try {
           ${asNumber(order.quantity, 1)}, ${asNumber(order.unitPrice)}, ${subtotal}, ${asNumber(order.discountRate)}, ${total}, ${received},
           ${toCents(subtotal)}, ${toCents(total)}, ${toCents(received)}, ${Math.max(0, toCents(total) - toCents(received))},
           ${issuedAt}, ${dueDate}, ${deliveryDate.slice(0, 10)}, ${asText(order.deliveryType)}, ${asText(order.paymentMethod)}, ${asText(order.walletMonth)},
-          ${asText(order.productionStatus, "Fila de producao")}, ${received >= total ? "Pago" : "Pendente"}, ${asText(order.commercialStatus, "Pedido confirmado")},
+          ${asText(order.productionStatus, "Fila de produção")}, ${received >= total ? "Pago" : "Pendente"}, ${asText(order.commercialStatus, "Pedido confirmado")},
           ${asText(order.notes)}, ${createdAt}, ${new Date().toISOString()}
         )
         on conflict (id) do update set

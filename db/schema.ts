@@ -88,7 +88,7 @@ export const serviceOrders = pgTable("service_orders", {
   deliveryType: text("delivery_type").notNull(),
   paymentMethod: text("payment_method").notNull(),
   walletMonth: text("wallet_month").notNull().default(""),
-  productionStatus: text("production_status").notNull().default("Aguardando"),
+  productionStatus: text("production_status").notNull().default("Fila de produção"),
   financialStatus: text("financial_status").notNull().default("Pendente"),
   commercialStatus: text("commercial_status").notNull().default("Pedido confirmado"),
   notes: text("notes").notNull().default(""),
