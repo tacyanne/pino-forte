@@ -1,6 +1,6 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { customers, serviceOrders } from "../../../db/schema";
+import { accountsReceivable, customers, receipts, receivableInstallments, serviceOrders } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
 import { boletoFirstDueDate, parseBoletoTerm } from "../../../lib/boleto-installments";
 import {
@@ -11,7 +11,7 @@ import {
   requestedUpdateStatus,
   revertToQueueBlockedReason,
 } from "../../../lib/order-status";
-import { receivableDueDateFromIssuedAt, receivableStatus, settleResidualTotal } from "../../../lib/finance";
+import { receivableDueDateFromIssuedAt, receivableStatus, settleResidualTotal, toCents } from "../../../lib/finance";
 import {
   assertBoletoTermChangeAllowedDb,
   assertBoletoTermChangeAllowedRest,
@@ -337,7 +337,14 @@ export async function PATCH(request: Request) {
     if (currentStatus === ORDER_STATUS.canceled && requestedStatus && requestedStatus !== ORDER_STATUS.canceled)
       return Response.json({ error: "OS cancelada não pode ser reaberta." }, { status: 400 });
     if (isRevertToQueue) {
-      const blocked = revertToQueueBlockedReason({ receivedCents: Math.round(current.received * 100), receiptCount: 0 });
+      const [{ receiptCount }] = await db
+        .select({ receiptCount: sql<number>`count(*)::int` })
+        .from(receipts)
+        .where(eq(receipts.serviceOrderId, id));
+      const blocked = revertToQueueBlockedReason({
+        receivedCents: Math.max(toCents(current.received), Number(current.receivedCents || 0)),
+        receiptCount: Number(receiptCount || 0),
+      });
       if (blocked) return Response.json({ error: blocked }, { status: 400 });
     }
     const changes: Partial<typeof serviceOrders.$inferInsert> = {};
@@ -433,13 +440,37 @@ export async function PATCH(request: Request) {
     const projectedReceived = changes.received !== undefined ? Number(changes.received) : current.received;
     const settledTotal = settleResidualTotal(projectedTotal, projectedReceived);
     if (settledTotal !== projectedTotal) changes.total = settledTotal;
-    const [order] = await db
+    if (isRevertToQueue) {
+      // Volta para a fila: o recebível e as parcelas deixam de existir (nasceram na entrega).
+      await db.delete(receivableInstallments).where(eq(receivableInstallments.serviceOrderId, id));
+      await db.delete(accountsReceivable).where(eq(accountsReceivable.serviceOrderId, id));
+    }
+    const [updated] = await db
       .update(serviceOrders)
       .set(changes)
       .where(eq(serviceOrders.id, id))
       .returning();
-    if (!order)
+    if (!updated)
       return Response.json({ error: "OS não encontrada." }, { status: 404 });
+    let order = updated;
+    if (changes.total !== undefined || changes.subtotal !== undefined || changes.received !== undefined) {
+      // Mantém os centavos acompanhando os valores: a sincronização de recebíveis lê os centavos.
+      const totalCents = toCents(updated.total);
+      const subtotalCents = toCents(updated.subtotal);
+      const receivedCents = Math.min(toCents(updated.received), totalCents);
+      const [synced] = await db
+        .update(serviceOrders)
+        .set({
+          subtotalCents,
+          totalCents,
+          discountCents: Math.max(0, subtotalCents - totalCents),
+          receivedCents,
+          balanceCents: Math.max(0, totalCents - receivedCents),
+        })
+        .where(eq(serviceOrders.id, id))
+        .returning();
+      if (synced) order = synced;
+    }
     return Response.json({ order });
   } catch (error) {
     return Response.json(
