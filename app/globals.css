@@ -789,3 +789,9 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .boleto-installment-row small{font-size:11px;color:var(--muted);font-weight:600}
 .boleto-installment-row .boleto-pay{flex:0 0 auto;min-width:170px}
 @media(max-width:760px){.boleto-installment-row{flex-direction:column;align-items:stretch}.boleto-installment-row .boleto-pay{min-width:0;width:100%}}
+.review-queue-total{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid #e2e8e6}
+.review-queue-total span{display:grid;gap:6px;min-width:170px;padding:12px 16px;border:1px solid #e2e8e6;border-radius:10px;background:#fff;color:#526164;font-size:11px;font-weight:750}
+.review-queue-total span strong{font-size:16px;color:var(--ink,#1f2a2c)}
+.review-queue-total span.total{border-color:#f3c9b3;background:#fff6f0}
+.review-queue-total span.total strong{color:#b84c22;font-size:18px}
+@media(max-width:760px){.review-queue-total{justify-content:stretch}.review-queue-total span{flex:1 1 100%}}

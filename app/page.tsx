@@ -4275,6 +4275,7 @@ export default function Home() {
               <ReviewField label="Cliente" value={orderModal.customerName} />
               <ReviewField label="Tipo de cliente" value={isDistributor(orderModal.customerType) ? "Distribuidor" : "Cliente final"} />
               <ReviewField label="Data do pedido" value={brDate(orderModal.createdAt)} />
+              {isQueuedWithoutPayment(orderModal) && <ReviewField label="Status" value="Fila de produção" />}
             </div>
             <div className="review-items">
               {getOrderItems(orderModal).map((item, index) => {
@@ -4289,11 +4290,8 @@ export default function Home() {
                   </div>
                 );
               })}
-            </div>
-            {isQueuedWithoutPayment(orderModal) ? (
-              <div className="form-grid order-payment-grid review-payment-grid">
-                <ReviewField label="Status" value="Fila de produção" />
-                <div className={`payment-summary ${isDistributor(orderModal.customerType) ? "three-columns" : "two-columns"}`}>
+              {isQueuedWithoutPayment(orderModal) && (
+                <div className="review-queue-total">
                   {isDistributor(orderModal.customerType) && (
                     <>
                       <span>Subtotal <strong>{money(orderModal.subtotal || orderModal.total)}</strong></span>
@@ -4303,10 +4301,11 @@ export default function Home() {
                       </span>
                     </>
                   )}
-                  <span>Total da OS <strong>{money(orderModal.total)}</strong></span>
+                  <span className="total">Total da OS <strong>{money(orderModal.total)}</strong></span>
                 </div>
-              </div>
-            ) : (
+              )}
+            </div>
+            {isQueuedWithoutPayment(orderModal) ? null : (
             <div className="form-grid order-payment-grid review-payment-grid">
               <ReviewField label="Forma de entrega" value={orderModal.deliveryType} />
               <ReviewField label="Forma de pagamento" value={`${boletoLabel(orderModal)} · ${orderDisplayStatus(orderModal)}`} />
