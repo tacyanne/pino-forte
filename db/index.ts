@@ -25,12 +25,13 @@ export async function getSql() {
   if (!client) {
     const postgresFactory = await getPostgresFactory();
     client = postgresFactory(getDatabaseUrl(), {
-      max: 3,
+      // Pooler do Supabase em modo sessão aceita só 15 clientes no total: uma conexão por instância.
+      max: 1,
       prepare: false,
       fetch_types: false,
       ssl: "require",
       connect_timeout: 5,
-      idle_timeout: 20,
+      idle_timeout: 5,
     });
   }
   return client;
