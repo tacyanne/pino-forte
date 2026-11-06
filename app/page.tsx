@@ -1,7 +1,7 @@
 "use client";
 import { BrandImage } from "./brand-image";
 import type { PieceLine } from "../lib/piece-lines";
-import { ORDER_STATUS, isQueuedWithoutPayment, normalizeOrderStatus } from "../lib/order-status";
+import { ORDER_STATUS, canGenerateOrderPdf, isQueuedWithoutPayment, normalizeOrderStatus } from "../lib/order-status";
 import { BOLETO_STEP_DAYS, BOLETO_TERMS, installmentCount, planInstallments, splitCents } from "../lib/boleto-installments";
 
 import {
@@ -2228,7 +2228,7 @@ export default function Home() {
   }
   async function downloadPdf(order: Order) {
     // O PDF da OS só é gerado depois da entrega.
-    if (normalizeOrderStatus(order.productionStatus) !== ORDER_STATUS.delivered)
+    if (!canGenerateOrderPdf(order))
       return flash("O PDF só pode ser gerado depois que a OS for entregue.");
     const pdf = await createPdf(order);
     pdf.save(`${order.number}.pdf`);
@@ -4352,7 +4352,7 @@ export default function Home() {
             <button className="outline-button system-back-button" onClick={() => setOrderModal(null)}>
               Voltar
             </button>
-            {normalizeOrderStatus(orderModal.productionStatus) === ORDER_STATUS.delivered && (
+            {canGenerateOrderPdf(orderModal) && (
               <button
                 className="outline-button"
                 onClick={() => downloadPdf(orderModal)}
@@ -4384,7 +4384,7 @@ export default function Home() {
             >
               Editar
             </button>
-            {normalizeOrderStatus(orderModal.productionStatus) === ORDER_STATUS.delivered && (
+            {canGenerateOrderPdf(orderModal) && orderModal.productionStatus !== "Cancelada" && (
                 <button
                   className="whatsapp-button"
                   onClick={() => shareOrder(orderModal)}

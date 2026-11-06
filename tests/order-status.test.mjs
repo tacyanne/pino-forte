@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   ORDER_STATUS,
+  canGenerateOrderPdf,
   deliveryFieldsError,
   isQueuedWithoutPayment,
   normalizeOrderStatus,
@@ -79,7 +80,15 @@ test("sincronização de recebíveis ignora OS em fila sem pagamento", () => {
 test("PDF e envio só após a entrega; botão de entrega se chama Entregar", () => {
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /O PDF da OS só é gerado depois da entrega/);
-  assert.match(page, /ORDER_STATUS\.delivered && \(\s*<button\s+className="outline-button"\s+onClick=\{\(\) => downloadPdf\(orderModal\)\}/);
+  assert.match(page, /canGenerateOrderPdf\(orderModal\) && \(\s*<button\s+className="outline-button"\s+onClick=\{\(\) => downloadPdf\(orderModal\)\}/);
   assert.match(page, /\n\s+Entregar\r?\n/);
   assert.equal(/Marcar como entregue/.test(page), false);
+});
+
+test("PDF: entregue sim; cancelada só se já foi entregue (tem pagamento); fila e cancelada na fila não", () => {
+  assert.equal(canGenerateOrderPdf({ productionStatus: "Entregue", paymentMethod: "Boleto" }), true);
+  assert.equal(canGenerateOrderPdf({ productionStatus: "Cancelada", paymentMethod: "Boleto" }), true);
+  assert.equal(canGenerateOrderPdf({ productionStatus: "Cancelada", paymentMethod: "" }), false);
+  assert.equal(canGenerateOrderPdf({ productionStatus: "Fila de produção", paymentMethod: "" }), false);
+  assert.equal(canGenerateOrderPdf({ productionStatus: "Fila de produção", paymentMethod: "Boleto" }), false);
 });
