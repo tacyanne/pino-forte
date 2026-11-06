@@ -1,8 +1,8 @@
-const logoSources = [240, 480, 720, 960]
-  .map((width) => `/logo-sistema-retina-${width}.webp ${width}w`)
+const logoSources = [480, 720, 960, 1440]
+  .map((width) => `/logo-sistema-hd-${width}.webp ${width}w`)
   .join(", ");
 
-/** Lossless derivatives of the original artwork; CSS owns the existing layout. */
+/** Derivados em alta qualidade do logo transparente original (6000 px); o CSS define o layout. */
 export function BrandImage({ className, alt, sizes }: {
   className?: string;
   alt: string;
@@ -10,7 +10,7 @@ export function BrandImage({ className, alt, sizes }: {
 }) {
   return <img
     className={className}
-    src="/logo-sistema-retina-720.webp"
+    src="/logo-sistema-hd-960.webp"
     srcSet={logoSources}
     sizes={sizes}
     width={6000}
