@@ -179,16 +179,13 @@ export async function POST(request: Request) {
       : [{ code: String(body.productCode || ""), quantity: Math.max(1, Number(body.quantity || 1)), unitPrice: Math.max(0, Number(body.unitPrice || 0)) }];
     const productionStatus = requestedCreationStatus(body.productionStatus);
     const delivered = productionStatus === ORDER_STATUS.delivered;
-    const queuedItems = (list: OrderItem[]) => list.map((item) => ({ ...item, unitPrice: 0 }));
-    const pricedItems = delivered ? normalizedItems : queuedItems(normalizedItems);
-    const storedItems = delivered ? items : queuedItems(items);
+    const pricedItems = normalizedItems;
+    const storedItems = items;
     const quantity = normalizedItems.reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
-    const unitPrice = delivered && items.length
+    const unitPrice = items.length
       ? Math.max(0, Number(items[0].unitPrice))
-      : delivered
-        ? Math.max(0, Number(body.unitPrice || 0))
-        : 0;
-    // Em fila só existem cliente, peças, data e observações: sem pagamento, entrega nem preço.
+      : Math.max(0, Number(body.unitPrice || 0));
+    // Em fila o valor já é calculado, mas não há pagamento, entrega nem recebível.
     const received = delivered ? Math.max(0, Number(body.received || 0)) : 0;
     const paymentMethod = delivered ? String(body.paymentMethod || "") : "";
     const deliveryType = delivered ? String(body.deliveryType || "") : "";
@@ -213,7 +210,7 @@ export async function POST(request: Request) {
       String(body.customerName),
       body.customerType,
       pricedItems,
-      delivered ? body.discountRate : 0,
+      body.discountRate,
     );
     const orderTotal = settleResidualTotal(totals.total, received);
     const moveToWallet =
@@ -272,8 +269,8 @@ export async function POST(request: Request) {
           : String(body.productCode),
         quantity,
         unitPrice,
-        subtotal: delivered ? totals.subtotal : 0,
-        discountRate: delivered ? totals.discountRate : 0,
+        subtotal: totals.subtotal,
+        discountRate: totals.discountRate,
         total: orderTotal,
         received: Math.min(received, orderTotal),
         deliveryDate: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
@@ -355,13 +352,10 @@ export async function PATCH(request: Request) {
     }
     if (requestedStatus) changes.productionStatus = requestedStatus;
     if (isRevertToQueue) {
-      // Volta para a fila: some tudo o que é preço, pagamento e entrega.
+      // Volta para a fila: o valor da OS fica, some pagamento, entrega e recebido.
       changes.paymentMethod = "";
       changes.deliveryType = "";
       changes.received = 0;
-      changes.total = 0;
-      changes.subtotal = 0;
-      changes.discountRate = 0;
       changes.boletoTermDays = null;
       changes.walletMonth = "";
     }
@@ -385,23 +379,22 @@ export async function PATCH(request: Request) {
         : [];
       if (items.length) {
         const customerName = String(body.customerName ?? current.customerName);
-        const pricedItems = queuedBasic ? items.map((item) => ({ ...item, unitPrice: 0 })) : items;
         const totals = await calculateTotals(
           db,
           auth,
           Number(body.customerId || 0),
           customerName,
           body.customerType,
-          pricedItems,
-          queuedBasic ? 0 : body.discountRate,
+          items,
+          body.discountRate,
         );
-        changes.productCode = JSON.stringify(pricedItems);
+        changes.productCode = JSON.stringify(items);
         changes.quantity = totals.quantity;
-        changes.unitPrice = Math.max(0, Number(pricedItems[0].unitPrice));
-        changes.subtotal = queuedBasic ? 0 : totals.subtotal;
+        changes.unitPrice = Math.max(0, Number(items[0].unitPrice));
+        changes.subtotal = totals.subtotal;
         changes.customerType = totals.customerType;
-        changes.discountRate = queuedBasic ? 0 : totals.discountRate;
-        changes.total = queuedBasic ? 0 : totals.total;
+        changes.discountRate = totals.discountRate;
+        changes.total = totals.total;
       } else {
         changes.productCode = String(body.productCode);
       }
@@ -493,15 +486,12 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     : [{ code: String(body.productCode || ""), quantity: Math.max(1, Number(body.quantity || 1)), unitPrice: Math.max(0, Number(body.unitPrice || 0)) }];
   const productionStatus = requestedCreationStatus(body.productionStatus);
   const delivered = productionStatus === ORDER_STATUS.delivered;
-  const queuedItems = (list: OrderItem[]) => list.map((item) => ({ ...item, unitPrice: 0 }));
-  const pricedItems = delivered ? normalizedItems : queuedItems(normalizedItems);
-  const storedItems = delivered ? items : queuedItems(items);
-  const unitPrice = delivered && items.length
+  const pricedItems = normalizedItems;
+  const storedItems = items;
+  const unitPrice = items.length
     ? Math.max(0, Number(items[0].unitPrice))
-    : delivered
-      ? Math.max(0, Number(body.unitPrice || 0))
-      : 0;
-  // Em fila só existem cliente, peças, data e observações: sem pagamento, entrega nem preço.
+    : Math.max(0, Number(body.unitPrice || 0));
+  // Em fila o valor já é calculado, mas não há pagamento, entrega nem recebível.
   const received = delivered ? Math.max(0, Number(body.received || 0)) : 0;
   const paymentMethod = delivered ? String(body.paymentMethod || "") : "";
   const deliveryType = delivered ? String(body.deliveryType || "") : "";
@@ -520,7 +510,7 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     String(body.customerName),
     body.customerType,
     pricedItems,
-    delivered ? body.discountRate : 0,
+    body.discountRate,
   );
   const orderTotal = settleResidualTotal(totals.total, received);
   const moveToWallet = ["Pix", "Cartão"].includes(paymentMethod) && received < orderTotal;
@@ -553,8 +543,8 @@ async function postOrderWithRest(auth: { role: string }, body: Record<string, un
     product_code: storedItems.length ? JSON.stringify(storedItems) : String(body.productCode),
     quantity: totals.quantity,
     unit_price: unitPrice,
-    subtotal: delivered ? totals.subtotal : 0,
-    discount_rate: delivered ? totals.discountRate : 0,
+    subtotal: totals.subtotal,
+    discount_rate: totals.discountRate,
     total: orderTotal,
     received: Math.min(received, orderTotal),
     delivery_date: String(body.deliveryDate || body.createdAt || new Date().toISOString().slice(0, 10)),
@@ -649,16 +639,34 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
     if (blocked) return Response.json({ error: blocked }, { status: 400 });
     await supabaseDelete("receivable_installments", { service_order_id: `eq.${id}` });
     await supabaseDelete("accounts_receivable", { service_order_id: `eq.${id}` });
-    let zeroedProductCode = String(current.product_code || "");
+    // Volta para a fila: o valor da OS fica (itens, subtotal, desconto, total); some pagamento, entrega e recebido.
+    let revertedProductCode = String(current.product_code || "");
     let revertedQuantity = Number(current.quantity || 0);
+    let revertedTotals: Record<string, string | number> = {};
     const incomingItems = Array.isArray(body.items) ? (body.items as OrderItem[]).filter((item) => item.code) : [];
-    try {
-      const parsed = incomingItems.length ? incomingItems : JSON.parse(zeroedProductCode);
-      if (Array.isArray(parsed)) {
-        zeroedProductCode = JSON.stringify((parsed as OrderItem[]).map((item) => ({ ...item, unitPrice: 0 })));
-        revertedQuantity = (parsed as OrderItem[]).reduce((sum, item) => sum + Math.max(1, Number(item.quantity)), 0);
-      }
-    } catch {}
+    if (incomingItems.length) {
+      const totals = await calculateTotalsFromRest(
+        auth,
+        Number(body.customerId || 0),
+        String(body.customerName ?? current.customer_name ?? ""),
+        body.customerType,
+        incomingItems,
+        body.discountRate,
+      );
+      revertedProductCode = JSON.stringify(incomingItems);
+      revertedQuantity = totals.quantity;
+      revertedTotals = {
+        unit_price: Math.max(0, Number(incomingItems[0].unitPrice)),
+        subtotal: totals.subtotal,
+        subtotal_cents: Math.round(totals.subtotal * 100),
+        discount_rate: totals.discountRate,
+        discount_cents: Math.max(0, Math.round((totals.subtotal - totals.total) * 100)),
+        total: totals.total,
+        total_cents: Math.round(totals.total * 100),
+        balance_cents: Math.round(totals.total * 100),
+        customer_type: totals.customerType,
+      };
+    }
     // Edições feitas no mesmo salvamento (cliente, data, observações) também valem.
     const revertedIssuedAt = body.createdAt !== undefined ? String(body.createdAt).slice(0, 10) : null;
     const reverted = await supabasePatch<Record<string, unknown>>("service_orders", { id: `eq.${id}` }, {
@@ -669,17 +677,10 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
       wallet_month: "",
       received: 0,
       received_cents: 0,
-      total: 0,
-      total_cents: 0,
-      subtotal: 0,
-      subtotal_cents: 0,
-      discount_rate: 0,
-      discount_cents: 0,
-      balance_cents: 0,
-      unit_price: 0,
       financial_status: "Pendente",
-      product_code: zeroedProductCode,
+      product_code: revertedProductCode,
       quantity: revertedQuantity,
+      ...revertedTotals,
       ...(body.notes !== undefined ? { notes: String(body.notes) } : {}),
       ...(body.customerName !== undefined ? { customer_name: String(body.customerName) } : {}),
       ...(revertedIssuedAt
@@ -718,22 +719,21 @@ async function patchOrderWithRest(auth: { role: string }, body: Record<string, u
   if (body.productCode !== undefined) {
     const items = Array.isArray(body.items) ? (body.items as { code: string; quantity: number; unitPrice: number }[]) : [];
     if (items.length) {
-      const pricedItems = queuedBasic ? items.map((item) => ({ ...item, unitPrice: 0 })) : items;
       const totals = await calculateTotalsFromRest(
         auth,
         Number(body.customerId || 0),
         String(body.customerName ?? current.customer_name ?? ""),
         body.customerType,
-        pricedItems,
-        queuedBasic ? 0 : body.discountRate,
+        items,
+        body.discountRate,
       );
-      changes.product_code = JSON.stringify(pricedItems);
+      changes.product_code = JSON.stringify(items);
       changes.quantity = totals.quantity;
-      changes.unit_price = Math.max(0, Number(pricedItems[0].unitPrice));
-      changes.subtotal = queuedBasic ? 0 : totals.subtotal;
+      changes.unit_price = Math.max(0, Number(items[0].unitPrice));
+      changes.subtotal = totals.subtotal;
       changes.customer_type = totals.customerType;
-      changes.discount_rate = queuedBasic ? 0 : totals.discountRate;
-      changes.total = queuedBasic ? 0 : totals.total;
+      changes.discount_rate = totals.discountRate;
+      changes.total = totals.total;
       changes.customer_id = totals.customerId;
     } else {
       changes.product_code = String(body.productCode);
