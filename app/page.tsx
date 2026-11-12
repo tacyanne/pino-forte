@@ -3387,40 +3387,6 @@ export default function Home() {
                   subtitle="Acompanhe vendas, recebimentos, pendências e desempenho comercial."
                   action={<button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button>}
                 />
-                <div className="filters operational-filters operational-filters-three">
-                  <Field label="Buscar cliente">
-                    <select value={reportCustomer} onChange={(event) => setReportCustomer(event.target.value)}>
-                      <option value="">Todos</option>
-                      {[...customers].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((customer) => <option key={customer.id} value={customer.name}>{customer.name}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Mês">
-                    <select value={reportMonth} onChange={(event) => setReportMonth(event.target.value)}>
-                      <option value="">Todos</option>
-                      {reportMonths.map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Status">
-                    <select value={reportPaymentStatus} onChange={(event) => setReportPaymentStatus(event.target.value)}>
-                      <option value="">Todos</option>
-                      <option>Pago</option>
-                      <option>Pagamento parcial</option>
-                      <option>Em aberto</option>
-                      <option>Atrasado</option>
-                    </select>
-                  </Field>
-                  <button
-                    type="button"
-                    className="outline-button filter-clear"
-                    onClick={() => {
-                      setReportMonth("");
-                      setReportCustomer("");
-                      setReportPaymentStatus("");
-                    }}
-                  >
-                    Limpar
-                  </button>
-                </div>
                 {financeError && <p className="modal-error">{financeError}</p>}
                 <section className="executive-finance-grid">
                   <article className={`finance-result-card ${operatingResult < 0 ? "negative" : ""}`}>
