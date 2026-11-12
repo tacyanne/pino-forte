@@ -898,3 +898,10 @@ button.plain-row{cursor:pointer}
 .financial-next-card .panel-title{flex-wrap:wrap;gap:12px}
 .panel-title .payable-add-button{display:inline-flex;align-items:center;justify-content:center}
 @media(max-width:430px){.panel-title .payable-add-button{width:100%;min-height:44px}}
+/* Janelas de cadastro mais altas que a tela rolam por dentro (antes o botão de salvar ficava fora do alcance no celular) */
+.modal-backdrop{overflow-y:auto;overscroll-behavior:contain}
+.customer-modal{max-height:calc(100vh - 36px);max-height:calc(100dvh - 36px);overflow-y:auto;-webkit-overflow-scrolling:touch}
+@media(max-width:560px){
+  .modal-backdrop{padding:10px}
+  .customer-modal{padding:18px;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
+}
