@@ -22,7 +22,8 @@ import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, daysBetween, fabricationCategoryIds, leftSentence, overdueSentence, payableSentence, periodMonth, pieceResultLabel, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
-import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { barHeights, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
 type Screen =
   | "dashboard"
@@ -34,6 +35,9 @@ type Screen =
   | "piece-lines"
   | "catalog"
   | "financial"
+  | "financial-monthly"
+  | "financial-cash"
+  | "financial-payables"
   | "wallet"
   | "reports"
   | "settings";
@@ -160,6 +164,7 @@ type Receipt = {
   paymentMethod: string;
   notes: string;
   status: string;
+  legacySourceKey?: string | null;
 };
 type CashMovement = {
   id: number;
@@ -179,6 +184,7 @@ type AuthUser = {
   createdAt?: string;
 };
 type FinanceData = {
+  historyTruncated: boolean;
   summary: FinanceSummary | null;
   categories: FinanceCategory[];
   accountsReceivable: AccountReceivable[];
@@ -293,6 +299,22 @@ const completeOrderNotes = (
   [order.notes, paymentObservationFor(order, receipts)]
     .filter(Boolean)
     .join(separator);
+// Dia (AAAA-MM-DD) no fuso de São Paulo, o mesmo usado para o mês da venda.
+const dayInSaoPaulo = (date: string) => {
+  if (!date || /^\d{4}-\d{2}-\d{2}$/.test(date)) return date || "";
+  const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
+  const parsed = new Date(utcValue);
+  if (Number.isNaN(parsed.getTime())) return date.slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(parsed);
+};
+// Mês em que a conta pesa no resultado: o do pagamento, quando paga; senão, o do vencimento.
+const payableMonth = (payable: { status: string; paidAt: string | null; dueDate: string }) =>
+  ((payable.status === "Pago" && payable.paidAt) || payable.dueDate).slice(0, 7);
 const monthInSaoPaulo = (date: string) => {
   if (!date) return "";
   const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -451,6 +473,9 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [menu, setMenu] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsCollapsed, setSettingsCollapsed] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
+  const [financeCollapsed, setFinanceCollapsed] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("company");
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -497,6 +522,7 @@ export default function Home() {
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
   const financialMonth = reportMonth;
   const [financeData, setFinanceData] = useState<FinanceData>({
+    historyTruncated: false,
     summary: null,
     categories: [],
     accountsReceivable: [],
@@ -555,6 +581,7 @@ export default function Home() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar o financeiro.");
       setFinanceData({
+        historyTruncated: Boolean(data.historyTruncated),
         summary: data.summary || null,
         categories: data.categories || [],
         accountsReceivable: data.accountsReceivable || [],
@@ -852,7 +879,7 @@ export default function Home() {
         code: item.code,
         quantity: item.quantity,
         revenueCents: Math.round(itemUnitPrice(item) * item.quantity * 100 * discountFactor),
-        date: (order.createdAt || "").slice(0, 10),
+        date: dayInSaoPaulo(order.createdAt),
       }));
     }),
     products,
@@ -1008,7 +1035,7 @@ export default function Home() {
   const payableRows = financeData.accountsPayable
     .filter((payable) =>
       payable.status !== "Cancelado" &&
-      (!financialMonth || payable.dueDate.slice(0, 7) === financialMonth),
+      (!financialMonth || payableMonth(payable) === financialMonth),
     )
     .slice()
     .sort((a, b) => {
@@ -1038,6 +1065,68 @@ export default function Home() {
     .filter((item) => item.days <= 7)
     .sort((a, b) => a.days - b.days)
     .slice(0, 4);
+  // Lucro e caixa mês a mês usam todo o histórico, sem o filtro de período.
+  // Memorizado: a página inteira é renderizada de novo a cada tecla digitada em qualquer formulário.
+  const monthly = useMemo(() => {
+    const today = todayIso();
+    const currentMonthKey = today.slice(0, 7);
+    const fabrication = fabricationCategoryIds(financeData.categories);
+    const pieceByKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
+    const sales = orders
+      .filter((order) => order.productionStatus === ORDER_STATUS.delivered)
+      .flatMap((order) => {
+        const discountFactor = order.subtotal > 0 ? order.total / order.subtotal : 1;
+        const date = dayInSaoPaulo(order.createdAt);
+        return getOrderItems(order).map((item) => {
+          const piece = pieceByKey.get(normalizePieceCode(item.code));
+          const cost = piece ? costAt(productCosts, piece.id, date) : null;
+          const unitPrice = item.unitPrice ?? products.find((product) => product.code === item.code)?.price ?? 0;
+          return {
+            month: monthInSaoPaulo(order.createdAt),
+            revenueCents: Math.round(unitPrice * item.quantity * 100 * discountFactor),
+            costCents: cost && cost.unitCostCents > 0 ? cost.unitCostCents * item.quantity : null,
+          };
+        });
+      });
+    const payables = financeData.accountsPayable
+      .filter((payable) => payable.status !== "Cancelado")
+      .map((payable) => ({
+        month: payableMonth(payable),
+        amountCents: payable.amountCents,
+        paid: payable.status === "Pago",
+        isFabrication: payable.categoryId != null && fabrication.includes(payable.categoryId),
+      }));
+    const result = monthlyResult(sales, payables, currentMonthKey);
+    const cash = monthlyCash(
+      dedupeReceipts(
+        financeData.receipts,
+        Object.fromEntries(orders.map((order) => [order.id, Math.round(order.received * 100)])),
+      ),
+      payables,
+      currentMonthKey,
+    );
+    const forecast = forecastCurrentMonth(
+      result.find((row) => row.month === currentMonthKey),
+      today,
+      payables
+        .filter((payable) => !payable.paid && !payable.isFabrication && payable.month === currentMonthKey)
+        .reduce((sum, payable) => sum + payable.amountCents, 0),
+    );
+    return { result, cash, forecast };
+  }, [orders, products, productCosts, financeData]);
+  const resultByMonth = monthly.result;
+  const cashByMonth = monthly.cash;
+  const monthForecast = monthly.forecast;
+  const resultTotal = resultByMonth.length ? resultByMonth[resultByMonth.length - 1].accumulatedCents : 0;
+  const cashTotal = cashByMonth.length ? cashByMonth[cashByMonth.length - 1].balanceCents : 0;
+  // Caixa do período escolhido no Resumo: mesma regra da tela "Caixa mês a mês" (data do recebimento e do pagamento).
+  const periodCash = reportMonth ? cashByMonth.filter((row) => row.month === reportMonth) : cashByMonth;
+  const periodCashIn = periodCash.reduce((sum, row) => sum + row.inCents, 0);
+  const periodCashOut = periodCash.reduce((sum, row) => sum + row.outCents, 0);
+  const wholeMoney = (cents: number) => Math.round(cents / 100).toLocaleString("pt-BR");
+  const isFinanceScreen =
+    screen === "financial" || screen === "reports" || screen === "financial-monthly" || screen === "financial-cash" || screen === "financial-payables";
+  const showFinanceMenu = isFinanceScreen ? !financeCollapsed : financeOpen;
   const walletCustomers = useMemo(() => {
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
     return Object.values(
@@ -1137,6 +1226,7 @@ export default function Home() {
   function goSettings(section: SettingsSection) {
     setSettingsSection(section);
     setSettingsOpen(true);
+    setSettingsCollapsed(false);
     if (section === "customers") return go("customers");
     if (section === "products") return go("products");
     if (section === "piece-types") return go("piece-types");
@@ -2520,6 +2610,12 @@ export default function Home() {
     ["financial", "$", "Financeiro"],
     ["catalog", "▦", "Catálogo"],
   ];
+  const financeNav: [Screen, string][] = [
+    ["financial", "Resumo"],
+    ["financial-monthly", "Lucro mês a mês"],
+    ["financial-cash", "Caixa mês a mês"],
+    ["financial-payables", "Contas a pagar"],
+  ];
   const settingsNav: [SettingsSection, string, string][] = [
     ["customers", "♙", "Clientes"],
     ["products", "⬡", "Peças"],
@@ -2529,7 +2625,8 @@ export default function Home() {
     ["users", "◉", "Usuários"],
   ];
   const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products" || screen === "piece-types" || screen === "piece-lines";
-  const showSettings = settingsOpen || isSettingsScreen;
+  // Numa tela de Configurações o submenu abre sozinho, mas pode ser recolhido pelo usuário.
+  const showSettings = isSettingsScreen ? !settingsCollapsed : settingsOpen;
   return (
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
@@ -2542,7 +2639,7 @@ export default function Home() {
           <BrandImage className="brand-logo" alt="Pino Forte — Fabricação de Peças para Suspensão" sizes="212px" />
         </button>
         <nav>
-          {primaryNav.map(([s, i, l]) => (
+          {primaryNav.map(([s, i, l]) => s !== "financial" ? (
             <button
               key={s}
               className={`nav-item ${screen === s ? "active" : ""}`}
@@ -2551,12 +2648,47 @@ export default function Home() {
               <span>{i}</span>
               {l}
             </button>
+          ) : (
+            <div key={s} className="nav-group-wrap">
+              <button
+                type="button"
+                className={`nav-item nav-group ${isFinanceScreen ? "active" : ""}`}
+                aria-expanded={showFinanceMenu}
+                onClick={() => {
+                  if (isFinanceScreen) return setFinanceCollapsed((value) => !value);
+                  setFinanceCollapsed(false);
+                  setFinanceOpen(true);
+                  go("financial");
+                }}
+              >
+                <span>{i}</span>
+                {l}
+                <b>{showFinanceMenu ? "⌃" : "⌄"}</b>
+              </button>
+              {showFinanceMenu && (
+                <div className="nav-submenu">
+                  {financeNav.map(([target, label]) => (
+                    <button
+                      key={target}
+                      className={`nav-item nav-subitem ${screen === target ? "active" : ""}`}
+                      onClick={() => go(target)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
           <button
             type="button"
             className={`nav-item nav-group ${isSettingsScreen ? "active" : ""}`}
             aria-expanded={showSettings}
-            onClick={() => setSettingsOpen((value) => !value)}
+            onClick={() => {
+              if (isSettingsScreen) return setSettingsCollapsed((value) => !value);
+              setSettingsCollapsed(false);
+              setSettingsOpen((value) => !value);
+            }}
           >
             <span>⚙</span>
             Configurações
@@ -3380,14 +3512,161 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {(screen === "financial" || screen === "reports") && (
+            {isFinanceScreen && (
               <div className="page">
                 <Heading
-                  eyebrow="VISÃO DO NEGÓCIO"
-                  title="Financeiro"
-                  subtitle="Veja quanto você vendeu, quanto gastou e quanto sobrou."
-                  action={<button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button>}
+                  eyebrow="FINANCEIRO"
+                  title={screen === "financial-monthly" ? "Lucro mês a mês" : screen === "financial-cash" ? "Caixa mês a mês" : screen === "financial-payables" ? "Contas a pagar" : "Financeiro"}
+                  subtitle={
+                    screen === "financial-monthly"
+                      ? "Quanto sobrou ou faltou em cada mês, contando o que foi vendido."
+                      : screen === "financial-cash"
+                        ? "O dinheiro que entrou e saiu de verdade em cada mês."
+                        : screen === "financial-payables"
+                          ? "Cadastre e acompanhe as contas da empresa."
+                          : "Veja quanto você vendeu, quanto gastou e quanto sobrou."
+                  }
+                  action={screen === "financial" || screen === "reports" ? <button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button> : undefined}
                 />
+                <nav className="finance-tabs" aria-label="Seções do financeiro">
+                  {financeNav.map(([target, label]) => (
+                    <button
+                      type="button"
+                      key={target}
+                      className={screen === target || (target === "financial" && screen === "reports") ? "active" : ""}
+                      onClick={() => go(target)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                {financeData.historyTruncated && (screen === "financial-monthly" || screen === "financial-cash") && (
+                  <p className="plain-warning">Histórico incompleto: há mais registros do que o sistema carrega de uma vez, e os meses mais antigos podem estar faltando.</p>
+                )}
+                {screen === "financial-monthly" && (
+                  <>
+                    <section className={`plain-card plain-result month-hero ${resultTotal < 0 ? "negative" : "positive"}`}>
+                      <span>{resultTotal < 0 ? "Quanto faltou até hoje" : "Quanto sobrou até hoje"}</span>
+                      <strong>{money(resultTotal / 100)}</strong>
+                      <p>
+                        {resultByMonth.length
+                          ? `Soma de ${shortMonth(resultByMonth[0].month)} até ${shortMonth(resultByMonth[resultByMonth.length - 1].month)}. Conta o que foi vendido, mesmo que ainda não tenha sido pago.`
+                          : "Ainda não há venda entregue nem conta paga."}
+                      </p>
+                    </section>
+                    {resultByMonth.length > 0 && (() => {
+                      const bars = divergingBars(resultByMonth.map((row) => row.leftCents), 150);
+                      return (
+                        <section className="panel plain-panel">
+                          <h2>Sobrou ou faltou em cada mês</h2>
+                          <div className="month-chart" role="img" aria-label="Gráfico de barras com o que sobrou ou faltou em cada mês">
+                            {resultByMonth.map((row, index) => (
+                              <div className="month-col" key={row.month} title={`${shortMonth(row.month)}: ${row.leftCents < 0 ? "faltou" : "sobrou"} ${money(Math.abs(row.leftCents) / 100)}`}>
+                                <div className="month-up" style={{ height: bars.positiveArea + 20 }}>
+                                  {row.leftCents >= 0 && <small>{wholeMoney(row.leftCents)}</small>}
+                                  {row.leftCents > 0 && <i className="bar positive" style={{ height: bars.heights[index] }} />}
+                                </div>
+                                <div className="month-down" style={{ height: bars.negativeArea + 20 }}>
+                                  {row.leftCents < 0 && <i className="bar negative" style={{ height: bars.heights[index] }} />}
+                                  {row.leftCents < 0 && <small>−{wholeMoney(-row.leftCents)}</small>}
+                                </div>
+                                <span>{shortMonth(row.month)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="chart-legend"><i className="swatch positive" /> sobrou <i className="swatch negative" /> faltou <em>valores em reais</em></p>
+                        </section>
+                      );
+                    })()}
+                    {monthForecast && (
+                      <section className="panel plain-panel">
+                        <h2>Previsão para este mês</h2>
+                        <p className="plain-text">
+                          {`Se o ritmo dos primeiros ${monthForecast.day} dias continuar até o dia ${monthForecast.daysInMonth}, você deve vender ${money(monthForecast.salesCents / 100)}, gastar ${money(monthForecast.spentCents / 100)} e ${monthForecast.leftCents < 0 ? "faltar" : "sobrar"} ${money(Math.abs(monthForecast.leftCents) / 100)}.`}
+                        </p>
+                        <p className="plain-text muted">É uma conta de padaria: poucas vendas a mais ou a menos mudam o resultado.</p>
+                      </section>
+                    )}
+                    {resultByMonth.length > 0 && (
+                      <section className="panel plain-panel">
+                        <h2>Os números de cada mês</h2>
+                        <div className="month-table-wrap">
+                          <table className="month-table">
+                            <thead><tr><th>Mês</th><th>Vendi</th><th>Gastei</th><th>Sobrou</th><th>Somando tudo</th></tr></thead>
+                            <tbody>
+                              {resultByMonth.slice().reverse().map((row) => (
+                                <tr key={row.month}>
+                                  <td>{shortMonth(row.month)}</td>
+                                  <td>{money(row.salesCents / 100)}</td>
+                                  <td>{money(row.spentCents / 100)}</td>
+                                  <td className={row.leftCents < 0 ? "negative" : "positive"}>{money(row.leftCents / 100)}</td>
+                                  <td>{money(row.accumulatedCents / 100)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    )}
+                  </>
+                )}
+                {screen === "financial-cash" && (
+                  <>
+                    <section className={`plain-card plain-result month-hero ${cashTotal < 0 ? "negative" : "positive"}`}>
+                      <span>{cashTotal < 0 ? "Saiu mais do que entrou" : "Entrou mais do que saiu"}</span>
+                      <strong>{money(cashTotal / 100)}</strong>
+                      <p>
+                        {cashByMonth.length
+                          ? `De ${shortMonth(cashByMonth[0].month)} até hoje entraram ${money(cashByMonth.reduce((sum, row) => sum + row.inCents, 0) / 100)} e saíram ${money(cashByMonth.reduce((sum, row) => sum + row.outCents, 0) / 100)}. Só conta o que já foi recebido e pago.`
+                          : "Ainda não há recebimento nem conta paga."}
+                      </p>
+                    </section>
+                    {cashByMonth.length > 0 && (() => {
+                      const heights = barHeights(cashByMonth.flatMap((row) => [row.inCents, row.outCents]), 150);
+                      return (
+                        <section className="panel plain-panel">
+                          <h2>Entrou e saiu em cada mês</h2>
+                          <p className="chart-legend"><i className="swatch cash-in" /> entrou <i className="swatch cash-out" /> saiu</p>
+                          <div className="month-chart" role="img" aria-label="Gráfico de barras com o dinheiro que entrou e saiu em cada mês">
+                            {cashByMonth.map((row, index) => (
+                              <div className="month-col" key={row.month} title={`${shortMonth(row.month)}: entrou ${money(row.inCents / 100)}, saiu ${money(row.outCents / 100)}`}>
+                                <div className="month-up month-pair" style={{ height: 170 }}>
+                                  <i className="bar cash-in" style={{ height: heights[index * 2] }} />
+                                  <i className="bar cash-out" style={{ height: heights[index * 2 + 1] }} />
+                                </div>
+                                <span>{shortMonth(row.month)}</span>
+                                <small className={row.netCents < 0 ? "negative" : "positive"}>{row.netCents < 0 ? "−" : "+"}{wholeMoney(Math.abs(row.netCents))}</small>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="chart-legend"><em>Embaixo de cada mês: o que entrou menos o que saiu, em reais.</em></p>
+                        </section>
+                      );
+                    })()}
+                    {cashByMonth.length > 0 && (
+                      <section className="panel plain-panel">
+                        <h2>Os números de cada mês</h2>
+                        <div className="month-table-wrap">
+                          <table className="month-table">
+                            <thead><tr><th>Mês</th><th>Entrou</th><th>Saiu</th><th>Saldo do mês</th><th>Somando tudo</th></tr></thead>
+                            <tbody>
+                              {cashByMonth.slice().reverse().map((row) => (
+                                <tr key={row.month}>
+                                  <td>{shortMonth(row.month)}</td>
+                                  <td>{money(row.inCents / 100)}</td>
+                                  <td>{money(row.outCents / 100)}</td>
+                                  <td className={row.netCents < 0 ? "negative" : "positive"}>{money(row.netCents / 100)}</td>
+                                  <td>{money(row.balanceCents / 100)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    )}
+                  </>
+                )}
+                {(screen === "financial" || screen === "reports" || screen === "financial-payables") && (
                 <div className="plain-period" role="group" aria-label="Período">
                   {([["this", "Este mês"], ["last", "Mês passado"], ["all", "Tudo"]] as [FinancePeriod, string][]).map(([period, label]) => (
                     <button
@@ -3401,7 +3680,10 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                )}
                 {financeError && <p className="modal-error">{financeError}</p>}
+                {(screen === "financial" || screen === "reports") && (
+                <>
                 <section className="plain-summary">
                   <article className="plain-card">
                     <span>Quanto vendi</span>
@@ -3431,7 +3713,7 @@ export default function Home() {
                 </section>
                 <p className="plain-cash">
                   <b>Dinheiro que entrou e saiu:</b>{" "}
-                  {`entraram ${money(plain.receivedCents / 100)} e saíram ${money(paidSplit.totalCents / 100)} neste período.`}
+                  {`entraram ${money(periodCashIn / 100)} e saíram ${money(periodCashOut / 100)} neste período.`}
                 </p>
                 <section className="panel plain-panel">
                   <h2>Precisa da sua atenção</h2>
@@ -3466,6 +3748,9 @@ export default function Home() {
                     );
                   })}
                 </section>
+                </>
+                )}
+                {screen === "financial-payables" && (
                 <section className="financial-layout">
                   <aside className="financial-side">
                     <div className="panel financial-next-card">
@@ -3531,6 +3816,7 @@ export default function Home() {
                     </div>
                   </aside>
                 </section>
+                )}
               </div>
             )}
             {screen === "wallet" && (
