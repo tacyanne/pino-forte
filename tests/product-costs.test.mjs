@@ -142,7 +142,6 @@ test("tela mostra custo nas peças e lucro no financeiro", () => {
   assert.ok(page.includes('costField("costMaterial"'));
   assert.ok(page.includes('name="costStartsAt"'));
   assert.ok(page.includes("...(costChanged ? { cost } : {})"));
-  assert.ok(page.includes("<span>Lucro bruto</span>"));
-  assert.ok(page.includes("<span>Lucro sobre o custo</span>"));
-  assert.ok(page.includes("LUCRO POR PEÇA"));
+  assert.ok(page.includes("pieceCostCents: salesProfit.costCents"));
+  assert.ok(page.includes("salesProfit.byProduct.map"));
 });
