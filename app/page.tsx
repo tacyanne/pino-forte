@@ -1010,7 +1010,7 @@ export default function Home() {
       const statusWeight = { Pendente: 0, Vencido: 0, Pago: 1 } as Record<string, number>;
       const statusDifference = (statusWeight[a.status] ?? 0) - (statusWeight[b.status] ?? 0);
       if (statusDifference !== 0) return statusDifference;
-      return dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate);
+      return dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
     });
   const paidExpenses = payableRows
     .filter((payable) => payable.status === "Pago")
@@ -3509,32 +3509,49 @@ export default function Home() {
                           + Nova conta
                         </button>
                       </div>
-                      <div className="financial-next-list">
-                        {!payableRows.length ? (
-                          <p className="finance-history-empty">Nenhuma conta a pagar cadastrada no filtro atual.</p>
-                        ) : payableRows.map((payable) => {
-                          const isOverdue = payable.status !== "Pago" && payable.dueDate < todayIso();
-                          const statusLabel = payable.status === "Pago" ? "Pago" : isOverdue ? "Atrasado" : payable.status;
-                          return (
-                            <div className="financial-next-row" key={payable.id}>
-                              <span>
-                                <b>{payable.supplier}</b>
-                                <small>{payable.description} - {brDate(payable.dueDate)}</small>
-                                {payable.paidAt && <small>Pago em {brDate(payable.paidAt)}</small>}
-                              </span>
-                              <strong>{money(payable.amountCents / 100)}</strong>
-                              <span className={`status ${statusLabel === "Pago" ? "green" : statusLabel === "Atrasado" ? "red" : "amber"}`}>
-                                {statusLabel}
-                              </span>
-                              {payable.status !== "Pago" && (
-                                <button className="outline-button" onClick={() => settlePayable(payable)} disabled={saving}>
-                                  Marcar paga
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      {!payableRows.length ? (
+                        <p className="finance-history-empty payable-empty">Nenhuma conta a pagar cadastrada no filtro atual.</p>
+                      ) : (
+                        <div className="payable-list">
+                          <div className="payable-list-head" aria-hidden="true">
+                            <span>Fornecedor</span>
+                            <span>Vencimento</span>
+                            <span>Pagamento</span>
+                            <span>Valor</span>
+                            <span>Status</span>
+                            <span />
+                          </div>
+                          {payableRows.map((payable) => {
+                            const isOverdue = payable.status !== "Pago" && payable.dueDate < todayIso();
+                            const statusLabel = payable.status === "Pago" ? "Pago" : isOverdue ? "Atrasado" : payable.status;
+                            return (
+                              <div className="payable-row" key={payable.id}>
+                                <span className="payable-main">
+                                  <b>{payable.supplier}</b>
+                                  <small>{payable.description}</small>
+                                </span>
+                                <span className="payable-date" data-label="Vencimento">{brDate(payable.dueDate)}</span>
+                                <span className="payable-date" data-label="Pagamento">
+                                  {payable.paidAt ? `${brDate(payable.paidAt)}${payable.paymentMethod ? ` · ${payable.paymentMethod}` : ""}` : "—"}
+                                </span>
+                                <strong>{money(payable.amountCents / 100)}</strong>
+                                <span className="payable-status">
+                                  <span className={`status ${statusLabel === "Pago" ? "green" : statusLabel === "Atrasado" ? "red" : "amber"}`}>
+                                    {statusLabel}
+                                  </span>
+                                </span>
+                                <span className="payable-action">
+                                  {payable.status !== "Pago" && (
+                                    <button className="outline-button" onClick={() => settlePayable(payable)} disabled={saving}>
+                                      Marcar paga
+                                    </button>
+                                  )}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </aside>
                 </section>
