@@ -905,3 +905,47 @@ button.plain-row{cursor:pointer}
   .modal-backdrop{padding:10px}
   .customer-modal{padding:18px;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px)}
 }
+/* Financeiro: submenus, lucro e caixa mês a mês (mobile first) */
+.nav-group-wrap{display:grid}
+.finance-tabs{display:flex;gap:8px;margin-bottom:16px;padding-bottom:4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.finance-tabs button{flex:0 0 auto;min-height:40px;padding:0 14px;border:1px solid var(--border);border-radius:99px;background:#fff;color:var(--ink);font-size:13px;font-weight:750;white-space:nowrap}
+.finance-tabs button.active{background:var(--petrol);border-color:var(--petrol);color:#fff}
+.month-hero{margin-bottom:16px}
+.plain-text{margin:0 0 6px;font-size:13px;line-height:1.55;color:#3f4f52}
+.plain-text.muted{color:var(--muted)}
+.month-chart{display:flex;align-items:flex-end;gap:2px;margin-top:12px;padding-bottom:4px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.month-col{display:flex;flex:1 0 48px;flex-direction:column;align-items:center;min-width:48px}
+.month-col>span{margin-top:6px;font-size:11px;font-weight:750;color:var(--muted);white-space:nowrap}
+.month-col small{font-size:11px;font-weight:750;color:var(--ink);white-space:nowrap}
+.month-col>small.positive{color:#1d6b53}
+.month-col>small.negative{color:#b3401d}
+.month-up{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;width:100%;border-bottom:1px solid #b9c4c2}
+.month-down{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:3px;width:100%}
+.month-pair{flex-direction:row;align-items:flex-end;justify-content:center;gap:2px}
+.month-chart .bar{display:block;width:60%;max-width:34px;min-width:12px}
+.month-pair .bar{width:38%;max-width:22px;min-width:8px}
+.month-chart .bar.positive{border-radius:4px 4px 0 0;background:#2f8f6f}
+.month-chart .bar.negative{border-radius:0 0 4px 4px;background:#c8553a}
+.month-chart .bar.cash-in{border-radius:4px 4px 0 0;background:#1f7fa6}
+.month-chart .bar.cash-out{border-radius:4px 4px 0 0;background:#d9691f}
+.chart-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:12px 0 0;font-size:12px;color:#3f4f52}
+.chart-legend em{font-style:normal;color:var(--muted)}
+.chart-legend .swatch{display:inline-block;width:12px;height:12px;border-radius:3px}
+.chart-legend .swatch:not(:first-child){margin-left:8px}
+.swatch.positive{background:#2f8f6f}.swatch.negative{background:#c8553a}.swatch.cash-in{background:#1f7fa6}.swatch.cash-out{background:#d9691f}
+.month-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.month-table{width:100%;border-collapse:collapse;font-size:12px}
+.month-table th:nth-child(5),.month-table td:nth-child(5){display:none}
+.month-table th{padding:8px 3px;border-bottom:1px solid var(--border);font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;text-align:right;color:var(--muted);white-space:nowrap}
+.month-table td{padding:10px 3px;border-bottom:1px solid #edf0ef;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.month-table th:first-child,.month-table td:first-child{text-align:left;font-weight:750}
+.month-table td.positive{color:#1d6b53;font-weight:750}
+.month-table td.negative{color:#b3401d;font-weight:750}
+@media(min-width:761px){
+  .finance-tabs{display:none}
+  .month-chart{gap:8px}
+  .month-col{flex-basis:64px}
+  .month-table{font-size:13px}
+  .month-table th,.month-table td{padding-left:6px;padding-right:6px}
+  .month-table th:nth-child(5),.month-table td:nth-child(5){display:table-cell}
+}

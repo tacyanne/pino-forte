@@ -138,7 +138,12 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
       });
     }
 
-    if (receivedCents > 0 && receivable) {
+    // O recebimento automático só nasce quando a OS ainda não tem nenhum recebimento:
+    // sem isso, um recebimento lançado à mão era repetido na sincronização seguinte.
+    const [hasReceipt] = receivable
+      ? await db.select({ id: receipts.id }).from(receipts).where(eq(receipts.serviceOrderId, order.id)).limit(1)
+      : [];
+    if (receivedCents > 0 && receivable && !hasReceipt) {
       const legacySourceKey = `service_order:${order.id}:initial_receipt`;
       await db
         .insert(receipts)
