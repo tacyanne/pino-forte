@@ -894,3 +894,7 @@ button.plain-row{cursor:pointer}
   .plain-row{flex-direction:row;align-items:center;justify-content:space-between;gap:16px}
   .plain-row small,.plain-row strong{white-space:nowrap}
 }
+/* Botão "Nova conta" visível também no celular (a regra geral esconde botões do título em telas estreitas) */
+.financial-next-card .panel-title{flex-wrap:wrap;gap:12px}
+.panel-title .payable-add-button{display:inline-flex;align-items:center;justify-content:center}
+@media(max-width:430px){.panel-title .payable-add-button{width:100%;min-height:44px}}
