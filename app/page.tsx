@@ -3424,6 +3424,9 @@ export default function Home() {
                     <span>Quanto sobrou</span>
                     <strong>{money(plain.leftCents / 100)}</strong>
                     <p>{leftSentence(plain.leftPer100Cents, money)}</p>
+                    {plain.salesCents > 0 && plain.toReceiveCents > 0 && (
+                      <p className="plain-note">{`Essa conta inclui ${money(plain.toReceiveCents / 100)} que você ainda não recebeu.`}</p>
+                    )}
                   </article>
                 </section>
                 <p className="plain-cash">
