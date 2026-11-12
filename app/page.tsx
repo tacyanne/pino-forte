@@ -21,6 +21,7 @@ import { loadCatalogImage } from "../lib/catalog-image";
 import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "../lib/catalog-sync";
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
+import { activePeriod, daysBetween, fabricationCategoryIds, leftSentence, overdueSentence, payableSentence, periodMonth, pieceResultLabel, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 
 type Screen =
@@ -137,8 +138,10 @@ type ReceivableInstallment = {
   balanceCents: number;
   status: string;
 };
+type FinanceCategory = { id: number; name: string; type: string; active: boolean };
 type AccountPayable = {
   id: number;
+  categoryId?: number | null;
   supplier: string;
   description: string;
   dueDate: string;
@@ -177,6 +180,7 @@ type AuthUser = {
 };
 type FinanceData = {
   summary: FinanceSummary | null;
+  categories: FinanceCategory[];
   accountsReceivable: AccountReceivable[];
   receivableInstallments: ReceivableInstallment[];
   accountsPayable: AccountPayable[];
@@ -494,6 +498,7 @@ export default function Home() {
   const financialMonth = reportMonth;
   const [financeData, setFinanceData] = useState<FinanceData>({
     summary: null,
+    categories: [],
     accountsReceivable: [],
     receivableInstallments: [],
     accountsPayable: [],
@@ -551,6 +556,7 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar o financeiro.");
       setFinanceData({
         summary: data.summary || null,
+        categories: data.categories || [],
         accountsReceivable: data.accountsReceivable || [],
         receivableInstallments: data.receivableInstallments || [],
         accountsPayable: data.accountsPayable || [],
@@ -852,7 +858,6 @@ export default function Home() {
     products,
     productCosts,
   );
-  const salesProfitRate = profitOnCost(salesProfit.coveredRevenueCents, salesProfit.costCents);
   const percent = (rate: number) => `${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
   const currentCostOf = (productId: number) => costAt(productCosts, productId, todayIso());
   const marginTone = (rate: number | null) =>
@@ -1012,32 +1017,26 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       return dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
     });
-  const paidExpenses = payableRows
-    .filter((payable) => payable.status === "Pago")
-    .reduce((sum, payable) => sum + payable.amountCents / 100, 0);
-  const operatingResult = reportReceived - paidExpenses;
-  const receiptRate = reportSales > 0 ? Math.min(100, (reportReceived / reportSales) * 100) : 0;
-  const soldUnits = reportOrders.reduce(
-    (sum, order) => sum + getOrderItems(order).reduce((total, item) => total + item.quantity, 0),
-    0,
-  );
-  const averageTicket = reportOrders.length ? reportSales / reportOrders.length : 0;
-  const openBalance = financialTotals.pending + financialTotals.overdue;
-  const overdueRate = openBalance > 0 ? (financialTotals.overdue / openBalance) * 100 : 0;
-  const reportOrderIds = new Set(reportOrders.map((order) => order.id));
-  const paymentMix = Object.entries(
-    financeData.receipts
-      .filter((receipt) => receipt.status === "Confirmado" && reportOrderIds.has(receipt.serviceOrderId) && receipt.paymentMethod !== "Carteira")
-      .reduce((mix, receipt) => {
-      const method = receipt.paymentMethod || "Não informado";
-      mix[method] = (mix[method] || 0) + receipt.amountCents / 100;
-      return mix;
-    }, {} as Record<string, number>),
-  ).sort((a, b) => b[1] - a[1]);
   const attentionRows = financialRows
     .filter((row) => row.status === "Atrasado" && row.balance > 0)
     .slice()
     .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
+    .slice(0, 4);
+  // Financeiro em linguagem simples: aço e torneiro já estão no custo da peça e não contam de novo.
+  const fabricationIds = fabricationCategoryIds(financeData.categories);
+  const paidSplit = splitPaidExpenses(payableRows, fabricationIds);
+  const plain = plainResult({
+    salesCents: Math.round(reportSales * 100),
+    receivedCents: Math.round(reportReceived * 100),
+    pieceCostCents: salesProfit.costCents,
+    otherExpensesCents: paidSplit.otherCents,
+  });
+  const financePeriod = activePeriod(reportMonth, todayIso());
+  const upcomingPayables = financeData.accountsPayable
+    .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
+    .map((payable) => ({ payable, days: daysBetween(todayIso(), payable.dueDate) }))
+    .filter((item) => item.days <= 7)
+    .sort((a, b) => a.days - b.days)
     .slice(0, 4);
   const walletCustomers = useMemo(() => {
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
@@ -1703,6 +1702,7 @@ export default function Home() {
     const paidAtInput = String(form.get("paidAt") || "").trim();
     const amountCents = Math.round(parseCurrency(String(form.get("amount") || "")) * 100);
     const paymentMethod = String(form.get("paymentMethod") || "").trim();
+    const fabricationCategoryId = form.get("isFabrication") === "sim" ? preferredFabricationCategoryId(financeData.categories) : null;
     if (!supplier || !description || !isValidBrDate(dueDateInput) || amountCents <= 0)
       return flash("Informe fornecedor, descricao, vencimento e valor.", "error");
     if (payableStatus === "Pago" && (!paymentMethod || !isValidBrDate(paidAtInput)))
@@ -1716,6 +1716,7 @@ export default function Home() {
           action: "payable",
           supplier,
           description,
+          ...(fabricationCategoryId ? { categoryId: fabricationCategoryId } : {}),
           dueDate: toIsoDate(dueDateInput),
           amountCents,
           paymentMethod,
@@ -3384,77 +3385,83 @@ export default function Home() {
                 <Heading
                   eyebrow="VISÃO DO NEGÓCIO"
                   title="Financeiro"
-                  subtitle="Acompanhe vendas, recebimentos, pendências e desempenho comercial."
+                  subtitle="Veja quanto você vendeu, quanto gastou e quanto sobrou."
                   action={<button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button>}
                 />
+                <div className="plain-period" role="group" aria-label="Período">
+                  {([["this", "Este mês"], ["last", "Mês passado"], ["all", "Tudo"]] as [FinancePeriod, string][]).map(([period, label]) => (
+                    <button
+                      type="button"
+                      key={period}
+                      className={financePeriod === period ? "active" : ""}
+                      aria-pressed={financePeriod === period}
+                      onClick={() => setReportMonth(periodMonth(period, todayIso()))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {financeError && <p className="modal-error">{financeError}</p>}
-                <section className="executive-finance-grid">
-                  <article className={`finance-result-card ${operatingResult < 0 ? "negative" : ""}`}>
-                    <span>RESULTADO DO PERÍODO</span>
-                    <strong>{money(operatingResult)}</strong>
-                    <p>Recebimentos menos contas pagas</p>
-                    <div><b>{money(reportReceived)}</b> recebidos <i /> <b>{money(paidExpenses)}</b> pagos</div>
+                <section className="plain-summary">
+                  <article className="plain-card">
+                    <span>Quanto vendi</span>
+                    <strong>{money(plain.salesCents / 100)}</strong>
+                    <p>
+                      {plain.salesCents > 0
+                        ? `Já recebi ${money(plain.receivedCents / 100)}. Falta receber ${money(plain.toReceiveCents / 100)}.`
+                        : "Nenhuma venda entregue neste período."}
+                    </p>
                   </article>
-                  <div className="finance-kpi-grid">
-                    <article><span>Vendas</span><strong>{money(reportSales)}</strong><small>{reportOrders.length} ordens no período</small></article>
-                    <article><span>Saldo a receber</span><strong>{money(openBalance)}</strong><small>{money(financialTotals.pending)} ainda no prazo</small></article>
-                    <article className={financialTotals.overdue > 0 ? "attention" : ""}><span>Em atraso</span><strong>{money(financialTotals.overdue)}</strong><small>{overdueRate.toFixed(0)}% do saldo aberto</small></article>
-                    <article><span>Taxa de recebimento</span><strong>{receiptRate.toFixed(0)}%</strong><small>{money(reportReceived)} já convertidos em caixa</small></article>
-                    <article>
-                      <span>Lucro bruto</span>
-                      <strong>{salesProfitRate === null ? "—" : money(salesProfit.profitCents / 100)}</strong>
-                      <small>
-                        {salesProfitRate === null
-                          ? "Cadastre o custo das peças para ver o lucro"
-                          : `Vendas menos ${money(salesProfit.costCents / 100)} de custo das peças`}
-                      </small>
-                    </article>
-                    <article className={salesProfitRate !== null && salesProfitRate < TARGET_PROFIT_ON_COST ? "attention" : ""}>
-                      <span>Lucro sobre o custo</span>
-                      <strong>{salesProfitRate === null ? "—" : percent(salesProfitRate)}</strong>
-                      <small>
-                        {salesProfit.uncoveredRevenueCents > 0 && salesProfitRate !== null
-                          ? `${money(salesProfit.uncoveredRevenueCents / 100)} em vendas sem custo cadastrado`
-                          : `Meta de ${percent(TARGET_PROFIT_ON_COST)}`}
-                      </small>
-                    </article>
-                  </div>
-                </section>
-                <section className="business-health-strip">
-                  <div><span>Ticket médio</span><b>{money(averageTicket)}</b></div>
-                  <div><span>Peças vendidas</span><b>{soldUnits} un.</b></div>
-                  <div><span>Contas pagas</span><b>{money(paidExpenses)}</b></div>
-                </section>
-                <section className="finance-insights-grid">
-                  <article className="panel finance-attention-panel">
-                    <div className="panel-title"><div><h2>Atenção agora</h2><p>Recebimentos atrasados que exigem ação</p></div><span className="insight-count">{attentionRows.length}</span></div>
-                    {!attentionRows.length ? <p className="positive-empty">Nenhuma pendência atrasada no filtro atual.</p> : attentionRows.map((row) => (
-                      <button type="button" className="attention-row" key={row.key} onClick={() => row.order && setOrderModal(row.order)}>
-                        <span><b>{row.customerName}</b><small>{row.orderNumber}{row.installmentLabel ? ` · ${row.installmentLabel}` : ""} · venceu em {brDate(row.dueDate)}</small></span>
-                        <strong>{money(row.balance)}</strong>
-                      </button>
-                    ))}
+                  <article className="plain-card">
+                    <span>Quanto gastei</span>
+                    <strong>{money(plain.spentCents / 100)}</strong>
+                    <p>{`${money(plain.pieceCostCents / 100)} para fabricar as peças vendidas e ${money(plain.otherExpensesCents / 100)} em outras contas.`}</p>
+                    {salesProfit.uncoveredRevenueCents > 0 && (
+                      <p className="plain-note">{`Falta o custo de peças que somam ${money(salesProfit.uncoveredRevenueCents / 100)} em vendas. Cadastre em Peças.`}</p>
+                    )}
                   </article>
-                  <article className="panel compact-analysis-panel">
-                    <div className="panel-title"><div><h2>Visão comercial</h2><p>Como as vendas do período se distribuem</p></div></div>
-                    <div className="compact-analysis-columns">
-                      <div className="compact-list"><h3>RECEBIMENTOS POR FORMA</h3>{paymentMix.length ? paymentMix.slice(0, 4).map(([method, value]) => <div key={method}><span>{method}</span><b>{money(value)}</b></div>) : <p className="compact-empty">Nenhum recebimento no período.</p>}</div>
-                      <div className="compact-list profit-ranking">
-                        <h3>LUCRO POR PEÇA</h3>
-                        {salesProfit.byProduct.length ? salesProfit.byProduct.slice(0, 6).map((row, index) => {
-                          const rate = row.costCents ? profitOnCost(row.revenueCents, row.costCents) : null;
-                          return (
-                            <div key={row.key}>
-                              <span><i>{index + 1}</i>{row.code} · {row.quantity} un.</span>
-                              {rate === null || row.profitCents === null
-                                ? <b className="muted">sem custo</b>
-                                : <b className={marginTone(rate)}>{money(row.profitCents / 100)} · {percent(rate)}</b>}
-                            </div>
-                          );
-                        }) : <p className="compact-empty">Nenhuma venda no período.</p>}
-                      </div>
+                  <article className={`plain-card plain-result ${plain.leftCents < 0 ? "negative" : "positive"}`}>
+                    <span>Quanto sobrou</span>
+                    <strong>{money(plain.leftCents / 100)}</strong>
+                    <p>{leftSentence(plain.leftPer100Cents, money)}</p>
+                  </article>
+                </section>
+                <p className="plain-cash">
+                  <b>Dinheiro que entrou e saiu:</b>{" "}
+                  {`entraram ${money(plain.receivedCents / 100)} e saíram ${money(paidSplit.totalCents / 100)} neste período.`}
+                </p>
+                <section className="panel plain-panel">
+                  <h2>Precisa da sua atenção</h2>
+                  {!attentionRows.length && !upcomingPayables.length && (
+                    <p className="positive-empty">Ninguém está devendo com atraso e não há conta para vencer nos próximos dias.</p>
+                  )}
+                  {attentionRows.map((row) => (
+                    <button type="button" className="plain-row" key={row.key} onClick={() => row.order && setOrderModal(row.order)}>
+                      <span>{overdueSentence(row.customerName, money(row.balance), daysBetween(row.dueDate, todayIso()))}</span>
+                      <small>{row.orderNumber}{row.installmentLabel ? ` · ${row.installmentLabel}` : ""}</small>
+                    </button>
+                  ))}
+                  {upcomingPayables.map(({ payable, days }) => (
+                    <div className="plain-row" key={`payable-${payable.id}`}>
+                      <span>{payableSentence(payable.supplier, money(payable.amountCents / 100), days)}</span>
+                      <small>{payable.description}</small>
                     </div>
-                  </article>
+                  ))}
+                </section>
+                <section className="panel plain-panel">
+                  <h2>Suas peças: onde você ganha e onde perde</h2>
+                  {!salesProfit.byProduct.length && <p className="compact-empty">Nenhuma venda entregue neste período.</p>}
+                  {salesProfit.byProduct.map((row) => {
+                    const measure = products.find((product) => product.id === row.productId)?.measure;
+                    return (
+                      <div className="plain-row" key={row.key}>
+                        <span><b>{row.code}</b>{measure ? ` (${measure})` : ""} — vendeu {row.quantity}</span>
+                        <strong className={row.profitCents === null ? "muted" : row.profitCents >= 0 ? "positive" : "negative"}>
+                          {pieceResultLabel(row.profitCents, money)}
+                        </strong>
+                      </div>
+                    );
+                  })}
                 </section>
                 <section className="financial-layout">
                   <aside className="financial-side">
@@ -3494,7 +3501,7 @@ export default function Home() {
                               <div className="payable-row" key={payable.id}>
                                 <span className="payable-main">
                                   <b>{payable.supplier}</b>
-                                  <small>{payable.description}</small>
+                                  <small>{payable.description}{payable.categoryId != null && fabricationIds.includes(payable.categoryId) ? " · gasto para fabricar peça" : ""}</small>
                                 </span>
                                 <span className="payable-date" data-label="Vencimento">{brDate(payable.dueDate)}</span>
                                 <span className="payable-date" data-label="Pagamento">
@@ -4284,6 +4291,12 @@ export default function Home() {
                   onChange={(e) => { e.currentTarget.value = maskCurrency(e.currentTarget.value); }}
                   required
                 />
+              </Field>
+              <Field label="Esse gasto é para fabricar peça? (aço, serviço do torneiro)">
+                <select name="isFabrication" defaultValue="nao">
+                  <option value="nao">Não</option>
+                  <option value="sim">Sim</option>
+                </select>
               </Field>
               <Field label="Status">
                 <select value={payableStatus} onChange={(e) => setPayableStatus(e.target.value)}>
