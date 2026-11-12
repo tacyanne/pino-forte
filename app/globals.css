@@ -822,3 +822,13 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .profit-ranking b.muted{color:var(--muted);font-weight:700}
 @media(min-width:561px){.product-cost-row,.product-cost-view{grid-template-columns:1fr 1fr}}
 @media(min-width:1101px){.product-cost-row{grid-template-columns:repeat(4,minmax(0,1fr))}.product-cost-view{grid-template-columns:repeat(5,minmax(0,1fr))}}
+/* Tabela de peças: código em uma linha e larguras ajustadas às colunas de custo e lucro */
+.product-table td:nth-child(1),.product-table td:nth-child(4),.product-table td:nth-child(5),.product-table td:nth-child(6){white-space:nowrap}
+@media(min-width:761px){
+  .product-table table{min-width:900px}
+  .product-table th:nth-child(1),.product-table td:nth-child(1){width:112px}
+  .product-table th:nth-child(4),.product-table td:nth-child(4){width:150px}
+  .product-table th:nth-child(5),.product-table td:nth-child(5),.product-table th:nth-child(6),.product-table td:nth-child(6){width:92px}
+  .product-table th:nth-child(7),.product-table td:nth-child(7){width:156px;text-align:left}
+  .product-table th:last-child,.product-table td:last-child{width:92px}
+}

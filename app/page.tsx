@@ -3306,7 +3306,7 @@ export default function Home() {
                             <b>{p.code}</b>
                           </td>
                           <td>{p.pieceType || "—"}</td>
-                          <td>{p.name}</td>
+                          <td>{p.name.replace(/^Linha\s+/i, "")}</td>
                           <td>{p.measure}</td>
                           <td>{money(p.price)}</td>
                           <td>{rate === null ? "—" : money(costValue)}</td>
