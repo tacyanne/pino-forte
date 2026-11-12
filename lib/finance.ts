@@ -7,6 +7,7 @@ import {
   receipts,
   serviceOrders,
 } from "../db/schema";
+import { needsInitialReceipt } from "./finance-monthly";
 import { syncInstallmentsDb } from "./receivable-installments";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -69,6 +70,10 @@ export function receivableStatus(balanceCents: number, dueDate: string, today = 
 
 export async function syncReceivablesFromOrders(db: WritableDb, userId?: number) {
   const orders = await db.select().from(serviceOrders);
+  // Uma consulta só para saber quais OS já têm recebimento (em vez de uma por OS).
+  const ordersWithReceipt = new Set(
+    (await db.select({ serviceOrderId: receipts.serviceOrderId }).from(receipts)).map((row) => row.serviceOrderId),
+  );
   let synced = 0;
 
   for (const order of orders) {
@@ -140,10 +145,11 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
 
     // O recebimento automático só nasce quando a OS ainda não tem nenhum recebimento:
     // sem isso, um recebimento lançado à mão era repetido na sincronização seguinte.
-    const [hasReceipt] = receivable
-      ? await db.select({ id: receipts.id }).from(receipts).where(eq(receipts.serviceOrderId, order.id)).limit(1)
-      : [];
-    if (receivedCents > 0 && receivable && !hasReceipt) {
+    if (
+      receivable &&
+      needsInitialReceipt({ receivedCents, hasReceivable: true, alreadyHasReceipt: ordersWithReceipt.has(order.id) })
+    ) {
+      ordersWithReceipt.add(order.id);
       const legacySourceKey = `service_order:${order.id}:initial_receipt`;
       await db
         .insert(receipts)

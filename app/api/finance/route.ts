@@ -62,6 +62,10 @@ async function audit(
   });
 }
 
+// Quantos registros de cada tabela o financeiro carrega de uma vez. As telas mês a mês
+// dependem do histórico completo; ao atingir o teto, a resposta avisa (historyTruncated).
+const HISTORY_LIMIT = 1000;
+
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
@@ -78,10 +82,10 @@ export async function GET(request: Request) {
     const [categoryRows, receivableRows, payableRows, receiptRows, movementRows, installmentRows] =
       await Promise.all([
         db.select().from(financialCategories).orderBy(financialCategories.type, financialCategories.name),
-        db.select().from(accountsReceivable).orderBy(desc(accountsReceivable.dueDate)).limit(300),
-        db.select().from(accountsPayable).orderBy(desc(accountsPayable.dueDate)).limit(300),
-        db.select().from(receipts).orderBy(desc(receipts.receiptDate)).limit(300),
-        db.select().from(cashMovements).orderBy(desc(cashMovements.movementDate)).limit(300),
+        db.select().from(accountsReceivable).orderBy(desc(accountsReceivable.dueDate)).limit(HISTORY_LIMIT),
+        db.select().from(accountsPayable).orderBy(desc(accountsPayable.dueDate)).limit(HISTORY_LIMIT),
+        db.select().from(receipts).orderBy(desc(receipts.receiptDate)).limit(HISTORY_LIMIT),
+        db.select().from(cashMovements).orderBy(desc(cashMovements.movementDate)).limit(HISTORY_LIMIT),
         db.select().from(receivableInstallments).orderBy(receivableInstallments.dueDate).limit(1000),
       ]);
 
@@ -120,6 +124,7 @@ export async function GET(request: Request) {
           ...summary,
           cashNetCents: summary.cashInCents - summary.cashOutCents,
         },
+        historyTruncated: receiptRows.length >= HISTORY_LIMIT || payableRows.length >= HISTORY_LIMIT,
         categories: categoryRows,
         accountsReceivable: receivableRows,
         receivableInstallments: installmentRows,
@@ -158,22 +163,22 @@ async function getFinanceFromRest(request: Request) {
       supabaseSelect<Record<string, unknown>>("accounts_receivable", {
         select: "*",
         order: "due_date.desc",
-        limit: "300",
+        limit: String(HISTORY_LIMIT),
       }),
       supabaseSelect<Record<string, unknown>>("accounts_payable", {
         select: "*",
         order: "due_date.desc",
-        limit: "300",
+        limit: String(HISTORY_LIMIT),
       }),
       supabaseSelect<Record<string, unknown>>("receipts", {
         select: "*",
         order: "receipt_date.desc",
-        limit: "300",
+        limit: String(HISTORY_LIMIT),
       }),
       supabaseSelect<Record<string, unknown>>("cash_movements", {
         select: "*",
         order: "movement_date.desc",
-        limit: "300",
+        limit: String(HISTORY_LIMIT),
       }),
       supabaseSelect<Record<string, unknown>>("receivable_installments", {
         select: "*",
@@ -228,6 +233,7 @@ async function getFinanceFromRest(request: Request) {
           ...summary,
           cashNetCents: summary.cashInCents - summary.cashOutCents,
         },
+        historyTruncated: receiptRows.length >= HISTORY_LIMIT || payableRows.length >= HISTORY_LIMIT,
         categories: categoryRows,
         accountsReceivable: receivableRows,
         receivableInstallments: installmentRows,

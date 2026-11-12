@@ -949,3 +949,4 @@ button.plain-row{cursor:pointer}
   .month-table th,.month-table td{padding-left:6px;padding-right:6px}
   .month-table th:nth-child(5),.month-table td:nth-child(5){display:table-cell}
 }
+.plain-warning{margin:0 0 16px;padding:12px 16px;border:1px solid #f0d9a8;border-radius:12px;background:#fdf6e3;font-size:13px;line-height:1.5;color:#7a5510}

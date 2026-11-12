@@ -184,6 +184,7 @@ type AuthUser = {
   createdAt?: string;
 };
 type FinanceData = {
+  historyTruncated: boolean;
   summary: FinanceSummary | null;
   categories: FinanceCategory[];
   accountsReceivable: AccountReceivable[];
@@ -298,6 +299,22 @@ const completeOrderNotes = (
   [order.notes, paymentObservationFor(order, receipts)]
     .filter(Boolean)
     .join(separator);
+// Dia (AAAA-MM-DD) no fuso de São Paulo, o mesmo usado para o mês da venda.
+const dayInSaoPaulo = (date: string) => {
+  if (!date || /^\d{4}-\d{2}-\d{2}$/.test(date)) return date || "";
+  const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
+  const parsed = new Date(utcValue);
+  if (Number.isNaN(parsed.getTime())) return date.slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(parsed);
+};
+// Mês em que a conta pesa no resultado: o do pagamento, quando paga; senão, o do vencimento.
+const payableMonth = (payable: { status: string; paidAt: string | null; dueDate: string }) =>
+  ((payable.status === "Pago" && payable.paidAt) || payable.dueDate).slice(0, 7);
 const monthInSaoPaulo = (date: string) => {
   if (!date) return "";
   const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -456,7 +473,9 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [menu, setMenu] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsCollapsed, setSettingsCollapsed] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
+  const [financeCollapsed, setFinanceCollapsed] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("company");
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -503,6 +522,7 @@ export default function Home() {
   const [reportPaymentStatus, setReportPaymentStatus] = useState("");
   const financialMonth = reportMonth;
   const [financeData, setFinanceData] = useState<FinanceData>({
+    historyTruncated: false,
     summary: null,
     categories: [],
     accountsReceivable: [],
@@ -561,6 +581,7 @@ export default function Home() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Nao foi possivel carregar o financeiro.");
       setFinanceData({
+        historyTruncated: Boolean(data.historyTruncated),
         summary: data.summary || null,
         categories: data.categories || [],
         accountsReceivable: data.accountsReceivable || [],
@@ -858,7 +879,7 @@ export default function Home() {
         code: item.code,
         quantity: item.quantity,
         revenueCents: Math.round(itemUnitPrice(item) * item.quantity * 100 * discountFactor),
-        date: (order.createdAt || "").slice(0, 10),
+        date: dayInSaoPaulo(order.createdAt),
       }));
     }),
     products,
@@ -1014,7 +1035,7 @@ export default function Home() {
   const payableRows = financeData.accountsPayable
     .filter((payable) =>
       payable.status !== "Cancelado" &&
-      (!financialMonth || payable.dueDate.slice(0, 7) === financialMonth),
+      (!financialMonth || payableMonth(payable) === financialMonth),
     )
     .slice()
     .sort((a, b) => {
@@ -1045,52 +1066,67 @@ export default function Home() {
     .sort((a, b) => a.days - b.days)
     .slice(0, 4);
   // Lucro e caixa mês a mês usam todo o histórico, sem o filtro de período.
-  const currentMonthKey = todayIso().slice(0, 7);
-  const productByPieceKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
-  const monthlySales = orders
-    .filter((order) => order.productionStatus === ORDER_STATUS.delivered)
-    .flatMap((order) => {
-      const discountFactor = order.subtotal > 0 ? order.total / order.subtotal : 1;
-      const date = (order.createdAt || "").slice(0, 10);
-      return getOrderItems(order).map((item) => {
-        const piece = productByPieceKey.get(normalizePieceCode(item.code));
-        const cost = piece ? costAt(productCosts, piece.id, date) : null;
-        return {
-          month: monthInSaoPaulo(order.createdAt),
-          revenueCents: Math.round(itemUnitPrice(item) * item.quantity * 100 * discountFactor),
-          costCents: cost && cost.unitCostCents > 0 ? cost.unitCostCents * item.quantity : null,
-        };
+  // Memorizado: a página inteira é renderizada de novo a cada tecla digitada em qualquer formulário.
+  const monthly = useMemo(() => {
+    const today = todayIso();
+    const currentMonthKey = today.slice(0, 7);
+    const fabrication = fabricationCategoryIds(financeData.categories);
+    const pieceByKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
+    const sales = orders
+      .filter((order) => order.productionStatus === ORDER_STATUS.delivered)
+      .flatMap((order) => {
+        const discountFactor = order.subtotal > 0 ? order.total / order.subtotal : 1;
+        const date = dayInSaoPaulo(order.createdAt);
+        return getOrderItems(order).map((item) => {
+          const piece = pieceByKey.get(normalizePieceCode(item.code));
+          const cost = piece ? costAt(productCosts, piece.id, date) : null;
+          const unitPrice = item.unitPrice ?? products.find((product) => product.code === item.code)?.price ?? 0;
+          return {
+            month: monthInSaoPaulo(order.createdAt),
+            revenueCents: Math.round(unitPrice * item.quantity * 100 * discountFactor),
+            costCents: cost && cost.unitCostCents > 0 ? cost.unitCostCents * item.quantity : null,
+          };
+        });
       });
-    });
-  const monthlyPayables = financeData.accountsPayable
-    .filter((payable) => payable.status !== "Cancelado")
-    .map((payable) => ({
-      month: (payable.paidAt || payable.dueDate).slice(0, 7),
-      amountCents: payable.amountCents,
-      paid: payable.status === "Pago",
-      isFabrication: payable.categoryId != null && fabricationIds.includes(payable.categoryId),
-    }));
-  const resultByMonth = monthlyResult(monthlySales, monthlyPayables, currentMonthKey);
+    const payables = financeData.accountsPayable
+      .filter((payable) => payable.status !== "Cancelado")
+      .map((payable) => ({
+        month: payableMonth(payable),
+        amountCents: payable.amountCents,
+        paid: payable.status === "Pago",
+        isFabrication: payable.categoryId != null && fabrication.includes(payable.categoryId),
+      }));
+    const result = monthlyResult(sales, payables, currentMonthKey);
+    const cash = monthlyCash(
+      dedupeReceipts(
+        financeData.receipts,
+        Object.fromEntries(orders.map((order) => [order.id, Math.round(order.received * 100)])),
+      ),
+      payables,
+      currentMonthKey,
+    );
+    const forecast = forecastCurrentMonth(
+      result.find((row) => row.month === currentMonthKey),
+      today,
+      payables
+        .filter((payable) => !payable.paid && !payable.isFabrication && payable.month === currentMonthKey)
+        .reduce((sum, payable) => sum + payable.amountCents, 0),
+    );
+    return { result, cash, forecast };
+  }, [orders, products, productCosts, financeData]);
+  const resultByMonth = monthly.result;
+  const cashByMonth = monthly.cash;
+  const monthForecast = monthly.forecast;
   const resultTotal = resultByMonth.length ? resultByMonth[resultByMonth.length - 1].accumulatedCents : 0;
-  const cashByMonth = monthlyCash(
-    dedupeReceipts(
-      financeData.receipts,
-      Object.fromEntries(orders.map((order) => [order.id, Math.round(order.received * 100)])),
-    ),
-    monthlyPayables,
-    currentMonthKey,
-  );
   const cashTotal = cashByMonth.length ? cashByMonth[cashByMonth.length - 1].balanceCents : 0;
-  const monthForecast = forecastCurrentMonth(
-    resultByMonth.find((row) => row.month === currentMonthKey),
-    todayIso(),
-    monthlyPayables
-      .filter((payable) => !payable.paid && !payable.isFabrication && payable.month === currentMonthKey)
-      .reduce((sum, payable) => sum + payable.amountCents, 0),
-  );
+  // Caixa do período escolhido no Resumo: mesma regra da tela "Caixa mês a mês" (data do recebimento e do pagamento).
+  const periodCash = reportMonth ? cashByMonth.filter((row) => row.month === reportMonth) : cashByMonth;
+  const periodCashIn = periodCash.reduce((sum, row) => sum + row.inCents, 0);
+  const periodCashOut = periodCash.reduce((sum, row) => sum + row.outCents, 0);
   const wholeMoney = (cents: number) => Math.round(cents / 100).toLocaleString("pt-BR");
   const isFinanceScreen =
     screen === "financial" || screen === "reports" || screen === "financial-monthly" || screen === "financial-cash" || screen === "financial-payables";
+  const showFinanceMenu = isFinanceScreen ? !financeCollapsed : financeOpen;
   const walletCustomers = useMemo(() => {
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
     return Object.values(
@@ -1190,6 +1226,7 @@ export default function Home() {
   function goSettings(section: SettingsSection) {
     setSettingsSection(section);
     setSettingsOpen(true);
+    setSettingsCollapsed(false);
     if (section === "customers") return go("customers");
     if (section === "products") return go("products");
     if (section === "piece-types") return go("piece-types");
@@ -2588,7 +2625,8 @@ export default function Home() {
     ["users", "◉", "Usuários"],
   ];
   const isSettingsScreen = screen === "settings" || screen === "customers" || screen === "products" || screen === "piece-types" || screen === "piece-lines";
-  const showSettings = settingsOpen || isSettingsScreen;
+  // Numa tela de Configurações o submenu abre sozinho, mas pode ser recolhido pelo usuário.
+  const showSettings = isSettingsScreen ? !settingsCollapsed : settingsOpen;
   return (
     <main className="app-shell">
       <aside className={`sidebar ${menu ? "open" : ""}`}>
@@ -2615,17 +2653,19 @@ export default function Home() {
               <button
                 type="button"
                 className={`nav-item nav-group ${isFinanceScreen ? "active" : ""}`}
-                aria-expanded={financeOpen || isFinanceScreen}
+                aria-expanded={showFinanceMenu}
                 onClick={() => {
-                  if (!isFinanceScreen) go("financial");
-                  setFinanceOpen((value) => (isFinanceScreen ? !value : true));
+                  if (isFinanceScreen) return setFinanceCollapsed((value) => !value);
+                  setFinanceCollapsed(false);
+                  setFinanceOpen(true);
+                  go("financial");
                 }}
               >
                 <span>{i}</span>
                 {l}
-                <b>{financeOpen || isFinanceScreen ? "⌃" : "⌄"}</b>
+                <b>{showFinanceMenu ? "⌃" : "⌄"}</b>
               </button>
-              {(financeOpen || isFinanceScreen) && (
+              {showFinanceMenu && (
                 <div className="nav-submenu">
                   {financeNav.map(([target, label]) => (
                     <button
@@ -2644,7 +2684,11 @@ export default function Home() {
             type="button"
             className={`nav-item nav-group ${isSettingsScreen ? "active" : ""}`}
             aria-expanded={showSettings}
-            onClick={() => setSettingsOpen((value) => !value)}
+            onClick={() => {
+              if (isSettingsScreen) return setSettingsCollapsed((value) => !value);
+              setSettingsCollapsed(false);
+              setSettingsOpen((value) => !value);
+            }}
           >
             <span>⚙</span>
             Configurações
@@ -3496,6 +3540,9 @@ export default function Home() {
                     </button>
                   ))}
                 </nav>
+                {financeData.historyTruncated && (screen === "financial-monthly" || screen === "financial-cash") && (
+                  <p className="plain-warning">Histórico incompleto: há mais registros do que o sistema carrega de uma vez, e os meses mais antigos podem estar faltando.</p>
+                )}
                 {screen === "financial-monthly" && (
                   <>
                     <section className={`plain-card plain-result month-hero ${resultTotal < 0 ? "negative" : "positive"}`}>
@@ -3666,7 +3713,7 @@ export default function Home() {
                 </section>
                 <p className="plain-cash">
                   <b>Dinheiro que entrou e saiu:</b>{" "}
-                  {`entraram ${money(plain.receivedCents / 100)} e saíram ${money(paidSplit.totalCents / 100)} neste período.`}
+                  {`entraram ${money(periodCashIn / 100)} e saíram ${money(periodCashOut / 100)} neste período.`}
                 </p>
                 <section className="panel plain-panel">
                   <h2>Precisa da sua atenção</h2>

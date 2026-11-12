@@ -124,6 +124,16 @@ export function monthlyCash(receipts: MonthlyReceipt[], payables: MonthlyPayable
   });
 }
 
+// O recebimento automático de uma OS só nasce quando ela tem valor recebido e ainda não
+// tem nenhum recebimento gravado. Sem a segunda condição, o recebimento lançado à mão
+// era repetido na sincronização seguinte.
+export function needsInitialReceipt(input: { receivedCents: number; hasReceivable: boolean; alreadyHasReceipt: boolean }) {
+  return input.receivedCents > 0 && input.hasReceivable && !input.alreadyHasReceipt;
+}
+
+// Com poucos dias de mês, multiplicar o ritmo dá um número sem sentido.
+export const FORECAST_MIN_DAYS = 5;
+
 // Previsão do mês em andamento: mantém o ritmo dos dias já passados e soma as contas
 // (que não são de fabricação) ainda por pagar no mês.
 export function forecastCurrentMonth(
@@ -134,7 +144,7 @@ export function forecastCurrentMonth(
   if (!row || row.salesCents <= 0) return null;
   const [year, month, day] = todayIso.slice(0, 10).split("-").map(Number);
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  if (!day || day >= daysInMonth) return null;
+  if (!day || day < FORECAST_MIN_DAYS || day >= daysInMonth) return null;
   const pace = daysInMonth / day;
   const salesCents = Math.round(row.salesCents * pace);
   const pieceCostCents = Math.round(row.pieceCostCents * pace);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  FORECAST_MIN_DAYS,
   barHeights,
   dedupeReceipts,
   divergingBars,
@@ -9,12 +10,14 @@ import {
   monthRange,
   monthlyCash,
   monthlyResult,
+  needsInitialReceipt,
   shortMonth,
 } from "../lib/finance-monthly.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const page = read("../app/page.tsx");
 const financeLib = read("../lib/finance.ts");
+const financeApi = read("../app/api/finance/route.ts");
 
 test("meses seguem em sequência, sem buracos, inclusive na virada do ano", () => {
   assert.deepEqual(monthRange("2026-11", "2027-02"), ["2026-11", "2026-12", "2027-01", "2027-02"]);
@@ -86,6 +89,9 @@ test("previsão mantém o ritmo dos dias passados e soma contas a vencer", () =>
     leftCents: 28000,
   });
   assert.equal(forecastCurrentMonth(row, "2026-04-30", 0), null);
+  assert.equal(FORECAST_MIN_DAYS, 5);
+  assert.equal(forecastCurrentMonth(row, "2026-04-04", 0), null);
+  assert.notEqual(forecastCurrentMonth(row, "2026-04-05", 0), null);
   assert.equal(forecastCurrentMonth({ ...row, salesCents: 0 }, "2026-04-10", 0), null);
   assert.equal(forecastCurrentMonth(undefined, "2026-04-10", 0), null);
 });
@@ -104,6 +110,25 @@ test("financeiro tem submenus e telas de lucro e caixa mês a mês", () => {
     assert.ok(page.includes(text), text);
 });
 
-test("recebimento automático não é criado quando a OS já tem recebimento", () => {
-  assert.ok(financeLib.includes("hasReceipt"));
+test("recebimento automático só nasce para OS com valor recebido e sem recebimento", () => {
+  assert.equal(needsInitialReceipt({ receivedCents: 5000, hasReceivable: true, alreadyHasReceipt: false }), true);
+  assert.equal(needsInitialReceipt({ receivedCents: 5000, hasReceivable: true, alreadyHasReceipt: true }), false);
+  assert.equal(needsInitialReceipt({ receivedCents: 0, hasReceivable: true, alreadyHasReceipt: false }), false);
+  assert.equal(needsInitialReceipt({ receivedCents: 5000, hasReceivable: false, alreadyHasReceipt: false }), false);
+  assert.ok(financeLib.includes("needsInitialReceipt({ receivedCents, hasReceivable: true, alreadyHasReceipt: ordersWithReceipt.has(order.id) })"));
+  assert.ok(financeLib.includes("ordersWithReceipt.add(order.id)"));
+});
+
+test("resumo e telas mês a mês usam a mesma regra de mês e de caixa", () => {
+  assert.ok(page.includes("payableMonth(payable) === financialMonth"));
+  assert.ok(page.includes("month: payableMonth(payable),"));
+  assert.ok(page.includes("entraram ${money(periodCashIn / 100)} e saíram ${money(periodCashOut / 100)}"));
+  assert.equal(page.split("dayInSaoPaulo(order.createdAt)").length - 1, 2);
+});
+
+test("financeiro carrega o histórico até o teto e avisa quando corta", () => {
+  assert.equal(financeApi.includes(".limit(300)"), false);
+  assert.equal(financeApi.includes('limit: "300"'), false);
+  assert.equal(financeApi.split("historyTruncated: receiptRows.length >= HISTORY_LIMIT").length - 1, 2);
+  assert.ok(page.includes("financeData.historyTruncated"));
 });
