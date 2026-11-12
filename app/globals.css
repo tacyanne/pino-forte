@@ -440,7 +440,7 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
 .nav-subitem span{font-size:15px}
 .product-single-row,.product-view-row{grid-template-columns:minmax(120px,.8fr) minmax(150px,1fr) minmax(140px,.9fr) minmax(120px,.8fr)!important;align-items:start}
 .product-single-row .field:nth-child(5),.product-single-row .field:nth-child(6),.product-view-row .review-field:nth-child(5),.product-view-row .review-field:nth-child(6){grid-column:span 2}
-.product-table table{min-width:820px}
+.product-table table{min-width:980px}
 @media(max-width:1100px){.product-single-row,.product-view-row{grid-template-columns:1fr 1fr!important}}
 @media(max-width:760px){
   .nav-submenu{margin-left:16px}
@@ -450,8 +450,10 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .product-table td:nth-child(3)::before{content:"Linha"}
   .product-table td:nth-child(4)::before{content:"Medidas"}
   .product-table td:nth-child(5)::before{content:"Valor"}
-  .product-table td:nth-child(6)::before{content:"Status"}
-  .product-table td:nth-child(6) .status{justify-self:start}
+  .product-table td:nth-child(6)::before{content:"Custo"}
+  .product-table td:nth-child(7)::before{content:"Lucro"}
+  .product-table td:nth-child(8)::before{content:"Status"}
+  .product-table td:nth-child(7) .status,.product-table td:nth-child(8) .status{justify-self:start}
   .product-single-row .field:nth-child(5),.product-single-row .field:nth-child(6),.product-view-row .review-field:nth-child(5),.product-view-row .review-field:nth-child(6){grid-column:auto}
 }
 @media(max-width:560px){.product-single-row,.product-view-row{grid-template-columns:1fr!important}}
@@ -808,3 +810,15 @@ button:disabled{cursor:not-allowed;transform:none!important;box-shadow:none!impo
   .nav-subitem{min-height:34px;font-size:12.5px}
   .user-card{margin-top:8px;padding:12px 10px 0}
 }
+/* Custo por peça (mobile first) */
+.product-cost-fields{min-width:0;margin:18px 0 0;padding:16px;border:1px solid var(--border);border-radius:12px}
+.product-cost-fields legend{padding:0 6px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.product-cost-fields small{display:block;margin-top:12px;font-size:11px;line-height:1.5;color:var(--muted)}
+.product-cost-row,.product-cost-view{display:grid;grid-template-columns:1fr;gap:16px}
+.product-cost-view{grid-column:1/-1;padding-top:16px;border-top:1px solid var(--border)}
+.product-table .status{white-space:nowrap}
+.profit-ranking b.amber{color:#a16b12}
+.profit-ranking b.red{color:#bd4b27}
+.profit-ranking b.muted{color:var(--muted);font-weight:700}
+@media(min-width:561px){.product-cost-row,.product-cost-view{grid-template-columns:1fr 1fr}}
+@media(min-width:1101px){.product-cost-row{grid-template-columns:repeat(4,minmax(0,1fr))}.product-cost-view{grid-template-columns:repeat(5,minmax(0,1fr))}}

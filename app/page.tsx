@@ -21,6 +21,7 @@ import { loadCatalogImage } from "../lib/catalog-image";
 import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "../lib/catalog-sync";
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
+import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 
 type Screen =
   | "dashboard"
@@ -450,6 +451,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
   const [pieceTypes, setPieceTypes] = useState<PieceType[]>([]);
   const [typeModal, setTypeModal] = useState(false);
   const [editingType, setEditingType] = useState<PieceType | null>(null);
@@ -572,6 +574,7 @@ export default function Home() {
       ]);
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
+      setProductCosts(cat.productCosts || []);
       setPieceTypes(cat.pieceTypes || []); setPieceLines(cat.pieceLines || []);
       setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
@@ -618,6 +621,7 @@ export default function Home() {
         const data = await response.json();
         if (response.ok && Array.isArray(data.products) && !request.signal.aborted) {
           setProducts(data.products);
+          if (Array.isArray(data.productCosts)) setProductCosts(data.productCosts);
           if (Array.isArray(data.pieceTypes)) setPieceTypes(data.pieceTypes); if (Array.isArray(data.pieceLines)) setPieceLines(data.pieceLines);
         }
       } catch { /* Keep the last confirmed data; exports require a fresh successful read. */ }
@@ -834,6 +838,25 @@ export default function Home() {
     },
   );
   const reportSales = reportOrders.reduce((sum, o) => sum + o.total, 0);
+  // Lucro bruto: receita de cada item (já com o desconto da OS) menos o custo vigente na data da venda.
+  const salesProfit = summarizeSalesProfit(
+    reportOrders.flatMap((order) => {
+      const discountFactor = order.subtotal > 0 ? order.total / order.subtotal : 1;
+      return getOrderItems(order).map((item) => ({
+        code: item.code,
+        quantity: item.quantity,
+        revenueCents: Math.round(itemUnitPrice(item) * item.quantity * 100 * discountFactor),
+        date: (order.createdAt || "").slice(0, 10),
+      }));
+    }),
+    products,
+    productCosts,
+  );
+  const salesProfitRate = profitOnCost(salesProfit.coveredRevenueCents, salesProfit.costCents);
+  const percent = (rate: number) => `${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+  const currentCostOf = (productId: number) => costAt(productCosts, productId, todayIso());
+  const marginTone = (rate: number | null) =>
+    rate === null ? "" : rate >= TARGET_PROFIT_ON_COST ? "green" : rate > 0 ? "amber" : "red";
   const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
   const reportMonths = Array.from(
     new Set(orders.filter((o) => o.productionStatus === ORDER_STATUS.delivered).map((o) => monthInSaoPaulo(o.createdAt))),
@@ -1380,12 +1403,26 @@ export default function Home() {
         const source = productImageSource(editingProduct);
         if (source) imageData = await loadCatalogImage(source);
       }
+      const centsField = (name: string) => Math.round(parseCurrency(String(f.get(name) || "")) * 100);
+      const cost = {
+        materialCents: centsField("costMaterial"),
+        laborCents: centsField("costLabor"),
+        freightCents: centsField("costFreight"),
+        startsAt: String(f.get("costStartsAt") || todayIso()),
+      };
+      const savedCost = editingProduct ? openCost(productCosts, editingProduct.id) : null;
+      const costChanged = savedCost
+        ? savedCost.rawMaterialCostCents !== cost.materialCents ||
+          savedCost.additionalCostsCents !== cost.laborCents ||
+          savedCost.freightCents !== cost.freightCents
+        : totalCostCents(cost) > 0;
       const r = await fetch("/api/catalog", {
         method: editingProduct ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           type: "product",
           id: editingProduct?.id,
+          ...(costChanged ? { cost } : {}),
           ...(imageData !== undefined ? { imageData } : {}),
           code: f.get("code"),
           pieceType: f.get("pieceType"),
@@ -1395,7 +1432,7 @@ export default function Home() {
           price: parseCurrency(String(f.get("price"))),
         }),
       });
-      const j = await r.json().catch(() => ({} as { error?: string; product?: Product }));
+      const j = await r.json().catch(() => ({} as { error?: string; product?: Product; productCosts?: ProductCost[] }));
       if (!r.ok)
         throw new Error(
           j.error ||
@@ -1411,6 +1448,10 @@ export default function Home() {
           : [...v, j.product]
         ).sort((a, b) => a.code.localeCompare(b.code)),
       );
+      if (costChanged && Array.isArray(j.productCosts)) {
+        const saved = j.productCosts;
+        setProductCosts((v) => [...v.filter((row) => row.productId !== j.product.id), ...saved]);
+      }
       setProductModal(false);
       setEditingProduct(null);
       notifyCatalogUpdate();
@@ -3236,11 +3277,17 @@ export default function Home() {
                         <th>Linha</th>
                         <th>Medidas</th>
                         <th>Valor</th>
+                        <th>Custo</th>
+                        <th>Lucro</th>
                         <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredProducts.map((p) => (
+                      {filteredProducts.map((p) => {
+                        const cost = currentCostOf(p.id);
+                        const costValue = (cost?.unitCostCents ?? 0) / 100;
+                        const rate = profitOnCost(p.price, costValue);
+                        return (
                         <tr
                           key={p.id}
                           className="clickable-table-row"
@@ -3262,6 +3309,14 @@ export default function Home() {
                           <td>{p.name}</td>
                           <td>{p.measure}</td>
                           <td>{money(p.price)}</td>
+                          <td>{rate === null ? "—" : money(costValue)}</td>
+                          <td>
+                            {rate === null ? "—" : (
+                              <span className={`status ${marginTone(rate)}`}>
+                                {money(p.price - costValue)} · {percent(rate)}
+                              </span>
+                            )}
+                          </td>
                           <td>
                             <span
                               className={`status ${p.active ? "green" : "red"}`}
@@ -3270,7 +3325,8 @@ export default function Home() {
                             </span>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -3378,6 +3434,24 @@ export default function Home() {
                     <article><span>Saldo a receber</span><strong>{money(openBalance)}</strong><small>{money(financialTotals.pending)} ainda no prazo</small></article>
                     <article className={financialTotals.overdue > 0 ? "attention" : ""}><span>Em atraso</span><strong>{money(financialTotals.overdue)}</strong><small>{overdueRate.toFixed(0)}% do saldo aberto</small></article>
                     <article><span>Taxa de recebimento</span><strong>{receiptRate.toFixed(0)}%</strong><small>{money(reportReceived)} já convertidos em caixa</small></article>
+                    <article>
+                      <span>Lucro bruto</span>
+                      <strong>{salesProfitRate === null ? "—" : money(salesProfit.profitCents / 100)}</strong>
+                      <small>
+                        {salesProfitRate === null
+                          ? "Cadastre o custo das peças para ver o lucro"
+                          : `Vendas menos ${money(salesProfit.costCents / 100)} de custo das peças`}
+                      </small>
+                    </article>
+                    <article className={salesProfitRate !== null && salesProfitRate < TARGET_PROFIT_ON_COST ? "attention" : ""}>
+                      <span>Lucro sobre o custo</span>
+                      <strong>{salesProfitRate === null ? "—" : percent(salesProfitRate)}</strong>
+                      <small>
+                        {salesProfit.uncoveredRevenueCents > 0 && salesProfitRate !== null
+                          ? `${money(salesProfit.uncoveredRevenueCents / 100)} em vendas sem custo cadastrado`
+                          : `Meta de ${percent(TARGET_PROFIT_ON_COST)}`}
+                      </small>
+                    </article>
                   </div>
                 </section>
                 <section className="business-health-strip">
@@ -3399,7 +3473,20 @@ export default function Home() {
                     <div className="panel-title"><div><h2>Visão comercial</h2><p>Como as vendas do período se distribuem</p></div></div>
                     <div className="compact-analysis-columns">
                       <div className="compact-list"><h3>RECEBIMENTOS POR FORMA</h3>{paymentMix.length ? paymentMix.slice(0, 4).map(([method, value]) => <div key={method}><span>{method}</span><b>{money(value)}</b></div>) : <p className="compact-empty">Nenhum recebimento no período.</p>}</div>
-                      <div className="compact-list"><h3>PEÇAS MAIS VENDIDAS</h3>{products.map((product) => ({ product, count: reportOrders.reduce((sum, order) => sum + getOrderItems(order).filter((item) => item.code === product.code).reduce((total, item) => total + item.quantity, 0), 0) })).filter((item) => item.count > 0).sort((a, b) => b.count - a.count).slice(0, 5).map(({ product, count }, index) => <div key={product.id}><span><i>{index + 1}</i>{product.code}</span><b>{count} un.</b></div>)}</div>
+                      <div className="compact-list profit-ranking">
+                        <h3>LUCRO POR PEÇA</h3>
+                        {salesProfit.byProduct.length ? salesProfit.byProduct.slice(0, 6).map((row, index) => {
+                          const rate = row.costCents ? profitOnCost(row.revenueCents, row.costCents) : null;
+                          return (
+                            <div key={row.key}>
+                              <span><i>{index + 1}</i>{row.code} · {row.quantity} un.</span>
+                              {rate === null || row.profitCents === null
+                                ? <b className="muted">sem custo</b>
+                                : <b className={marginTone(rate)}>{money(row.profitCents / 100)} · {percent(rate)}</b>}
+                            </div>
+                          );
+                        }) : <p className="compact-empty">Nenhuma venda no período.</p>}
+                      </div>
                     </div>
                   </article>
                 </section>
@@ -3931,6 +4018,26 @@ export default function Home() {
                 <ReviewField label="Linha" value={viewingProduct.name} />
                 <ReviewField label="Medidas" value={viewingProduct.measure} />
               </div>
+              {(() => {
+                const cost = currentCostOf(viewingProduct.id);
+                const costValue = (cost?.unitCostCents ?? 0) / 100;
+                const rate = profitOnCost(viewingProduct.price, costValue);
+                if (!cost || rate === null)
+                  return (
+                    <div className="product-cost-view">
+                      <ReviewField label="Custo" value="Não cadastrado" />
+                    </div>
+                  );
+                return (
+                  <div className="product-cost-view">
+                    <ReviewField label="Custo total" value={money(costValue)} />
+                    <ReviewField label="Material" value={money(cost.rawMaterialCostCents / 100)} />
+                    <ReviewField label="Mão de obra / terceiros" value={money(cost.additionalCostsCents / 100)} />
+                    <ReviewField label="Frete" value={money(cost.freightCents / 100)} />
+                    <ReviewField label="Lucro por peça" value={`${money(viewingProduct.price - costValue)} · ${percent(rate)} sobre o custo`} />
+                  </div>
+                );
+              })()}
             </div>
             <section className="product-image-editor" aria-label="Imagem da peça">
               <div className="product-image-preview">
@@ -4114,6 +4221,37 @@ export default function Home() {
                 <input name="measure" required defaultValue={editingProduct?.measure || ""} />
               </Field>
             </div>
+            {(() => {
+              const cost = editingProduct ? openCost(productCosts, editingProduct.id) : null;
+              const costField = (name: string, cents: number) => (
+                <input
+                  name={name}
+                  inputMode="numeric"
+                  defaultValue={money(cents / 100)}
+                  onChange={(e) => {
+                    e.currentTarget.value = maskCurrency(e.currentTarget.value);
+                  }}
+                />
+              );
+              return (
+                <fieldset className="product-cost-fields">
+                  <legend>Custo da peça</legend>
+                  <div className="product-cost-row">
+                    <Field label="Material">{costField("costMaterial", cost?.rawMaterialCostCents ?? 0)}</Field>
+                    <Field label="Mão de obra / terceiros">{costField("costLabor", cost?.additionalCostsCents ?? 0)}</Field>
+                    <Field label="Frete">{costField("costFreight", cost?.freightCents ?? 0)}</Field>
+                    <Field label="Custo válido desde">
+                      <input type="date" name="costStartsAt" defaultValue={todayIso()} />
+                    </Field>
+                  </div>
+                  <small>
+                    {cost
+                      ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
+                      : "Usado para calcular o lucro no Financeiro. Não aparece no catálogo nem nos PDFs."}
+                  </small>
+                </fieldset>
+              );
+            })()}
             <ProductImageInput key={editingProduct?.id ?? "new"} initialSource={editingProduct ? productImageSource(editingProduct) : ""} disabled={saving} onBusyChange={setImageProcessing} />
             <div className="form-actions registration-actions">
               <button
