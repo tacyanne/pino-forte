@@ -121,3 +121,11 @@ test("caminho Drizzle mantém os centavos acompanhando o valor da OS", () => {
   const api = readFileSync(new URL("../app/api/orders/route.ts", import.meta.url), "utf8");
   assert.match(api, /discountCents: Math\.max\(0, subtotalCents - totalCents\)/);
 });
+
+test("lista de OS mostra o vencimento: próxima parcela em aberto ou a última paga", () => {
+  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.ok(page.includes("<th>Data do pedido</th><th>Vencimento</th><th>Valor total</th>"));
+  assert.ok(page.includes("const open = parcels.find((item) => item.balanceCents > 0);"));
+  assert.ok(page.includes('label: pick.totalInstallments > 1 ? `parcela ${pick.number}/${pick.totalInstallments}` : ""'));
+  assert.ok(page.includes("<td colSpan={7}>Nenhuma Ordem de Serviço encontrada.</td>"));
+});
