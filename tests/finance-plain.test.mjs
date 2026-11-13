@@ -141,7 +141,7 @@ test("resumo mostra as peças vendidas em barras, sem pendências nem estimativa
   const block = page.slice(start, end);
   assert.ok(block.includes("<h2>Peças vendidas</h2>"));
   assert.ok(block.includes("y.revenueCents - x.revenueCents"));
-  assert.ok(block.includes("em outras contas`}</small>"));
+  assert.ok(block.includes("pagos em outras contas`}</small>"));
   for (const text of ["Precisa da sua atenção", "Suas peças: onde você ganha", "Deu mais lucro", "A receber hoje", "A pagar hoje"])
     assert.equal(block.includes(text), false, text);
 });
@@ -149,7 +149,7 @@ test("resumo mostra as peças vendidas em barras, sem pendências nem estimativa
 test("resultado usa as contas pagas, e não o custo estimado das peças", () => {
   assert.ok(page.includes("fabricationCents: paidSplit.fabricationCents"));
   assert.equal(page.includes("pieceCostCents: salesProfit.costCents"), false);
-  assert.ok(page.includes("para fabricar peça`}</small>"));
+  assert.ok(page.includes("pagos para fabricar peça`}</small>"));
 });
 
 test("barra de cada peça é dividida em custo e lucro, com os valores escritos", () => {

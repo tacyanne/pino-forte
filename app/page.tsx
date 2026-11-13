@@ -24,7 +24,7 @@ import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
-import { barHeights, cashForecast, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
+import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
 type Screen =
   | "dashboard"
@@ -767,17 +767,31 @@ export default function Home() {
     normalizeOrderStatus(editingOrder.productionStatus) === ORDER_STATUS.queue &&
     !!String(editingOrder.paymentMethod || "").trim();
   const showFinancialFields = selectedOrderStatus === ORDER_STATUS.delivered || legacyQueueWithPayment;
+  // Recebido de cada mês pela data do recebimento, a mesma regra do Caixa mês a mês.
+  const cashInByMonth = useMemo(() => {
+    const byMonth: Record<string, number> = {};
+    const confirmed = dedupeReceipts(
+      financeData.receipts,
+      Object.fromEntries(orders.map((order) => [order.id, Math.round(order.received * 100)])),
+    );
+    for (const receipt of confirmed) {
+      const month = receipt.receiptDate.slice(0, 7);
+      byMonth[month] = (byMonth[month] || 0) + receipt.amountCents / 100;
+    }
+    return byMonth;
+  }, [financeData.receipts, orders]);
   const dashboardFinance = useMemo(() => {
     const monthOrders = orders.filter(
       (order) => order.productionStatus === ORDER_STATUS.delivered && monthInSaoPaulo(order.createdAt) === dashboardMonth,
     );
     const sales = monthOrders.reduce((sum, order) => sum + order.total, 0);
-    const received = monthOrders.reduce(
+    const receivedOnMonthOrders = monthOrders.reduce(
       (sum, order) => sum + order.received,
       0,
     );
-    return { sales, received, pending: Math.max(0, sales - received) };
-  }, [orders, dashboardMonth]);
+    // "Recebido" é o que entrou no mês; "Pendente" é o que falta receber das vendas do mês.
+    return { sales, received: cashInByMonth[dashboardMonth] || 0, pending: Math.max(0, sales - receivedOnMonthOrders) };
+  }, [orders, dashboardMonth, cashInByMonth]);
   // OS aguardando produção/entrega, da mais antiga para a mais nova.
   const queueOrders = useMemo(
     () =>
@@ -804,10 +818,11 @@ export default function Home() {
       .sort(([monthA], [monthB]) => monthB.localeCompare(monthA))
       .map(([month, summary]) => ({
         month,
-        ...summary,
+        sales: summary.sales,
+        received: cashInByMonth[month] || 0,
         pending: Math.max(0, summary.sales - summary.received),
       }));
-  }, [orders, dashboardMonth]);
+  }, [orders, dashboardMonth, cashInByMonth]);
   const receivableByOrderId = new Map(
     financeData.accountsReceivable.map((receivable) => [receivable.serviceOrderId, receivable]),
   );
@@ -877,11 +892,13 @@ export default function Home() {
   // Lucro bruto: receita de cada item (já com o desconto da OS) menos o custo vigente na data da venda.
   const salesProfit = summarizeSalesProfit(
     reportOrders.flatMap((order) => {
-      const discountFactor = order.subtotal > 0 ? order.total / order.subtotal : 1;
-      return getOrderItems(order).map((item) => ({
+      // O total da OS (já com desconto) é dividido entre os itens sem sobrar centavo.
+      const items = getOrderItems(order);
+      const revenues = distributeCents(Math.round(order.total * 100), items.map((item) => itemUnitPrice(item) * item.quantity));
+      return items.map((item, index) => ({
         code: item.code,
         quantity: item.quantity,
-        revenueCents: Math.round(itemUnitPrice(item) * item.quantity * 100 * discountFactor),
+        revenueCents: revenues[index],
         date: dayInSaoPaulo(order.createdAt),
       }));
     }),
@@ -1083,16 +1100,8 @@ export default function Home() {
     const fabrication = fabricationCategoryIds(financeData.categories);
     const sales = orders
       .filter((order) => order.productionStatus === ORDER_STATUS.delivered)
-      .flatMap((order) => {
-        const discountFactor = order.subtotal > 0 ? order.total / order.subtotal : 1;
-        return getOrderItems(order).map((item) => {
-          const unitPrice = item.unitPrice ?? products.find((product) => product.code === item.code)?.price ?? 0;
-          return {
-            month: monthInSaoPaulo(order.createdAt),
-            revenueCents: Math.round(unitPrice * item.quantity * 100 * discountFactor),
-          };
-        });
-      });
+      // A venda do mês é o total da OS, o mesmo número usado no Resumo.
+      .map((order) => ({ month: monthInSaoPaulo(order.createdAt), revenueCents: Math.round(order.total * 100) }));
     const payables = financeData.accountsPayable
       .filter((payable) => payable.status !== "Cancelado")
       .map((payable) => ({
@@ -1118,7 +1127,7 @@ export default function Home() {
         .reduce((sum, payable) => sum + payable.amountCents, 0),
     );
     return { result, cash, forecast };
-  }, [orders, products, financeData]);
+  }, [orders, financeData]);
   const resultByMonth = monthly.result;
   const cashByMonth = monthly.cash;
   const monthForecast = monthly.forecast;
@@ -3761,8 +3770,8 @@ export default function Home() {
                   <article>
                     <span>Quanto gastei</span>
                     <strong>{money(plain.spentCents / 100)}</strong>
-                    <small>{`${money(plain.fabricationCents / 100)} para fabricar peça`}</small>
-                    <small>{`${money(plain.otherExpensesCents / 100)} em outras contas`}</small>
+                    <small>{`${money(plain.fabricationCents / 100)} pagos para fabricar peça`}</small>
+                    <small>{`${money(plain.otherExpensesCents / 100)} pagos em outras contas`}</small>
                   </article>
                   <article className={receivableOverdue > 0 ? "attention" : ""}>
                     <span>A receber</span>
@@ -3856,12 +3865,12 @@ export default function Home() {
                       <article>
                         <span>Para fabricar peça</span>
                         <strong>{money(payableTotals.fabricationCents / 100)}</strong>
-                        <small>{`${wholePercent(payableTotals.fabricationShare)} do total · aço e torneiro`}</small>
+                        <small>{`${wholePercent(payableTotals.fabricationShare)} do total · pago e a pagar`}</small>
                       </article>
                       <article>
                         <span>Outras contas</span>
                         <strong>{money(payableTotals.otherCents / 100)}</strong>
-                        <small>{`${wholePercent(payableTotals.fabricationShare === null ? null : 1 - payableTotals.fabricationShare)} do total · manutenção, máquinas e demais`}</small>
+                        <small>{`${wholePercent(payableTotals.fabricationShare === null ? null : 1 - payableTotals.fabricationShare)} do total · pago e a pagar`}</small>
                       </article>
                     </section>
                     {payableTotals.suppliers.length > 0 && (

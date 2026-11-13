@@ -1,13 +1,14 @@
 import { isQueuedWithoutPayment } from "./order-status";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import {
   accountsReceivable,
   cashMovements,
   receipts,
+  receivableInstallments,
   serviceOrders,
 } from "../db/schema";
-import { needsInitialReceipt, trustedCents } from "./finance-monthly";
+import { needsInitialReceipt, singleInstallmentValues, trustedCents } from "./finance-monthly";
 import { syncInstallmentsDb } from "./receivable-installments";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -141,6 +142,20 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
         issuedAt,
         termDays: order.boletoTermDays,
       });
+    }
+
+    // OS sem boleto parcelado: a parcela única (quando existe) acompanha a conta a receber.
+    // Sem isso, a parcela ficava "Pendente" depois de a OS ser paga.
+    if (!order.boletoTermDays && receivable) {
+      const single = singleInstallmentValues(totalCents, receivedCents);
+      await db
+        .update(receivableInstallments)
+        .set({
+          ...single,
+          paidAt: single.balanceCents <= 0 ? sql`coalesce(${receivableInstallments.paidAt}, ${todayIso()})` : null,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(and(eq(receivableInstallments.accountReceivableId, receivable.id), eq(receivableInstallments.totalInstallments, 1)));
     }
 
     // O recebimento automático só nasce quando a OS ainda não tem nenhum recebimento:
