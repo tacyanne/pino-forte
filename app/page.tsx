@@ -2864,8 +2864,8 @@ export default function Home() {
     ["orders", "▤", "OS"],
     ["stock", "▥", "Estoque"],
     ["wallet", "▣", "Carteira"],
-    ["financial", "$", "Financeiro"],
     ["catalog", "▦", "Catálogo"],
+    ["financial", "$", "Financeiro"],
   ];
   const financeNav: [Screen, string][] = [
     ["financial", "Resumo"],
