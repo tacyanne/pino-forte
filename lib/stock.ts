@@ -190,7 +190,7 @@ export function stockTotals(rows: StockRow[]) {
 }
 
 export const STOCK_STATUS_LABEL: Record<StockStatus, string> = {
-  "sem-contagem": "Sem contagem",
+  "sem-contagem": "Sem estoque",
   falta: "Falta",
   zerado: "Zerado",
   baixo: "Baixo",
