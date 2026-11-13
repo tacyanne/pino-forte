@@ -93,7 +93,7 @@ test("resultado de cada peça em palavras", () => {
 });
 
 test("tela usa linguagem simples e não os termos técnicos antigos", () => {
-  for (const text of ["Quanto vendi", "Quanto gastei", "Quanto sobrou", "Precisa da sua atenção", "Suas peças: onde você ganha e onde perde", "Gasto para fabricar peça"])
+  for (const text of ["Quanto vendi", "Quanto gastei", "Quanto sobrou", "Peças vendidas", "Gasto para fabricar peça"])
     assert.ok(page.includes(text), text);
   const start = page.indexOf('title="Financeiro"');
   const end = page.indexOf('<section className="financial-layout">', start);
@@ -128,20 +128,25 @@ test("lista de contas mostra data da compra, vencimento e forma em colunas separ
 });
 
 test("resumo executivo: resultado em destaque, quatro indicadores e caixa", () => {
-  for (const text of ["summaryPeriodLabel", "A receber hoje", "A pagar hoje", "Entrou no caixa", "Saiu do caixa", "Saldo do caixa", "openHint(openPayableTotals, money)"])
+  for (const text of ["summaryPeriodLabel", "<span>A receber</span>", "<span>A pagar</span>", "Entrou no caixa", "Saiu do caixa", "Saldo do caixa", "openHint(openPayableTotals, money)"])
     assert.ok(page.includes(text), text);
   assert.equal(page.includes('className="plain-summary"'), false);
   assert.equal(page.includes("Dinheiro que entrou e saiu:"), false);
 });
 
-test("resumo traz indicadores das peças vendidas e o gasto em duas linhas", () => {
-  for (const text of ["Peças vendidas", "Mais vendida", "Deu mais lucro", "Deu menos lucro", "por peça`}", "em outras contas`}</small>"])
-    assert.ok(page.includes(text), text);
+test("resumo mostra as peças vendidas em barras, sem pendências nem estimativa de lucro", () => {
+  const start = page.indexOf('title={screen === "financial-monthly"');
+  const end = page.indexOf('{screen === "financial-payables" && (', start);
+  const block = page.slice(start, end);
+  assert.ok(block.includes("<h2>Peças vendidas</h2>"));
+  assert.ok(block.includes("y.revenueCents - x.revenueCents"));
+  assert.ok(block.includes("em outras contas`}</small>"));
+  for (const text of ["Precisa da sua atenção", "Suas peças: onde você ganha", "Deu mais lucro", "A receber hoje", "A pagar hoje"])
+    assert.equal(block.includes(text), false, text);
 });
 
 test("resultado usa as contas pagas, e não o custo estimado das peças", () => {
   assert.ok(page.includes("fabricationCents: paidSplit.fabricationCents"));
   assert.equal(page.includes("pieceCostCents: salesProfit.costCents"), false);
   assert.ok(page.includes("para fabricar peça`}</small>"));
-  assert.ok(page.includes("Estimativa pelo custo cadastrado em cada peça"));
 });

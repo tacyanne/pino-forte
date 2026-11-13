@@ -21,7 +21,7 @@ import { loadCatalogImage } from "../lib/catalog-image";
 import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "../lib/catalog-sync";
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
-import { activePeriod, daysBetween, fabricationCategoryIds, leftSentence, overdueSentence, payableSentence, periodMonth, pieceResultLabel, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
+import { activePeriod, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
@@ -1051,12 +1051,6 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       return dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
     });
-  // Pendências valem para hoje, qualquer que seja o período escolhido na tela.
-  const attentionRows = openReceivableRows
-    .filter((row) => row.status === "Atrasado" && row.balance > 0)
-    .slice()
-    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
-    .slice(0, 4);
   // Financeiro em linguagem simples: o gasto é o que foi pago em Contas a pagar no período.
   const fabricationIds = fabricationCategoryIds(financeData.categories);
   const paidSplit = splitPaidExpenses(payableRows, fabricationIds);
@@ -1081,12 +1075,6 @@ export default function Home() {
     fabricationIds,
     todayIso(),
   );
-  const upcomingPayables = financeData.accountsPayable
-    .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
-    .map((payable) => ({ payable, days: daysBetween(todayIso(), payable.dueDate) }))
-    .filter((item) => item.days <= 7)
-    .sort((a, b) => a.days - b.days)
-    .slice(0, 4);
   // Lucro e caixa mês a mês usam todo o histórico, sem o filtro de período.
   // Memorizado: a página inteira é renderizada de novo a cada tecla digitada em qualquer formulário.
   const monthly = useMemo(() => {
@@ -3744,7 +3732,7 @@ export default function Home() {
                     <small>{`${money(plain.otherExpensesCents / 100)} em outras contas`}</small>
                   </article>
                   <article className={receivableOverdue > 0 ? "attention" : ""}>
-                    <span>A receber hoje</span>
+                    <span>A receber</span>
                     <strong>{money(receivableOpen)}</strong>
                     <small>
                       {receivableOverdue > 0
@@ -3753,7 +3741,7 @@ export default function Home() {
                     </small>
                   </article>
                   <article className={openPayableTotals.overdueCents > 0 ? "attention" : ""}>
-                    <span>A pagar hoje</span>
+                    <span>A pagar</span>
                     <strong>{money(openPayableTotals.openCents / 100)}</strong>
                     <small>{openHint(openPayableTotals, money)}</small>
                   </article>
@@ -3767,76 +3755,23 @@ export default function Home() {
                   </div>
                 </section>
                 <section className="panel plain-panel">
-                  <h2>Precisa da sua atenção</h2>
-                  {!attentionRows.length && !upcomingPayables.length && (
-                    <p className="positive-empty">Ninguém está devendo com atraso e não há conta para vencer nos próximos dias.</p>
-                  )}
-                  {attentionRows.map((row) => (
-                    <button type="button" className="plain-row" key={row.key} onClick={() => row.order && setOrderModal(row.order)}>
-                      <span>{overdueSentence(row.customerName, money(row.balance), daysBetween(row.dueDate, todayIso()))}</span>
-                      <small>{row.orderNumber}{row.installmentLabel ? ` · ${row.installmentLabel}` : ""}</small>
-                    </button>
-                  ))}
-                  {upcomingPayables.map(({ payable, days }) => (
-                    <div className="plain-row" key={`payable-${payable.id}`}>
-                      <span>{payableSentence(payable.supplier, money(payable.amountCents / 100), days)}</span>
-                      <small>{payable.description}</small>
-                    </div>
-                  ))}
-                </section>
-                <section className="panel plain-panel">
-                  <h2>Suas peças: onde você ganha e onde perde</h2>
-                  <p className="plain-text muted">Estimativa pelo custo cadastrado em cada peça. Não entra na conta do &quot;Quanto sobrou&quot;, que usa as contas pagas.</p>
+                  <h2>Peças vendidas</h2>
                   {!salesProfit.byProduct.length && <p className="compact-empty">Nenhuma venda entregue neste período.</p>}
-                  {salesProfit.byProduct.length > 0 && (() => {
-                    const pieces = salesProfit.byProduct;
-                    const totalSold = pieces.reduce((sum, row) => sum + row.quantity, 0);
-                    const mostSold = pieces.reduce((top, row) => (row.quantity > top.quantity ? row : top), pieces[0]);
-                    const withProfit = pieces.filter((row) => row.profitCents !== null);
-                    const best = withProfit.length ? withProfit.reduce((top, row) => ((row.profitCents ?? 0) > (top.profitCents ?? 0) ? row : top), withProfit[0]) : null;
-                    const worst = withProfit.length ? withProfit.reduce((low, row) => ((row.profitCents ?? 0) < (low.profitCents ?? 0) ? row : low), withProfit[0]) : null;
-                    return (
-                      <div className="finance-kpi-grid payable-kpis piece-kpis">
-                        <article>
-                          <span>Peças vendidas</span>
-                          <strong>{totalSold}</strong>
-                          <small>{pieces.length === 1 ? "1 tipo de peça" : `${pieces.length} tipos de peça`}</small>
-                        </article>
-                        <article>
-                          <span>Mais vendida</span>
-                          <strong>{mostSold.code}</strong>
-                          <small>{`${mostSold.quantity} unidades`}</small>
-                        </article>
-                        <article>
-                          <span>Deu mais lucro</span>
-                          <strong>{best ? best.code : "—"}</strong>
-                          <small>{best ? pieceResultLabel(best.profitCents, money) : "falta cadastrar o custo"}</small>
-                        </article>
-                        <article className={worst && (worst.profitCents ?? 0) < 0 ? "attention" : ""}>
-                          <span>Deu menos lucro</span>
-                          <strong>{worst ? worst.code : "—"}</strong>
-                          <small>{worst ? pieceResultLabel(worst.profitCents, money) : "falta cadastrar o custo"}</small>
-                        </article>
-                      </div>
-                    );
+                  {(() => {
+                    const pieces = salesProfit.byProduct.slice().sort((x, y) => y.revenueCents - x.revenueCents || y.quantity - x.quantity);
+                    const top = pieces[0]?.revenueCents || 0;
+                    return pieces.map((row) => {
+                      const measure = products.find((product) => product.id === row.productId)?.measure;
+                      const units = row.quantity === 1 ? "1 unidade" : `${row.quantity} unidades`;
+                      return (
+                        <div className="supplier-row" key={row.key} title={`${row.code}: ${units}, ${money(row.revenueCents / 100)}`}>
+                          <span>{row.code}<small>{measure ? `${measure} · ${units}` : units}</small></span>
+                          <div className="supplier-bar"><i style={{ width: `${top > 0 ? Math.max(2, Math.round((row.revenueCents / top) * 100)) : 2}%` }} /></div>
+                          <b>{money(row.revenueCents / 100)}</b>
+                        </div>
+                      );
+                    });
                   })()}
-                  {salesProfit.byProduct.map((row) => {
-                    const measure = products.find((product) => product.id === row.productId)?.measure;
-                    return (
-                      <div className="plain-row piece-row" key={row.key}>
-                        <span>
-                          <b>{row.code}</b>{measure ? ` (${measure})` : ""}
-                          <small>{`vendeu ${row.quantity} · ${money(row.revenueCents / 100)}`}</small>
-                        </span>
-                        <strong className={row.profitCents === null ? "muted" : row.profitCents >= 0 ? "positive" : "negative"}>
-                          {pieceResultLabel(row.profitCents, money)}
-                          {row.profitCents !== null && row.quantity > 0 && (
-                            <small>{`${money(row.profitCents / row.quantity / 100)} por peça`}</small>
-                          )}
-                        </strong>
-                      </div>
-                    );
-                  })}
                 </section>
                 </>
                 )}
