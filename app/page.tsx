@@ -22,7 +22,7 @@ import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, daysBetween, fabricationCategoryIds, leftSentence, overdueSentence, payableSentence, periodMonth, pieceResultLabel, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
-import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
@@ -1057,13 +1057,13 @@ export default function Home() {
     .slice()
     .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
     .slice(0, 4);
-  // Financeiro em linguagem simples: aço e torneiro já estão no custo da peça e não contam de novo.
+  // Financeiro em linguagem simples: o gasto é o que foi pago em Contas a pagar no período.
   const fabricationIds = fabricationCategoryIds(financeData.categories);
   const paidSplit = splitPaidExpenses(payableRows, fabricationIds);
   const plain = plainResult({
     salesCents: Math.round(reportSales * 100),
     receivedCents: Math.round(reportReceived * 100),
-    pieceCostCents: salesProfit.costCents,
+    fabricationCents: paidSplit.fabricationCents,
     otherExpensesCents: paidSplit.otherCents,
   });
   const financePeriod = activePeriod(reportMonth, todayIso());
@@ -1093,20 +1093,15 @@ export default function Home() {
     const today = todayIso();
     const currentMonthKey = today.slice(0, 7);
     const fabrication = fabricationCategoryIds(financeData.categories);
-    const pieceByKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
     const sales = orders
       .filter((order) => order.productionStatus === ORDER_STATUS.delivered)
       .flatMap((order) => {
         const discountFactor = order.subtotal > 0 ? order.total / order.subtotal : 1;
-        const date = dayInSaoPaulo(order.createdAt);
         return getOrderItems(order).map((item) => {
-          const piece = pieceByKey.get(normalizePieceCode(item.code));
-          const cost = piece ? costAt(productCosts, piece.id, date) : null;
           const unitPrice = item.unitPrice ?? products.find((product) => product.code === item.code)?.price ?? 0;
           return {
             month: monthInSaoPaulo(order.createdAt),
             revenueCents: Math.round(unitPrice * item.quantity * 100 * discountFactor),
-            costCents: cost && cost.unitCostCents > 0 ? cost.unitCostCents * item.quantity : null,
           };
         });
       });
@@ -1131,11 +1126,11 @@ export default function Home() {
       result.find((row) => row.month === currentMonthKey),
       today,
       payables
-        .filter((payable) => !payable.paid && !payable.isFabrication && payable.month === currentMonthKey)
+        .filter((payable) => !payable.paid && payable.month === currentMonthKey)
         .reduce((sum, payable) => sum + payable.amountCents, 0),
     );
     return { result, cash, forecast };
-  }, [orders, products, productCosts, financeData]);
+  }, [orders, products, financeData]);
   const resultByMonth = monthly.result;
   const cashByMonth = monthly.cash;
   const monthForecast = monthly.forecast;
@@ -3566,7 +3561,7 @@ export default function Home() {
                   title={screen === "financial-monthly" ? "Lucro mês a mês" : screen === "financial-cash" ? "Caixa mês a mês" : screen === "financial-payables" ? "Contas a pagar" : "Financeiro"}
                   subtitle={
                     screen === "financial-monthly"
-                      ? "Quanto sobrou ou faltou em cada mês, contando o que foi vendido."
+                      ? "Quanto sobrou ou faltou em cada mês: o que foi vendido menos as contas pagas."
                       : screen === "financial-cash"
                         ? "O dinheiro que entrou e saiu de verdade em cada mês."
                         : screen === "financial-payables"
@@ -3745,7 +3740,7 @@ export default function Home() {
                   <article>
                     <span>Quanto gastei</span>
                     <strong>{money(plain.spentCents / 100)}</strong>
-                    <small>{`${money(plain.pieceCostCents / 100)} em peças`}</small>
+                    <small>{`${money(plain.fabricationCents / 100)} para fabricar peça`}</small>
                     <small>{`${money(plain.otherExpensesCents / 100)} em outras contas`}</small>
                   </article>
                   <article className={receivableOverdue > 0 ? "attention" : ""}>
@@ -3771,9 +3766,6 @@ export default function Home() {
                     <b className={periodCashIn - periodCashOut < 0 ? "negative" : "positive"}>{money((periodCashIn - periodCashOut) / 100)}</b>
                   </div>
                 </section>
-                {salesProfit.uncoveredRevenueCents > 0 && (
-                  <p className="plain-warning">{`Falta o custo de peças que somam ${money(salesProfit.uncoveredRevenueCents / 100)} em vendas. Cadastre em Peças para o resultado ficar certo.`}</p>
-                )}
                 <section className="panel plain-panel">
                   <h2>Precisa da sua atenção</h2>
                   {!attentionRows.length && !upcomingPayables.length && (
@@ -3794,6 +3786,7 @@ export default function Home() {
                 </section>
                 <section className="panel plain-panel">
                   <h2>Suas peças: onde você ganha e onde perde</h2>
+                  <p className="plain-text muted">Estimativa pelo custo cadastrado em cada peça. Não entra na conta do &quot;Quanto sobrou&quot;, que usa as contas pagas.</p>
                   {!salesProfit.byProduct.length && <p className="compact-empty">Nenhuma venda entregue neste período.</p>}
                   {salesProfit.byProduct.length > 0 && (() => {
                     const pieces = salesProfit.byProduct;
@@ -4754,7 +4747,7 @@ export default function Home() {
                 />
                 <span>
                   <b>Gasto para fabricar peça</b>
-                  <small>Marque para aço, serviço do torneiro e outros gastos que já estão no custo das peças. Eles não são somados de novo em &quot;Quanto gastei&quot;.</small>
+                  <small>Marque para aço, serviço do torneiro e outros gastos da fabricação. Serve para separar esse gasto das outras contas.</small>
                 </span>
               </label>
               <Field label="Status">

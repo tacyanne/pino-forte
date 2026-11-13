@@ -33,7 +33,7 @@ test("gasto de fabricação é reconhecido pela categoria, com ou sem acento", (
   assert.equal(preferredFabricationCategoryId([categories[1]]), null);
 });
 
-test("contas pagas de fabricação não entram de novo no gasto", () => {
+test("contas pagas são separadas entre fabricação e outras", () => {
   const split = splitPaidExpenses(
     [
       { amountCents: 50000, status: "Pago", categoryId: 20 },
@@ -47,19 +47,19 @@ test("contas pagas de fabricação não entram de novo no gasto", () => {
   assert.deepEqual(split, { fabricationCents: 70000, otherCents: 13000, totalCents: 83000 });
 });
 
-test("quanto sobrou é venda menos custo das peças menos outras contas", () => {
-  const result = plainResult({ salesCents: 100000, receivedCents: 40000, pieceCostCents: 70000, otherExpensesCents: 13000 });
+test("quanto sobrou é venda menos as contas pagas (fabricação e outras)", () => {
+  const result = plainResult({ salesCents: 100000, receivedCents: 40000, fabricationCents: 70000, otherExpensesCents: 13000 });
   assert.equal(result.spentCents, 83000);
   assert.equal(result.leftCents, 17000);
   assert.equal(result.toReceiveCents, 60000);
   assert.equal(result.leftPer100Cents, 1700);
   assert.equal(leftSentence(result.leftPer100Cents, money), "De cada R$ 100 vendidos, sobraram R$ 17,00.");
 
-  const loss = plainResult({ salesCents: 100000, receivedCents: 100000, pieceCostCents: 90000, otherExpensesCents: 25000 });
+  const loss = plainResult({ salesCents: 100000, receivedCents: 100000, fabricationCents: 90000, otherExpensesCents: 25000 });
   assert.equal(loss.leftCents, -15000);
   assert.equal(leftSentence(loss.leftPer100Cents, money), "De cada R$ 100 vendidos, faltaram R$ 15,00.");
 
-  const empty = plainResult({ salesCents: 0, receivedCents: 0, pieceCostCents: 0, otherExpensesCents: 5000 });
+  const empty = plainResult({ salesCents: 0, receivedCents: 0, fabricationCents: 0, otherExpensesCents: 5000 });
   assert.equal(empty.leftPer100Cents, null);
   assert.equal(leftSentence(empty.leftPer100Cents, money), "Nenhuma venda entregue neste período.");
 });
@@ -135,6 +135,13 @@ test("resumo executivo: resultado em destaque, quatro indicadores e caixa", () =
 });
 
 test("resumo traz indicadores das peças vendidas e o gasto em duas linhas", () => {
-  for (const text of ["Peças vendidas", "Mais vendida", "Deu mais lucro", "Deu menos lucro", "por peça`}", "em peças`}</small>", "em outras contas`}</small>"])
+  for (const text of ["Peças vendidas", "Mais vendida", "Deu mais lucro", "Deu menos lucro", "por peça`}", "em outras contas`}</small>"])
     assert.ok(page.includes(text), text);
+});
+
+test("resultado usa as contas pagas, e não o custo estimado das peças", () => {
+  assert.ok(page.includes("fabricationCents: paidSplit.fabricationCents"));
+  assert.equal(page.includes("pieceCostCents: salesProfit.costCents"), false);
+  assert.ok(page.includes("para fabricar peça`}</small>"));
+  assert.ok(page.includes("Estimativa pelo custo cadastrado em cada peça"));
 });
