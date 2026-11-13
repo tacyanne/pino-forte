@@ -1,8 +1,8 @@
 // Financeiro em linguagem simples: quanto vendi, quanto gastei e quanto sobrou.
 // Módulo puro, usado pela tela e pelos testes.
 
-// Contas a pagar nestas categorias já estão dentro do custo de cada peça
-// (aço, serviço de torneiro). Elas não entram de novo em "Quanto gastei".
+// Contas a pagar nestas categorias são gasto de fabricação (aço, serviço de torneiro).
+// O resultado usa o que foi realmente pago; a categoria só separa fabricação das outras contas.
 export const FABRICATION_CATEGORY_NAMES = ["Custo de fabricacao", "Materia-prima"];
 
 export type FinancePeriod = "this" | "last" | "all";
@@ -32,7 +32,7 @@ export function preferredFabricationCategoryId(categories: Category[]) {
   return null;
 }
 
-// Separa as contas pagas entre gasto de fabricação (já no custo da peça) e outras contas.
+// Separa as contas pagas entre gasto de fabricação e outras contas.
 export function splitPaidExpenses(payables: Payable[], fabricationIds: number[]) {
   const split = { fabricationCents: 0, otherCents: 0, totalCents: 0 };
   for (const payable of payables) {
@@ -48,16 +48,17 @@ export function splitPaidExpenses(payables: Payable[], fabricationIds: number[])
 export function plainResult(input: {
   salesCents: number;
   receivedCents: number;
-  pieceCostCents: number;
+  fabricationCents: number;
   otherExpensesCents: number;
 }) {
-  const spentCents = input.pieceCostCents + input.otherExpensesCents;
+  // Gasto = contas realmente pagas (fabricação + outras), não o custo estimado por peça.
+  const spentCents = input.fabricationCents + input.otherExpensesCents;
   const leftCents = input.salesCents - spentCents;
   return {
     salesCents: input.salesCents,
     receivedCents: input.receivedCents,
     toReceiveCents: Math.max(0, input.salesCents - input.receivedCents),
-    pieceCostCents: input.pieceCostCents,
+    fabricationCents: input.fabricationCents,
     otherExpensesCents: input.otherExpensesCents,
     spentCents,
     leftCents,

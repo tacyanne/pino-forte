@@ -1,6 +1,6 @@
 // Lucro e caixa mês a mês, em linguagem simples. Módulo puro (tela e testes).
 
-export type MonthlySale = { month: string; revenueCents: number; costCents: number | null };
+export type MonthlySale = { month: string; revenueCents: number };
 export type MonthlyPayable = {
   month: string;
   amountCents: number;
@@ -19,7 +19,7 @@ export type MonthlyReceipt = {
 export type MonthlyResultRow = {
   month: string;
   salesCents: number;
-  pieceCostCents: number;
+  fabricationCents: number;
   otherCents: number;
   spentCents: number;
   leftCents: number;
@@ -56,21 +56,21 @@ function monthsOf(values: string[], currentMonth: string) {
   return monthRange(months[0], last);
 }
 
-// Quanto sobrou em cada mês: vendas menos custo das peças vendidas menos outras contas pagas.
-// Contas de fabricação (aço, torneiro) já estão no custo da peça e não entram de novo.
+// Quanto sobrou em cada mês: vendas do mês menos as contas pagas no mês (fabricação e outras).
+// O gasto é o que saiu de verdade em Contas a pagar, não o custo estimado de cada peça.
 export function monthlyResult(sales: MonthlySale[], payables: MonthlyPayable[], currentMonth: string): MonthlyResultRow[] {
-  const otherPayables = payables.filter((payable) => payable.paid && !payable.isFabrication);
-  const months = monthsOf([...sales.map((sale) => sale.month), ...otherPayables.map((payable) => payable.month)], currentMonth);
+  const paid = payables.filter((payable) => payable.paid);
+  const months = monthsOf([...sales.map((sale) => sale.month), ...paid.map((payable) => payable.month)], currentMonth);
   let accumulatedCents = 0;
   return months.map((month) => {
-    const monthSales = sales.filter((sale) => sale.month === month);
-    const salesCents = monthSales.reduce((sum, sale) => sum + sale.revenueCents, 0);
-    const pieceCostCents = monthSales.reduce((sum, sale) => sum + (sale.costCents ?? 0), 0);
-    const otherCents = otherPayables.filter((payable) => payable.month === month).reduce((sum, payable) => sum + payable.amountCents, 0);
-    const spentCents = pieceCostCents + otherCents;
+    const salesCents = sales.filter((sale) => sale.month === month).reduce((sum, sale) => sum + sale.revenueCents, 0);
+    const monthPaid = paid.filter((payable) => payable.month === month);
+    const fabricationCents = monthPaid.filter((payable) => payable.isFabrication).reduce((sum, payable) => sum + payable.amountCents, 0);
+    const otherCents = monthPaid.filter((payable) => !payable.isFabrication).reduce((sum, payable) => sum + payable.amountCents, 0);
+    const spentCents = fabricationCents + otherCents;
     const leftCents = salesCents - spentCents;
     accumulatedCents += leftCents;
-    return { month, salesCents, pieceCostCents, otherCents, spentCents, leftCents, accumulatedCents };
+    return { month, salesCents, fabricationCents, otherCents, spentCents, leftCents, accumulatedCents };
   });
 }
 
@@ -142,22 +142,20 @@ export function trustedCents(amount: unknown, storedCents: unknown) {
 // Com poucos dias de mês, multiplicar o ritmo dá um número sem sentido.
 export const FORECAST_MIN_DAYS = 5;
 
-// Previsão do mês em andamento: mantém o ritmo dos dias já passados e soma as contas
-// (que não são de fabricação) ainda por pagar no mês.
+// Previsão do mês em andamento: as vendas mantêm o ritmo dos dias já passados; o gasto é
+// o que já foi pago no mês mais as contas que ainda vencem nele.
 export function forecastCurrentMonth(
   row: MonthlyResultRow | undefined,
   todayIso: string,
-  pendingOtherCents: number,
+  pendingCents: number,
 ) {
   if (!row || row.salesCents <= 0) return null;
   const [year, month, day] = todayIso.slice(0, 10).split("-").map(Number);
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   if (!day || day < FORECAST_MIN_DAYS || day >= daysInMonth) return null;
-  const pace = daysInMonth / day;
-  const salesCents = Math.round(row.salesCents * pace);
-  const pieceCostCents = Math.round(row.pieceCostCents * pace);
-  const otherCents = row.otherCents + pendingOtherCents;
-  return { day, daysInMonth, salesCents, spentCents: pieceCostCents + otherCents, leftCents: salesCents - pieceCostCents - otherCents };
+  const salesCents = Math.round((row.salesCents * daysInMonth) / day);
+  const spentCents = row.spentCents + pendingCents;
+  return { day, daysInMonth, salesCents, spentCents, leftCents: salesCents - spentCents };
 }
 
 const MONTH_NAMES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];

@@ -27,12 +27,12 @@ test("meses seguem em sequência, sem buracos, inclusive na virada do ano", () =
   assert.equal(shortMonth("2026-06"), "jun/26");
 });
 
-test("lucro do mês desconta custo das peças e outras contas, sem repetir fabricação", () => {
+test("lucro do mês é o que foi vendido menos todas as contas pagas no mês", () => {
   const rows = monthlyResult(
     [
-      { month: "2026-01", revenueCents: 100000, costCents: 70000 },
-      { month: "2026-01", revenueCents: 20000, costCents: null },
-      { month: "2026-03", revenueCents: 50000, costCents: 45000 },
+      { month: "2026-01", revenueCents: 100000 },
+      { month: "2026-01", revenueCents: 20000 },
+      { month: "2026-03", revenueCents: 50000 },
     ],
     [
       { month: "2026-01", amountCents: 40000, paid: true, isFabrication: true },
@@ -43,9 +43,11 @@ test("lucro do mês desconta custo das peças e outras contas, sem repetir fabri
     "2026-04",
   );
   assert.deepEqual(rows.map((row) => row.month), ["2026-01", "2026-02", "2026-03", "2026-04"]);
-  assert.deepEqual(rows.map((row) => row.leftCents), [40000, -8000, 5000, 0]);
-  assert.deepEqual(rows.map((row) => row.accumulatedCents), [40000, 32000, 37000, 37000]);
-  assert.equal(rows[0].spentCents, 80000);
+  assert.deepEqual(rows.map((row) => row.leftCents), [70000, -8000, 50000, 0]);
+  assert.deepEqual(rows.map((row) => row.accumulatedCents), [70000, 62000, 112000, 112000]);
+  assert.equal(rows[0].spentCents, 50000);
+  assert.equal(rows[0].fabricationCents, 40000);
+  assert.equal(rows[0].otherCents, 10000);
 });
 
 test("recebimento repetido da mesma OS conta uma vez só", () => {
@@ -80,14 +82,14 @@ test("caixa do mês é o que entrou menos o que saiu, com saldo acumulado", () =
   assert.deepEqual(rows.map((row) => row.balanceCents), [-7000, 23000, -5000]);
 });
 
-test("previsão mantém o ritmo dos dias passados e soma contas a vencer", () => {
-  const row = { month: "2026-04", salesCents: 60000, pieceCostCents: 48000, otherCents: 5000, spentCents: 53000, leftCents: 7000, accumulatedCents: 0 };
+test("previsão mantém o ritmo das vendas e soma ao gasto as contas a vencer", () => {
+  const row = { month: "2026-04", salesCents: 60000, fabricationCents: 48000, otherCents: 5000, spentCents: 53000, leftCents: 7000, accumulatedCents: 0 };
   assert.deepEqual(forecastCurrentMonth(row, "2026-04-10", 3000), {
     day: 10,
     daysInMonth: 30,
     salesCents: 180000,
-    spentCents: 144000 + 8000,
-    leftCents: 28000,
+    spentCents: 56000,
+    leftCents: 124000,
   });
   assert.equal(forecastCurrentMonth(row, "2026-04-30", 0), null);
   assert.equal(FORECAST_MIN_DAYS, 5);
@@ -125,7 +127,7 @@ test("resumo e telas mês a mês usam a mesma regra de mês e de caixa", () => {
   assert.ok(page.includes("month: payableMonth(payable),"));
   assert.ok(page.includes("<b>{money(periodCashIn / 100)}</b>"));
   assert.ok(page.includes("<b>{money(periodCashOut / 100)}</b>"));
-  assert.equal(page.split("dayInSaoPaulo(order.createdAt)").length - 1, 2);
+  assert.equal(page.split("dayInSaoPaulo(order.createdAt)").length - 1, 1);
 });
 
 test("financeiro carrega o histórico até o teto e avisa quando corta", () => {
