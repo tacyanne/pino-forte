@@ -84,6 +84,7 @@ export const serviceOrders = pgTable("service_orders", {
   issuedAt: text("issued_at").notNull().default(""),
   dueDate: text("due_date").notNull().default(""),
   boletoTermDays: integer("boleto_term_days"),
+  supplierPayableAt: text("supplier_payable_at"),
   deliveryDate: text("delivery_date").notNull(),
   deliveryType: text("delivery_type").notNull(),
   paymentMethod: text("payment_method").notNull(),
@@ -239,6 +240,8 @@ export const accountsPayable = pgTable("accounts_payable", {
   recurringExpenseId: integer("recurring_expense_id"),
   receiptFileKey: text("receipt_file_key").notNull().default(""),
   notes: text("notes").notNull().default(""),
+  serviceOrderId: integer("service_order_id"),
+  installmentNumber: integer("installment_number"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => ({

@@ -14,6 +14,7 @@ import {
 } from "../../../db/schema";
 import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
 import { parseBoletoTerm } from "../../../lib/boleto-installments";
+import { syncOrderPayablesSafe } from "../../../lib/order-payable-sync";
 import { requireUser } from "../../../lib/auth";
 import { syncInstallmentsDb, syncInstallmentsRest } from "../../../lib/receivable-installments";
 import { camelizeRows } from "../../../lib/supabase-mappers";
@@ -81,6 +82,8 @@ export async function GET(request: Request) {
   try {
     const db = await getDb();
     await db.transaction((tx) => syncReceivablesFromOrders(tx, auth.id));
+    // OS entregue com peça de revenda gera a conta a pagar ao fornecedor.
+    await syncOrderPayablesSafe();
 
     const url = new URL(request.url);
     const month = url.searchParams.get("month") || currentMonth();
@@ -152,6 +155,7 @@ export async function GET(request: Request) {
 async function getFinanceFromRest(request: Request) {
   try {
     await syncReceivablesFromOrdersRest();
+    await syncOrderPayablesSafe();
     const url = new URL(request.url);
     const month = url.searchParams.get("month") || currentMonth();
     const today = todayIso();
