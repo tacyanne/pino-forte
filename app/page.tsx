@@ -149,6 +149,7 @@ type AccountPayable = {
   supplier: string;
   description: string;
   dueDate: string;
+  purchaseDate?: string | null;
   amountCents: number;
   paidAt: string | null;
   paymentMethod: string;
@@ -1800,6 +1801,7 @@ export default function Home() {
     const supplier = String(form.get("supplier") || "").trim();
     const description = String(form.get("description") || "").trim();
     const dueDateInput = String(form.get("dueDate") || "").trim();
+    const purchaseDateInput = String(form.get("purchaseDate") || "").trim();
     const paidAtInput = String(form.get("paidAt") || "").trim();
     const amountCents = Math.round(parseCurrency(String(form.get("amount") || "")) * 100);
     const paymentMethod = String(form.get("paymentMethod") || "").trim();
@@ -1813,6 +1815,8 @@ export default function Home() {
       isFabrication && !wasFabrication ? { categoryId: fabricationCategoryId } : !isFabrication && wasFabrication ? { categoryId: null } : {};
     if (!supplier || !description || !isValidBrDate(dueDateInput) || amountCents <= 0)
       return flash("Informe fornecedor, descricao, vencimento e valor.", "error");
+    if (purchaseDateInput && !isValidBrDate(purchaseDateInput))
+      return flash("Informe uma data da compra válida ou deixe em branco.", "error");
     if (payableStatus === "Pago" && (!paymentMethod || !isValidBrDate(paidAtInput)))
       return flash("Informe forma e data de pagamento para conta ja paga.", "error");
     setSaving(true);
@@ -1821,6 +1825,7 @@ export default function Home() {
         supplier,
         description,
         dueDate: toIsoDate(dueDateInput),
+        purchaseDate: purchaseDateInput ? toIsoDate(purchaseDateInput) : null,
         competenceMonth: toIsoDate(dueDateInput).slice(0, 7),
         amountCents,
         paymentMethod,
@@ -3795,8 +3800,9 @@ export default function Home() {
                         <div className="payable-list">
                           <div className="payable-list-head" aria-hidden="true">
                             <span>Fornecedor</span>
+                            <span>Data da compra</span>
                             <span>Vencimento</span>
-                            <span>Pagamento</span>
+                            <span>Forma</span>
                             <span>Valor</span>
                             <span>Status</span>
                             <span />
@@ -3810,9 +3816,12 @@ export default function Home() {
                                   <b>{payable.supplier}</b>
                                   <small>{payable.description}{payable.categoryId != null && fabricationIds.includes(payable.categoryId) ? " · gasto para fabricar peça" : ""}</small>
                                 </span>
+                                <span className="payable-date" data-label="Data da compra">
+                                  {payable.purchaseDate ? brDate(payable.purchaseDate) : "—"}
+                                </span>
                                 <span className="payable-date" data-label="Vencimento">{brDate(payable.dueDate)}</span>
-                                <span className="payable-date" data-label="Pagamento">
-                                  {payable.paidAt ? `${brDate(payable.paidAt)}${payable.paymentMethod ? ` · ${payable.paymentMethod}` : ""}` : "—"}
+                                <span className="payable-date" data-label="Forma">
+                                  {payable.paymentMethod || "—"}
                                 </span>
                                 <strong>{money(payable.amountCents / 100)}</strong>
                                 <span className="payable-status">
@@ -4585,6 +4594,16 @@ export default function Home() {
               </Field>
               <Field label="Descrição *">
                 <input name="description" required defaultValue={editingPayable?.description || ""} />
+              </Field>
+              <Field label="Data da compra">
+                <input
+                  name="purchaseDate"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="dd/mm/aaaa"
+                  defaultValue={editingPayable ? (editingPayable.purchaseDate ? brDate(editingPayable.purchaseDate) : "") : brDate(todayIso())}
+                  onInput={(e) => { e.currentTarget.value = maskDate(e.currentTarget.value); }}
+                />
               </Field>
               <Field label="Vencimento *">
                 <input

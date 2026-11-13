@@ -115,3 +115,14 @@ test("conta pendente pode ser editada, inclusive a marcação de fabricação", 
   assert.ok(page.includes('type="checkbox"\n                  name="isFabrication"'));
   assert.ok(page.includes("!isFabrication && wasFabrication ? { categoryId: null }"));
 });
+
+test("lista de contas mostra data da compra, vencimento e forma em colunas separadas", () => {
+  assert.ok(page.includes('data-label="Data da compra"'));
+  assert.ok(page.includes('data-label="Vencimento"'));
+  assert.ok(page.includes('data-label="Forma"'));
+  assert.ok(page.includes('name="purchaseDate"'));
+  const api = readFileSync(new URL("../app/api/finance/route.ts", import.meta.url), "utf8");
+  assert.equal(api.split("purchaseDateFromBody(body.purchaseDate)").length - 1, 4);
+  assert.ok(read("../supabase/migrations/20261112020000_payable_purchase_date.sql").includes("add column if not exists purchase_date"));
+  assert.equal(page.includes("${brDate(payable.paidAt)}${payable.paymentMethod ?"), false);
+});

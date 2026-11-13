@@ -964,3 +964,13 @@ button.plain-row{cursor:pointer}
   .payable-row>.payable-action{grid-column:6;grid-row:1;justify-self:end}
   .payable-row>.payable-action .outline-button{flex:0 0 auto}
 }
+/* Contas a pagar: "Pago em" e "Forma" em colunas separadas */
+@media(min-width:761px){
+  .payable-list-head,.payable-row{grid-template-columns:minmax(0,1.5fr) 96px 96px 84px 104px 88px 196px}
+  .payable-list-head span:nth-child(4){text-align:left}
+  .payable-list-head span:nth-child(5){text-align:right}
+  .payable-row>.payable-date:nth-child(4){grid-column:4}
+  .payable-row>strong{grid-column:5}
+  .payable-row>.payable-status{grid-column:6}
+  .payable-row>.payable-action{grid-column:7}
+}

@@ -229,6 +229,7 @@ export const accountsPayable = pgTable("accounts_payable", {
   description: text("description").notNull(),
   categoryId: integer("category_id").references(() => financialCategories.id),
   competenceMonth: text("competence_month").notNull(),
+  purchaseDate: text("purchase_date"),
   dueDate: text("due_date").notNull(),
   amountCents: integer("amount_cents").notNull(),
   paymentMethod: text("payment_method").notNull().default(""),
