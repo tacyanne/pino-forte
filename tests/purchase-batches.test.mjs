@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PurchaseBatchError, allocateBatches, batchStudy, parsePurchaseBatch } from "../lib/purchase-batches.ts";
+import { NO_BATCH, PurchaseBatchError, allocateBatches, batchStudy, parsePurchaseBatch } from "../lib/purchase-batches.ts";
 
 const money = (value) => `R$ ${value.toFixed(2).replace(".", ",")}`;
 const format = { money, percent: (rate) => `${Math.round(rate * 1000) / 10}%`.replace(".", ",") };
@@ -49,6 +49,7 @@ test("saída lançada à mão desconta do lote mais antigo sem virar venda", () 
   });
   const allocation = byBatch.get(1);
   assert.equal(allocation.manualOut, 2);
+  assert.deepEqual(allocation.lost, [{ productId: 7, quantity: 2, costCents: 4000 }]);
   assert.equal(allocation.sold[0].quantity, 4);
   assert.equal(allocation.left[0].quantity, 4);
 });
@@ -111,6 +112,56 @@ test("estudo do lote: lucro já feito, lucro que falta e pontos de atenção", (
   assert.deepEqual(empty.notes, []);
 });
 
+test("estoque antigo sem lote sai primeiro, e a venda não é atribuída ao lote novo", () => {
+  const { byBatch } = allocateBatches({
+    entries: [
+      entry({ movementId: 1, batchId: NO_BATCH, quantity: 3, unitCostCents: null, date: "2026-02-01" }),
+      entry({ movementId: 2, batchId: 1, quantity: 10, date: "2026-03-01" }),
+    ],
+    sales: [sale({ quantity: 4, revenueCents: 10000, date: "2026-03-05" })],
+  });
+  assert.equal(byBatch.get(NO_BATCH).sold[0].quantity, 3);
+  assert.deepEqual(byBatch.get(1).sold.map((line) => [line.quantity, line.revenueCents]), [[1, 2500]]);
+  assert.equal(byBatch.get(1).left[0].quantity, 9);
+});
+
+test("peça que saiu sem venda vira perda, e venda de peça sem custo fica fora do lucro", () => {
+  const entries = [
+    entry({ movementId: 1, productId: 7, quantity: 10, unitCostCents: 2000 }),
+    entry({ movementId: 2, productId: 8, quantity: 5, unitCostCents: null }),
+  ];
+  const { byBatch } = allocateBatches({
+    entries,
+    sales: [
+      sale({ orderId: 1, orderNumber: "OS-EX-1", productId: 7, quantity: 2, revenueCents: 5000 }),
+      sale({ orderId: 1, orderNumber: "OS-EX-1", productId: 8, quantity: 1, revenueCents: 900 }),
+      sale({ orderId: 2, orderNumber: "OS-EX-2", productId: 8, quantity: 2, revenueCents: 1800 }),
+    ],
+    outs: [{ productId: 7, quantity: 3, date: "2026-03-06" }],
+  });
+  const study = batchStudy({
+    entries,
+    allocation: byBatch.get(1),
+    products: [{ id: 7, code: "PF-AA-1", priceCents: 2500 }, { id: 8, code: "PF-BB-1", priceCents: 900 }],
+    targetRate: 0.1,
+    format,
+  });
+  assert.equal(study.soldQty, 5);
+  // "já vendido" e "lucro já feito" contam as mesmas peças: só as que têm custo
+  assert.equal(study.soldRevenueCents, 5000);
+  assert.equal(study.uncostedRevenueCents, 2700);
+  assert.equal(study.realizedCents, 1000);
+  assert.deepEqual(study.orders.map((row) => [row.orderNumber, row.quantity, row.profitCents, row.uncostedQty]), [["OS-EX-2", 2, null, 2], ["OS-EX-1", 3, 1000, 1]]);
+  assert.equal(study.lostQty, 3);
+  assert.equal(study.lostCostCents, 6000);
+  // 1000 já feito + 5 x 500 em estoque − 6000 de perda
+  assert.equal(study.expectedStockCents, 2500);
+  assert.equal(study.totalCents, -2500);
+  const texts = study.notes.map((note) => note.text);
+  assert.ok(texts.includes("3 peças saíram do estoque sem venda: perda de R$ 60,00."));
+  assert.ok(texts.includes("R$ 27,00 vendidos de peças sem custo ficaram fora do lucro."));
+});
+
 test("lançamento de lote valida fornecedor, data e peças", () => {
   const ok = { supplier: " Fornecedor Y ", purchaseDate: "2026-03-01", items: [{ productId: 7, quantity: 10, unitCostCents: 2000.4 }, { productId: 8, quantity: 0, unitCostCents: 0 }] };
   assert.deepEqual(parsePurchaseBatch(ok, "2026-03-10"), {
@@ -136,7 +187,7 @@ test("tela de estoque lista os lotes e abre o estudo; API grava nos dois caminho
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
   const page = read("../app/page.tsx");
   const api = read("../app/api/stock/route.ts");
-  for (const text of ["<h2>Lotes de compra</h2>", "batchStudyOf(batch.id)", "allocateBatches({ entries, sales, outs })", "Lucro esperado do lote", "Pontos de atenção", "Dinheiro do lote"])
+  for (const text of ["<h2>Lotes de compra</h2>", "batchStudies.get(batch.id)", "allocateBatches({ entries, sales, outs })", "batchId: Number(movement.batchId) || NO_BATCH", "discounted: grossCents - totalCents > items.length", "de nenhum lote, porque a venda passou do estoque lançado", "Lucro esperado do lote", "Pontos de atenção", "Dinheiro do lote"])
     assert.ok(page.includes(text), text);
   assert.ok(api.includes('supabaseInsert<Record<string, unknown>>("purchase_batches"'));
   assert.ok(api.includes(".insert(purchaseBatches)"));
@@ -145,4 +196,10 @@ test("tela de estoque lista os lotes e abre o estudo; API grava nos dois caminho
   assert.ok(/create table if not exists public\.purchase_batches/i.test(migration));
   assert.ok(/revoke all on public\.purchase_batches from anon, authenticated/i.test(migration));
   assert.ok(/add column if not exists batch_id/i.test(migration));
+  assert.ok(/check \(unit_cost_cents is null or unit_cost_cents > 0\)/i.test(migration));
+  // lote não fica pela metade nem vazio, e o limite de lançamentos não corta peça de lote
+  assert.ok(api.includes('await supabaseDelete("purchase_batches", { id: `eq.${batchId}` }).catch(() => undefined);'));
+  assert.ok(api.includes('if (!rest.length) await supabaseDelete("purchase_batches", { id: `eq.${batchId}` });'));
+  assert.ok(api.includes('batch_id: "not.is.null"'));
+  assert.ok(page.includes("Esta entrada pertence a um lote de compra."));
 });

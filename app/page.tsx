@@ -24,7 +24,7 @@ import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
-import { allocateBatches, batchStudy, type PurchaseBatch } from "../lib/purchase-batches";
+import { NO_BATCH, allocateBatches, batchStudy, type PurchaseBatch } from "../lib/purchase-batches";
 import { buildDashboardActions, forecastAhead, previousLabel, tightSentence, type DashboardAction } from "../lib/dashboard";
 import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
 import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, costUseAt, latestCostUse, type CostUse, type ProductCost } from "../lib/product-costs";
@@ -671,7 +671,10 @@ export default function Home() {
     }
   }
   async function deleteStockMovement(movement: StockMovement) {
-    if (!window.confirm("Excluir este lançamento de estoque? O saldo da peça será recalculado.")) return;
+    const question = movement.batchId
+      ? "Esta entrada pertence a um lote de compra. Excluir tira a peça do lote; se for a última, o lote também é excluído. Continuar?"
+      : "Excluir este lançamento de estoque? O saldo da peça será recalculado.";
+    if (!window.confirm(question)) return;
     setSaving(true);
     try {
       const response = await fetch("/api/stock", {
@@ -891,16 +894,18 @@ export default function Home() {
                 quantity: Number(item.quantity) || 0,
                 revenueCents: revenues[index],
                 date: (order.deliveryDate || dayInSaoPaulo(order.createdAt)).slice(0, 10),
-                discounted: totalCents < grossCents,
+                // Um centavo por item é arredondamento, não desconto.
+                discounted: grossCents - totalCents > items.length,
               }]
             : [];
         });
       });
+    // Entradas sem lote também entram na fila: a venda sai primeiro do estoque mais antigo.
     const entries = stockMovements
-      .filter((movement) => movement.kind === "entrada" && movement.batchId)
+      .filter((movement) => movement.kind === "entrada")
       .map((movement) => ({
         movementId: movement.id,
-        batchId: Number(movement.batchId),
+        batchId: Number(movement.batchId) || NO_BATCH,
         productId: movement.productId,
         quantity: movement.quantity,
         unitCostCents: movement.unitCostCents ?? null,
@@ -909,8 +914,39 @@ export default function Home() {
     const outs = stockMovements
       .filter((movement) => movement.kind === "saida")
       .map((movement) => ({ productId: movement.productId, quantity: movement.quantity, date: movement.movementDate }));
-    return { entries, ...allocateBatches({ entries, sales, outs }) };
+    const allocated = allocateBatches({ entries, sales, outs });
+    // Vendas de peças de lote que não saíram de lote nenhum (vendidas além do estoque lançado).
+    const firstBatchDate = new Map<number, string>();
+    for (const entry of entries) {
+      if (entry.batchId === NO_BATCH) continue;
+      const current = firstBatchDate.get(entry.productId);
+      if (!current || entry.date < current) firstBatchDate.set(entry.productId, entry.date);
+    }
+    const outsideQty = allocated.unallocated
+      .filter((line) => {
+        const first = firstBatchDate.get(line.productId);
+        return Boolean(first) && line.date >= String(first);
+      })
+      .reduce((sum, line) => sum + line.quantity, 0);
+    return { entries, byBatch: allocated.byBatch, outsideQty };
   }, [products, orders, stockMovements]);
+  // Estudo de cada lote, calculado uma vez (a página é renderizada de novo a cada tecla digitada).
+  const batchStudies = useMemo(() => {
+    const pieces = products.map((product) => ({ id: product.id, code: product.code, priceCents: Math.round(product.price * 100) }));
+    const format = { money, percent: (rate: number) => `${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` };
+    return new Map(
+      purchaseBatches.map((batch) => [
+        batch.id,
+        batchStudy({
+          entries: batchData.entries.filter((entry) => entry.batchId === batch.id),
+          allocation: batchData.byBatch.get(batch.id),
+          products: pieces,
+          targetRate,
+          format,
+        }),
+      ]),
+    );
+  }, [purchaseBatches, batchData, products, targetRate]);
   // Estoque: OS entregues baixam o saldo sozinhas; OS na fila ficam como prometido.
   const stock = useMemo(() => {
     const byKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
@@ -1028,14 +1064,6 @@ export default function Home() {
       saved: chosen,
     };
   };
-  const batchStudyOf = (batchId: number) =>
-    batchStudy({
-      entries: batchData.entries.filter((entry) => entry.batchId === batchId),
-      allocation: batchData.byBatch.get(batchId),
-      products: products.map((product) => ({ id: product.id, code: product.code, priceCents: Math.round(product.price * 100) })),
-      targetRate,
-      format: { money, percent },
-    });
   const signedMoney = (cents: number) => `${cents < 0 ? "− " : "+ "}${money(Math.abs(cents) / 100)}`;
   const priceHistoryBlock = (productId: number, note?: string) => {
     const timeline = priceTimeline(productPrices, productId);
@@ -4454,9 +4482,15 @@ export default function Home() {
                 <section className="panel plain-panel">
                   <h2>Lotes de compra</h2>
                   {!purchaseBatches.length && <p className="compact-empty">Nenhum lote de compra lançado ainda.</p>}
+                  {batchData.outsideQty > 0 && (
+                    <p className="plain-warning">
+                      {`${batchData.outsideQty === 1 ? "1 peça vendida não saiu" : `${batchData.outsideQty} peças vendidas não saíram`} de nenhum lote, porque a venda passou do estoque lançado. Elas ficam fora dos estudos.`}
+                    </p>
+                  )}
                   <div className="batch-list">
                     {purchaseBatches.map((batch) => {
-                      const study = batchStudyOf(batch.id);
+                      const study = batchStudies.get(batch.id);
+                      if (!study) return null;
                       return (
                         <button type="button" className="batch-card" key={batch.id} onClick={() => setViewingBatchId(batch.id)}>
                           <span>
@@ -5253,8 +5287,8 @@ export default function Home() {
       })()}
       {viewingBatchId !== null && (() => {
         const batch = purchaseBatches.find((item) => item.id === viewingBatchId);
-        if (!batch) return null;
-        const study = batchStudyOf(batch.id);
+        const study = batch ? batchStudies.get(batch.id) : undefined;
+        if (!batch || !study) return null;
         const orderIds = new Set(study.orders.map((row) => row.orderId));
         const toReceive = openReceivableRows.filter((row) => row.order && orderIds.has(row.order.id));
         const payables = financeData.accountsPayable.filter((payable) => payable.serviceOrderId != null && orderIds.has(payable.serviceOrderId) && payable.status !== "Cancelado");
@@ -5298,8 +5332,12 @@ export default function Home() {
                 {study.orders.map((row) => (
                   <div className="batch-row" key={row.orderId}>
                     <span>{`${row.orderNumber} · ${row.quantity === 1 ? "1 peça" : `${row.quantity} peças`}`}</span>
-                    <b className={row.profitCents < 0 ? "bad" : "good"}>{signedMoney(row.profitCents)}</b>
-                    <small>{`Vendeu ${money(row.revenueCents / 100)}${row.discounted ? " (com desconto)" : ""} · custou ${money(row.costCents / 100)}`}</small>
+                    <b className={row.profitCents === null ? "" : row.profitCents < 0 ? "bad" : "good"}>{row.profitCents === null ? "—" : signedMoney(row.profitCents)}</b>
+                    <small>
+                      {row.profitCents === null
+                        ? "Falta o custo destas peças no lote"
+                        : `Vendeu ${money(row.revenueCents / 100)}${row.discounted ? " (com desconto)" : ""} · custou ${money(row.costCents / 100)}${row.uncostedQty ? ` · ${row.uncostedQty} sem custo fora da conta` : ""}`}
+                    </small>
                   </div>
                 ))}
               </section>

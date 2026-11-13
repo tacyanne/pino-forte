@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.purchase_batches (
 
 ALTER TABLE public.stock_movements
   ADD COLUMN IF NOT EXISTS batch_id integer REFERENCES public.purchase_batches(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS unit_cost_cents integer;
+  ADD COLUMN IF NOT EXISTS unit_cost_cents integer CHECK (unit_cost_cents IS NULL OR unit_cost_cents > 0);
 CREATE INDEX IF NOT EXISTS stock_movements_batch_idx ON public.stock_movements (batch_id);
 
 ALTER TABLE public.purchase_batches ENABLE ROW LEVEL SECURITY;

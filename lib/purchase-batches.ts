@@ -3,6 +3,10 @@
 //
 // Qual venda saiu de qual lote: primeiro que entra, primeiro que sai, por peça.
 
+// Entrada de estoque que não pertence a nenhum lote: entra na fila com este número, para que
+// as vendas saiam primeiro do estoque antigo e não sejam atribuídas ao lote errado.
+export const NO_BATCH = 0;
+
 export type PurchaseBatch = { id: number; supplier: string; purchaseDate: string; notes: string };
 
 // Entrada de estoque ligada a um lote, com o custo pago por peça naquele lote.
@@ -44,6 +48,8 @@ export type BatchAllocation = {
   // Quantidade que ainda resta de cada entrada do lote.
   left: { movementId: number; productId: number; quantity: number; unitCostCents: number | null }[];
   manualOut: number;
+  // Peças que saíram sem venda (saída lançada à mão): o custo delas é perda do lote.
+  lost: { productId: number; quantity: number; costCents: number | null }[];
 };
 
 const day = (value: string) => String(value || "").slice(0, 10);
@@ -52,7 +58,7 @@ export function allocateBatches(input: { entries: BatchEntry[]; sales: BatchSale
   const byBatch = new Map<number, BatchAllocation>();
   const allocationOf = (batchId: number) => {
     let allocation = byBatch.get(batchId);
-    if (!allocation) byBatch.set(batchId, (allocation = { sold: [], left: [], manualOut: 0 }));
+    if (!allocation) byBatch.set(batchId, (allocation = { sold: [], left: [], manualOut: 0, lost: [] }));
     return allocation;
   };
   const unallocated: BatchSale[] = [];
@@ -93,6 +99,7 @@ export function allocateBatches(input: { entries: BatchEntry[]; sales: BatchSale
           });
         } else {
           allocation.manualOut += take;
+          allocation.lost.push({ productId, quantity: take, costCents: slot.entry.unitCostCents === null ? null : slot.entry.unitCostCents * take });
         }
         pending -= take;
       }
@@ -111,10 +118,12 @@ export type BatchOrderRow = {
   orderId: number;
   orderNumber: string;
   quantity: number;
+  // Valor e custo só das peças com custo no lote; sem nenhuma, o resultado fica em branco.
   revenueCents: number;
   costCents: number;
-  profitCents: number;
+  profitCents: number | null;
   discounted: boolean;
+  uncostedQty: number;
 };
 
 export type BatchStockRow = {
@@ -136,9 +145,14 @@ export type BatchStudy = {
   stockQty: number;
   manualOut: number;
   costCents: number;
+  // Vendido das peças com custo no lote; o restante fica em uncostedRevenueCents.
   soldRevenueCents: number;
+  uncostedRevenueCents: number;
   realizedCents: number;
   expectedStockCents: number;
+  lostQty: number;
+  lostCostCents: number;
+  // Lucro já feito + lucro que falta − custo das peças que saíram sem venda.
   totalCents: number;
   rateOnCost: number | null;
   soldShare: number;
@@ -160,7 +174,7 @@ export function batchStudy(input: {
   format: { money: (value: number) => string; percent: (rate: number) => string };
 }): BatchStudy {
   const { money, percent } = input.format;
-  const allocation = input.allocation ?? { sold: [], left: [], manualOut: 0 };
+  const allocation = input.allocation ?? { sold: [], left: [], manualOut: 0, lost: [] };
   const productOf = new Map(input.products.map((product) => [product.id, product]));
   const codeOf = (productId: number) => productOf.get(productId)?.code ?? "Peça removida";
 
@@ -169,20 +183,29 @@ export function batchStudy(input: {
   const missingCost = [...new Set(input.entries.filter((entry) => entry.unitCostCents === null).map((entry) => codeOf(entry.productId)))].sort();
 
   const byOrder = new Map<number, BatchOrderRow>();
+  let uncostedRevenueCents = 0;
   for (const line of allocation.sold) {
-    if (line.costCents === null) continue;
-    const row = byOrder.get(line.orderId) ?? { orderId: line.orderId, orderNumber: line.orderNumber, quantity: 0, revenueCents: 0, costCents: 0, profitCents: 0, discounted: false };
+    const row: BatchOrderRow =
+      byOrder.get(line.orderId) ??
+      { orderId: line.orderId, orderNumber: line.orderNumber, quantity: 0, revenueCents: 0, costCents: 0, profitCents: null, discounted: false, uncostedQty: 0 };
     row.quantity += line.quantity;
-    row.revenueCents += line.revenueCents;
-    row.costCents += line.costCents;
-    row.profitCents = row.revenueCents - row.costCents;
     row.discounted = row.discounted || line.discounted;
+    if (line.costCents === null) {
+      row.uncostedQty += line.quantity;
+      uncostedRevenueCents += line.revenueCents;
+    } else {
+      row.revenueCents += line.revenueCents;
+      row.costCents += line.costCents;
+      row.profitCents = row.revenueCents - row.costCents;
+    }
     byOrder.set(line.orderId, row);
   }
   const orders = [...byOrder.values()].sort((a, b) => b.orderNumber.localeCompare(a.orderNumber, "pt-BR", { numeric: true }));
   const soldQty = allocation.sold.reduce((sum, line) => sum + line.quantity, 0);
-  const soldRevenueCents = allocation.sold.reduce((sum, line) => sum + line.revenueCents, 0);
-  const realizedCents = orders.reduce((sum, row) => sum + row.profitCents, 0);
+  const soldRevenueCents = orders.reduce((sum, row) => sum + row.revenueCents, 0);
+  const realizedCents = orders.reduce((sum, row) => sum + (row.profitCents ?? 0), 0);
+  const lostQty = allocation.lost.reduce((sum, row) => sum + row.quantity, 0);
+  const lostCostCents = allocation.lost.reduce((sum, row) => sum + (row.costCents ?? 0), 0);
 
   const stockByProduct = new Map<number, BatchStockRow>();
   for (const slot of allocation.left) {
@@ -204,7 +227,7 @@ export function batchStudy(input: {
   );
   const stockQty = stock.reduce((sum, row) => sum + row.quantity, 0);
   const expectedStockCents = stock.reduce((sum, row) => sum + (row.profitCents ?? 0), 0);
-  const totalCents = realizedCents + expectedStockCents;
+  const totalCents = realizedCents + expectedStockCents - lostCostCents;
   const rateOnCost = costCents > 0 ? totalCents / costCents : null;
 
   const notes: BatchNote[] = [];
@@ -213,8 +236,13 @@ export function batchStudy(input: {
     notes.push({ tone: "red", text: `${row.code} dá prejuízo: custa ${money((row.unitCostCents ?? 0) / 100)} e vende a ${money(row.priceCents / 100)}.` }),
   );
   if (losing.length > MAX_PIECE_NOTES) notes.push({ tone: "red", text: `Mais ${losing.length - MAX_PIECE_NOTES} peças do lote dão prejuízo no preço atual.` });
-  for (const row of orders.filter((order) => order.profitCents < 0))
-    notes.push({ tone: "red", text: `A ${row.orderNumber} foi vendida${row.discounted ? " com desconto" : ""} e deu prejuízo de ${money(-row.profitCents / 100)}.` });
+  for (const row of orders.filter((order) => (order.profitCents ?? 0) < 0))
+    notes.push({ tone: "red", text: `A ${row.orderNumber} foi vendida${row.discounted ? " com desconto" : ""} e deu prejuízo de ${money(-(row.profitCents ?? 0) / 100)}.` });
+  if (lostQty > 0)
+    notes.push({
+      tone: "red",
+      text: `${lostQty === 1 ? "1 peça saiu" : `${lostQty} peças saíram`} do estoque sem venda${lostCostCents > 0 ? `: perda de ${money(lostCostCents / 100)}` : ""}.`,
+    });
   if (rateOnCost !== null && rateOnCost < input.targetRate)
     notes.push({ tone: "amber", text: `Lucro médio de ${percent(rateOnCost)} sobre o custo, abaixo da meta de ${percent(input.targetRate)}.` });
   stock
@@ -223,6 +251,8 @@ export function batchStudy(input: {
     .forEach((row) => notes.push({ tone: "amber", text: `${row.code} quase sem lucro: ${money((row.unitProfitCents ?? 0) / 100)} por peça.` }));
   if (missingCost.length)
     notes.push({ tone: "amber", text: `Sem custo neste lote: ${missingCost.join(", ")}. O lucro dessas peças não entra na conta.` });
+  if (uncostedRevenueCents > 0)
+    notes.push({ tone: "amber", text: `${money(uncostedRevenueCents / 100)} vendidos de peças sem custo ficaram fora do lucro.` });
 
   return {
     boughtQty,
@@ -231,8 +261,11 @@ export function batchStudy(input: {
     manualOut: allocation.manualOut,
     costCents,
     soldRevenueCents,
+    uncostedRevenueCents,
     realizedCents,
     expectedStockCents,
+    lostQty,
+    lostCostCents,
     totalCents,
     rateOnCost,
     soldShare: boughtQty > 0 ? soldQty / boughtQty : 0,

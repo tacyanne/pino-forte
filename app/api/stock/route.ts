@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, isNotNull } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { purchaseBatches, stockMovements } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
@@ -45,11 +45,21 @@ async function listMovements(): Promise<StockMovement[]> {
       order: "movement_date.desc,id.desc",
       limit: String(STOCK_LIMIT),
     });
-    return camelizeRows<Record<string, unknown>>(rows).map(toMovement);
+    // As entradas de lote vêm sempre inteiras: o limite acima não pode cortar peça de um lote.
+    const batchRows = await supabaseSelect<Record<string, unknown>>("stock_movements", { select: "*", batch_id: "not.is.null" });
+    return mergeMovements(camelizeRows<Record<string, unknown>>(rows).map(toMovement), camelizeRows<Record<string, unknown>>(batchRows).map(toMovement));
   }
   const db = await getDb();
   const rows = await db.select().from(stockMovements).orderBy(desc(stockMovements.movementDate), desc(stockMovements.id)).limit(STOCK_LIMIT);
-  return rows.map(toMovement);
+  const batchRows = await db.select().from(stockMovements).where(isNotNull(stockMovements.batchId));
+  return mergeMovements(rows.map(toMovement), batchRows.map(toMovement));
+}
+
+function mergeMovements(recent: StockMovement[], batchEntries: StockMovement[]) {
+  const seen = new Set(recent.map((movement) => movement.id));
+  const extra = batchEntries.filter((movement) => !seen.has(movement.id));
+  if (!extra.length) return recent;
+  return [...recent, ...extra].sort((a, b) => b.movementDate.localeCompare(a.movementDate) || b.id - a.id);
 }
 
 async function listBatches(): Promise<PurchaseBatch[]> {
@@ -82,17 +92,25 @@ async function createBatch(raw: unknown, userId: number) {
       notes: input.notes,
       created_by: userId,
     });
-    for (const item of input.items)
-      await supabaseInsert("stock_movements", {
-        product_id: item.productId,
-        kind: "entrada",
-        quantity: item.quantity,
-        movement_date: input.purchaseDate,
-        notes: `Lote ${input.supplier}`,
-        batch_id: Number(batch.id),
-        unit_cost_cents: item.unitCostCents,
-        created_by: userId,
-      });
+    const batchId = Number(batch.id);
+    try {
+      for (const item of input.items)
+        await supabaseInsert("stock_movements", {
+          product_id: item.productId,
+          kind: "entrada",
+          quantity: item.quantity,
+          movement_date: input.purchaseDate,
+          notes: `Lote ${input.supplier}`,
+          batch_id: batchId,
+          unit_cost_cents: item.unitCostCents,
+          created_by: userId,
+        });
+    } catch (error) {
+      // Sem transação neste caminho: desfaz o que já foi gravado para não sobrar lote pela metade.
+      await supabaseDelete("stock_movements", { batch_id: `eq.${batchId}` }).catch(() => undefined);
+      await supabaseDelete("purchase_batches", { id: `eq.${batchId}` }).catch(() => undefined);
+      throw error;
+    }
     return;
   }
   const db = await getDb();
@@ -154,10 +172,24 @@ export async function DELETE(request: Request) {
     const body = (await request.json().catch(() => ({}))) as { id?: unknown };
     const id = Number(body.id);
     if (!Number.isInteger(id) || id <= 0) throw new StockError("Lançamento não encontrado.");
-    if (hasSupabaseRest()) await supabaseDelete("stock_movements", { id: `eq.${id}` });
-    else {
+    // Entrada de lote: se era a última peça do lote, o lote sai junto para não ficar vazio.
+    if (hasSupabaseRest()) {
+      const [current] = await supabaseSelect<Record<string, unknown>>("stock_movements", { select: "batch_id", id: `eq.${id}` });
+      await supabaseDelete("stock_movements", { id: `eq.${id}` });
+      const batchId = Number(current?.batch_id || 0);
+      if (batchId) {
+        const rest = await supabaseSelect<Record<string, unknown>>("stock_movements", { select: "id", batch_id: `eq.${batchId}`, limit: "1" });
+        if (!rest.length) await supabaseDelete("purchase_batches", { id: `eq.${batchId}` });
+      }
+    } else {
       const db = await getDb();
-      await db.delete(stockMovements).where(eq(stockMovements.id, id));
+      await db.transaction(async (tx) => {
+        const [current] = await tx.select({ batchId: stockMovements.batchId }).from(stockMovements).where(eq(stockMovements.id, id));
+        await tx.delete(stockMovements).where(eq(stockMovements.id, id));
+        if (!current?.batchId) return;
+        const rest = await tx.select({ id: stockMovements.id }).from(stockMovements).where(eq(stockMovements.batchId, current.batchId)).limit(1);
+        if (!rest.length) await tx.delete(purchaseBatches).where(eq(purchaseBatches.id, current.batchId));
+      });
     }
     return Response.json({ success: true }, { headers });
   } catch (error) { return failure(error); }
