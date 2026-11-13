@@ -3757,17 +3757,39 @@ export default function Home() {
                 <section className="panel plain-panel">
                   <h2>Peças vendidas</h2>
                   {!salesProfit.byProduct.length && <p className="compact-empty">Nenhuma venda entregue neste período.</p>}
+                  {salesProfit.byProduct.length > 0 && (
+                    <p className="chart-legend">
+                      <i className="swatch piece-cost" /> custo <i className="swatch piece-profit" /> lucro
+                      <em>pelo custo cadastrado em cada peça</em>
+                    </p>
+                  )}
                   {(() => {
                     const pieces = salesProfit.byProduct.slice().sort((x, y) => y.revenueCents - x.revenueCents || y.quantity - x.quantity);
                     const top = pieces[0]?.revenueCents || 0;
                     return pieces.map((row) => {
                       const measure = products.find((product) => product.id === row.productId)?.measure;
                       const units = row.quantity === 1 ? "1 unidade" : `${row.quantity} unidades`;
+                      const width = top > 0 ? Math.max(2, Math.round((row.revenueCents / top) * 100)) : 2;
+                      const hasCost = row.costCents !== null && row.profitCents !== null;
+                      const profit = row.profitCents ?? 0;
+                      // Parte da barra que é custo; com prejuízo, o custo ocupa a barra inteira.
+                      const costShare = hasCost && row.revenueCents > 0 ? Math.min(100, Math.round(((row.costCents ?? 0) / row.revenueCents) * 100)) : 0;
+                      const split = !hasCost
+                        ? "sem custo cadastrado"
+                        : `custo ${money((row.costCents ?? 0) / 100)} · ${profit < 0 ? "prejuízo" : "lucro"} ${money(Math.abs(profit) / 100)}`;
                       return (
-                        <div className="supplier-row" key={row.key} title={`${row.code}: ${units}, ${money(row.revenueCents / 100)}`}>
+                        <div className="supplier-row piece-bar-row" key={row.key} title={`${row.code}: ${units}, vendeu ${money(row.revenueCents / 100)}, ${split}`}>
                           <span>{row.code}<small>{measure ? `${measure} · ${units}` : units}</small></span>
-                          <div className="supplier-bar"><i style={{ width: `${top > 0 ? Math.max(2, Math.round((row.revenueCents / top) * 100)) : 2}%` }} /></div>
+                          <div className="supplier-bar piece-bar" style={{ width: `${width}%` }}>
+                            {hasCost ? (
+                              <>
+                                <i className="piece-cost" style={{ width: `${costShare}%` }} />
+                                {costShare < 100 && <i className="piece-profit" style={{ width: `${100 - costShare}%` }} />}
+                              </>
+                            ) : <i className="piece-nocost" style={{ width: "100%" }} />}
+                          </div>
                           <b>{money(row.revenueCents / 100)}</b>
+                          <small className={`piece-split ${hasCost && profit < 0 ? "negative" : ""}`}>{split}</small>
                         </div>
                       );
                     });
