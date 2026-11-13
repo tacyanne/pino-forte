@@ -4506,8 +4506,9 @@ export default function Home() {
                     })}
                   </div>
                 </section>
-                <section className="panel plain-panel">
-                  <h2>Histórico do estoque</h2>
+                {/* O dia a dia do estoque agora se lê nos lotes; aqui fica só o caminho para desfazer um lançamento. */}
+                <details className="panel plain-panel stock-history-details">
+                  <summary>Corrigir lançamentos de estoque</summary>
                   {!stock.history.length && <p className="compact-empty">Nenhum lançamento ainda. Depois da primeira contagem ou entrada, as OS entregues aparecem aqui como saída.</p>}
                   {(() => {
                     // Agrupado por dia: a data aparece uma vez, e cada lançamento ocupa uma linha curta.
@@ -4540,7 +4541,7 @@ export default function Home() {
                       </div>
                     ));
                   })()}
-                </section>
+                </details>
               </div>
             )}
             {screen === "wallet" && (

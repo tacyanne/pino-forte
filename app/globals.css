@@ -1243,3 +1243,10 @@ button.plain-row{cursor:pointer}
 .batch-note i{width:9px;height:9px;border-radius:50%;background:#d08a00}
 .batch-note i.red{background:#c0392b}
 @media(min-width:760px){.batch-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* Estoque: lançamentos ficam recolhidos; abrem só para corrigir */
+.stock-history-details>summary{cursor:pointer;font-size:13px;font-weight:800;color:var(--petrol);list-style:none}
+.stock-history-details>summary::-webkit-details-marker{display:none}
+.stock-history-details>summary::after{content:" ▾";font-size:11px}
+.stock-history-details[open]>summary{margin-bottom:12px}
+.stock-history-details[open]>summary::after{content:" ▴"}
