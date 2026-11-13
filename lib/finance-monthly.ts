@@ -158,6 +158,47 @@ export function forecastCurrentMonth(
   return { day, daysInMonth, salesCents, spentCents, leftCents: salesCents - spentCents };
 }
 
+export type CashForecastRow = {
+  month: string;
+  isCurrent: boolean;
+  inCents: number;
+  outCents: number;
+  netCents: number;
+  balanceCents: number;
+};
+
+// Previsão de caixa: o resto do mês atual e os próximos meses, só com o que já está lançado
+// (contas a receber e contas a pagar em aberto, pelo vencimento). O que está atrasado entra
+// no mês atual. Vendas e contas que ainda não existem não são previstas.
+export function cashForecast(input: {
+  receivables: { dueDate: string; balanceCents: number }[];
+  payables: { dueDate: string; amountCents: number }[];
+  todayIso: string;
+  startBalanceCents: number;
+  monthsAhead?: number;
+}): CashForecastRow[] {
+  const current = input.todayIso.slice(0, 7);
+  const months = [current];
+  for (let index = 0; index < (input.monthsAhead ?? 3); index += 1) months.push(nextMonth(months[months.length - 1]));
+  const last = months[months.length - 1];
+  const monthOf = (dueDate: string) => {
+    const month = dueDate.slice(0, 7);
+    return month < current ? current : month;
+  };
+  let balanceCents = input.startBalanceCents;
+  return months.map((month) => {
+    const inCents = input.receivables
+      .filter((item) => item.balanceCents > 0 && monthOf(item.dueDate) === month && month <= last)
+      .reduce((sum, item) => sum + item.balanceCents, 0);
+    const outCents = input.payables
+      .filter((item) => item.amountCents > 0 && monthOf(item.dueDate) === month && month <= last)
+      .reduce((sum, item) => sum + item.amountCents, 0);
+    const netCents = inCents - outCents;
+    balanceCents += netCents;
+    return { month, isCurrent: month === current, inCents, outCents, netCents, balanceCents };
+  });
+}
+
 const MONTH_NAMES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 export function shortMonth(month: string) {
