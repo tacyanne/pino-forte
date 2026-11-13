@@ -171,9 +171,10 @@ export function stockHistory(input: { productIds: number[]; movements: StockMove
         }),
       );
   }
-  // No mesmo dia, a saída da OS aparece acima da entrada (entrou primeiro, saiu depois).
+  // No mesmo dia, a saída da OS aparece acima da entrada (entrou primeiro, saiu depois);
+  // as OS vão da mais nova para a mais antiga, com as peças da mesma OS juntas.
   const order = (item: StockHistoryItem) => (item.kind === "os" ? 1 : 0);
-  return items.sort((a, b) => b.date.localeCompare(a.date) || order(b) - order(a) || (b.movement?.id ?? 0) - (a.movement?.id ?? 0));
+  return items.sort((a, b) => b.date.localeCompare(a.date) || order(b) - order(a) || (b.orderNumber || "").localeCompare(a.orderNumber || "") || (b.movement?.id ?? 0) - (a.movement?.id ?? 0));
 }
 
 export function stockTotals(rows: StockRow[]) {
