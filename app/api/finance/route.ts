@@ -66,6 +66,12 @@ async function audit(
 // dependem do histórico completo; ao atingir o teto, a resposta avisa (historyTruncated).
 const HISTORY_LIMIT = 1000;
 
+// Data da compra (AAAA-MM-DD) opcional; vazio ou inválido vira nulo.
+const purchaseDateFromBody = (value: unknown) => {
+  const date = String(value ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+};
+
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
@@ -355,6 +361,7 @@ export async function POST(request: Request) {
             description,
             categoryId: Number(body.categoryId) || undefined,
             competenceMonth: String(body.competenceMonth || dueDate.slice(0, 7)),
+            purchaseDate: purchaseDateFromBody(body.purchaseDate),
             dueDate,
             amountCents,
             paymentMethod: String(body.paymentMethod || ""),
@@ -567,6 +574,7 @@ export async function PATCH(request: Request) {
             description: body.description === undefined ? current.description : String(body.description).trim(),
             categoryId: body.categoryId === undefined ? current.categoryId : Number(body.categoryId) || null,
             competenceMonth: body.competenceMonth === undefined ? current.competenceMonth : String(body.competenceMonth),
+            purchaseDate: body.purchaseDate === undefined ? current.purchaseDate : purchaseDateFromBody(body.purchaseDate),
             dueDate: body.dueDate === undefined ? current.dueDate : String(body.dueDate).slice(0, 10),
             amountCents: body.amountCents === undefined && body.amount === undefined ? current.amountCents : centsFromBody(body),
             paymentMethod,
@@ -666,6 +674,7 @@ async function postFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
       description,
       category_id: Number(body.categoryId) || null,
       competence_month: String(body.competenceMonth || dueDate.slice(0, 7)),
+      purchase_date: purchaseDateFromBody(body.purchaseDate),
       due_date: dueDate,
       amount_cents: amountCents,
       payment_method: String(body.paymentMethod || ""),
@@ -830,6 +839,7 @@ async function patchFinanceWithRest(auth: Auth, body: Record<string, unknown>) {
       description: body.description === undefined ? String(current.description || "") : String(body.description).trim(),
       category_id: body.categoryId === undefined ? Number(current.category_id || 0) || null : Number(body.categoryId) || null,
       competence_month: body.competenceMonth === undefined ? String(current.competence_month || "") : String(body.competenceMonth),
+      purchase_date: body.purchaseDate === undefined ? (current.purchase_date ? String(current.purchase_date) : null) : purchaseDateFromBody(body.purchaseDate),
       due_date: body.dueDate === undefined ? String(current.due_date || "") : String(body.dueDate).slice(0, 10),
       amount_cents: amountCents,
       payment_method: paymentMethod,

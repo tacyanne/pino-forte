@@ -149,6 +149,7 @@ type AccountPayable = {
   supplier: string;
   description: string;
   dueDate: string;
+  purchaseDate?: string | null;
   amountCents: number;
   paidAt: string | null;
   paymentMethod: string;
@@ -535,6 +536,7 @@ export default function Home() {
   const [financeError, setFinanceError] = useState("");
   const [payableModal, setPayableModal] = useState(false);
   const [payableStatus, setPayableStatus] = useState("Pendente");
+  const [editingPayable, setEditingPayable] = useState<AccountPayable | null>(null);
   const [walletQuery, setWalletQuery] = useState("");
   const [walletStatusFilter, setWalletStatusFilter] = useState("");
   const [dashboardMonth] = useState(todayIso().slice(0, 7));
@@ -1783,44 +1785,69 @@ export default function Home() {
       setSaving(false);
     }
   }
+  function openPayableForm(payable: AccountPayable | null = null) {
+    setEditingPayable(payable);
+    setPayableStatus(payable?.status === "Pago" ? "Pago" : "Pendente");
+    setPayableModal(true);
+  }
+  function closePayableForm() {
+    setPayableModal(false);
+    setEditingPayable(null);
+    setPayableStatus("Pendente");
+  }
   async function savePayable(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const supplier = String(form.get("supplier") || "").trim();
     const description = String(form.get("description") || "").trim();
     const dueDateInput = String(form.get("dueDate") || "").trim();
+    const purchaseDateInput = String(form.get("purchaseDate") || "").trim();
     const paidAtInput = String(form.get("paidAt") || "").trim();
     const amountCents = Math.round(parseCurrency(String(form.get("amount") || "")) * 100);
     const paymentMethod = String(form.get("paymentMethod") || "").trim();
-    const fabricationCategoryId = form.get("isFabrication") === "sim" ? preferredFabricationCategoryId(financeData.categories) : null;
+    const isFabrication = form.get("isFabrication") === "sim";
+    const fabricationCategoryId = isFabrication ? preferredFabricationCategoryId(financeData.categories) : null;
+    if (isFabrication && !fabricationCategoryId)
+      return flash("Não foi possível marcar como gasto de fabricação. Atualize a página e tente de novo.", "error");
+    const wasFabrication = editingPayable?.categoryId != null && fabricationIds.includes(editingPayable.categoryId);
+    // Só mexe na categoria quando a marcação muda: desmarcar limpa apenas a categoria de fabricação.
+    const categoryChange =
+      isFabrication && !wasFabrication ? { categoryId: fabricationCategoryId } : !isFabrication && wasFabrication ? { categoryId: null } : {};
     if (!supplier || !description || !isValidBrDate(dueDateInput) || amountCents <= 0)
       return flash("Informe fornecedor, descricao, vencimento e valor.", "error");
+    if (purchaseDateInput && !isValidBrDate(purchaseDateInput))
+      return flash("Informe uma data da compra válida ou deixe em branco.", "error");
     if (payableStatus === "Pago" && (!paymentMethod || !isValidBrDate(paidAtInput)))
       return flash("Informe forma e data de pagamento para conta ja paga.", "error");
     setSaving(true);
     try {
+      const fields = {
+        supplier,
+        description,
+        dueDate: toIsoDate(dueDateInput),
+        purchaseDate: purchaseDateInput ? toIsoDate(purchaseDateInput) : null,
+        competenceMonth: toIsoDate(dueDateInput).slice(0, 7),
+        amountCents,
+        paymentMethod,
+        status: payableStatus,
+        paidAt: payableStatus === "Pago" ? toIsoDate(paidAtInput) : undefined,
+        notes: String(form.get("notes") || ""),
+      };
       const response = await fetch("/api/finance", {
-        method: "POST",
+        method: editingPayable ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "payable",
-          supplier,
-          description,
-          ...(fabricationCategoryId ? { categoryId: fabricationCategoryId } : {}),
-          dueDate: toIsoDate(dueDateInput),
-          amountCents,
-          paymentMethod,
-          status: payableStatus,
-          paidAt: payableStatus === "Pago" ? toIsoDate(paidAtInput) : undefined,
-          notes: String(form.get("notes") || ""),
-        }),
+        body: JSON.stringify(
+          editingPayable
+            ? { entity: "accountsPayable", id: editingPayable.id, ...fields, ...categoryChange }
+            : { action: "payable", ...fields, ...(fabricationCategoryId ? { categoryId: fabricationCategoryId } : {}) },
+        ),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Nao foi possivel cadastrar a conta a pagar.");
-      setPayableModal(false);
-      setPayableStatus("Pendente");
+      if (!response.ok) throw new Error(data.error || (editingPayable ? "Não foi possível salvar a conta." : "Nao foi possivel cadastrar a conta a pagar."));
+      const wasEditing = Boolean(editingPayable);
+      closePayableForm();
       await refreshFinance();
-      flash(payableStatus === "Pago" ? "Conta paga cadastrada." : "Conta a pagar cadastrada.");
+      flash(wasEditing ? "Conta atualizada." : payableStatus === "Pago" ? "Conta paga cadastrada." : "Conta a pagar cadastrada.");
     } catch (error) {
       flash(error instanceof Error ? error.message : "Nao foi possivel cadastrar a conta a pagar.", "error");
     } finally {
@@ -3761,10 +3788,7 @@ export default function Home() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => {
-                            setPayableStatus("Pendente");
-                            setPayableModal(true);
-                          }}
+                          onClick={() => openPayableForm()}
                           className="payable-add-button"
                         >
                           + Nova conta
@@ -3776,8 +3800,9 @@ export default function Home() {
                         <div className="payable-list">
                           <div className="payable-list-head" aria-hidden="true">
                             <span>Fornecedor</span>
+                            <span>Data da compra</span>
                             <span>Vencimento</span>
-                            <span>Pagamento</span>
+                            <span>Forma</span>
                             <span>Valor</span>
                             <span>Status</span>
                             <span />
@@ -3791,9 +3816,12 @@ export default function Home() {
                                   <b>{payable.supplier}</b>
                                   <small>{payable.description}{payable.categoryId != null && fabricationIds.includes(payable.categoryId) ? " · gasto para fabricar peça" : ""}</small>
                                 </span>
+                                <span className="payable-date" data-label="Data da compra">
+                                  {payable.purchaseDate ? brDate(payable.purchaseDate) : "—"}
+                                </span>
                                 <span className="payable-date" data-label="Vencimento">{brDate(payable.dueDate)}</span>
-                                <span className="payable-date" data-label="Pagamento">
-                                  {payable.paidAt ? `${brDate(payable.paidAt)}${payable.paymentMethod ? ` · ${payable.paymentMethod}` : ""}` : "—"}
+                                <span className="payable-date" data-label="Forma">
+                                  {payable.paymentMethod || "—"}
                                 </span>
                                 <strong>{money(payable.amountCents / 100)}</strong>
                                 <span className="payable-status">
@@ -3803,9 +3831,14 @@ export default function Home() {
                                 </span>
                                 <span className="payable-action">
                                   {payable.status !== "Pago" && (
-                                    <button className="outline-button" onClick={() => settlePayable(payable)} disabled={saving}>
-                                      Marcar paga
-                                    </button>
+                                    <>
+                                      <button className="outline-button" onClick={() => openPayableForm(payable)} disabled={saving}>
+                                        Editar
+                                      </button>
+                                      <button className="outline-button" onClick={() => settlePayable(payable)} disabled={saving}>
+                                        Marcar paga
+                                      </button>
+                                    </>
                                   )}
                                 </span>
                               </div>
@@ -4553,21 +4586,31 @@ export default function Home() {
         </Modal>
       )}
       {payableModal && (
-        <Modal title="Cadastrar conta a pagar" close={() => { setPayableModal(false); setPayableStatus("Pendente"); }}>
-          <form onSubmit={savePayable} noValidate>
+        <Modal title={editingPayable ? "Editar conta a pagar" : "Cadastrar conta a pagar"} close={closePayableForm}>
+          <form key={editingPayable?.id ?? "new"} onSubmit={savePayable} noValidate>
             <div className="form-grid">
               <Field label="Fornecedor *">
-                <input name="supplier" required />
+                <input name="supplier" required defaultValue={editingPayable?.supplier || ""} />
               </Field>
               <Field label="Descrição *">
-                <input name="description" required />
+                <input name="description" required defaultValue={editingPayable?.description || ""} />
+              </Field>
+              <Field label="Data da compra">
+                <input
+                  name="purchaseDate"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="dd/mm/aaaa"
+                  defaultValue={editingPayable ? (editingPayable.purchaseDate ? brDate(editingPayable.purchaseDate) : "") : brDate(todayIso())}
+                  onInput={(e) => { e.currentTarget.value = maskDate(e.currentTarget.value); }}
+                />
               </Field>
               <Field label="Vencimento *">
                 <input
                   name="dueDate"
                   inputMode="numeric"
                   maxLength={10}
-                  defaultValue={brDate(todayIso())}
+                  defaultValue={brDate(editingPayable?.dueDate || todayIso())}
                   onInput={(e) => { e.currentTarget.value = maskDate(e.currentTarget.value); }}
                   required
                 />
@@ -4576,17 +4619,23 @@ export default function Home() {
                 <input
                   name="amount"
                   inputMode="numeric"
-                  defaultValue="R$ 0,00"
+                  defaultValue={money((editingPayable?.amountCents ?? 0) / 100)}
                   onChange={(e) => { e.currentTarget.value = maskCurrency(e.currentTarget.value); }}
                   required
                 />
               </Field>
-              <Field label="Esse gasto é para fabricar peça? (aço, serviço do torneiro)">
-                <select name="isFabrication" defaultValue="nao">
-                  <option value="nao">Não</option>
-                  <option value="sim">Sim</option>
-                </select>
-              </Field>
+              <label className="check-field">
+                <input
+                  type="checkbox"
+                  name="isFabrication"
+                  value="sim"
+                  defaultChecked={editingPayable?.categoryId != null && fabricationIds.includes(editingPayable.categoryId)}
+                />
+                <span>
+                  <b>Gasto para fabricar peça</b>
+                  <small>Marque para aço, serviço do torneiro e outros gastos que já estão no custo das peças. Eles não são somados de novo em &quot;Quanto gastei&quot;.</small>
+                </span>
+              </label>
               <Field label="Status">
                 <select value={payableStatus} onChange={(e) => setPayableStatus(e.target.value)}>
                   <option>Pendente</option>
@@ -4594,7 +4643,7 @@ export default function Home() {
                 </select>
               </Field>
               <Field label="Forma de pagamento">
-                <select name="paymentMethod">
+                <select name="paymentMethod" defaultValue={editingPayable?.paymentMethod || ""}>
                   <option value="">Selecione</option>
                   <option>Pix</option>
                   <option>Dinheiro</option>
@@ -4614,15 +4663,15 @@ export default function Home() {
                 </Field>
               )}
               <Field label="Observações">
-                <input name="notes" />
+                <input name="notes" defaultValue={editingPayable?.notes || ""} />
               </Field>
             </div>
             <div className="modal-actions">
-              <button type="button" className="cancel-button" onClick={() => { setPayableModal(false); setPayableStatus("Pendente"); }}>
+              <button type="button" className="cancel-button" onClick={closePayableForm}>
                 Cancelar
               </button>
               <button className="primary-button" disabled={saving}>
-                {saving ? "Salvando..." : "Adicionar"}
+                {saving ? "Salvando..." : editingPayable ? "Salvar" : "Adicionar"}
               </button>
             </div>
           </form>
