@@ -261,8 +261,12 @@ test("custo em uso é escolhido na peça, com data, e vale para todo o sistema",
   assert.equal(catalogApi.split("parseCostUseInput(body.costUse, todayIso())").length - 1, 4);
   assert.equal(catalogApi.split("saveCostUse(").length - 1, 4);
   assert.equal(catalogApi.split("productCostUses: await listCostUsesSafe()").length - 1, 2);
-  assert.equal(page.split("<legend>Custo em uso</legend>").length - 1, 2);
-  assert.ok(page.includes('name="costUseSource" defaultValue={use.source}'));
+  // "Custo em uso" fica dentro de cada custo (Sim/Não), na edição e na visualização
+  assert.equal(page.includes("<legend>Custo em uso</legend>"), false);
+  assert.ok(page.includes('<input type="hidden" name="costUseSource" value={draft.source} />'));
+  assert.ok(page.includes('{costUseFields("comprada")}') && page.includes('{costUseFields("fabricada")}'));
+  assert.ok(page.includes('const next = e.target.value === "sim" ? source : other;'));
+  assert.equal(page.split('label="Custo em uso"').length - 1, 3);
   assert.ok(page.includes("costAt(productCosts, productId, todayIso(), productCostUses)"));
   assert.ok(/create table if not exists public\.product_cost_in_use/i.test(read("../supabase/migrations/20261113050000_product_cost_in_use.sql")));
 });
