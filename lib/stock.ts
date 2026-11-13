@@ -15,9 +15,12 @@ export type StockMovement = {
   quantity: number;
   movementDate: string;
   notes: string;
+  // Entrada que pertence a um lote de compra, com o custo pago por peça naquele lote.
+  batchId?: number | null;
+  unitCostCents?: number | null;
 };
 
-export type StockMovementInput = Omit<StockMovement, "id">;
+export type StockMovementInput = Omit<StockMovement, "id" | "batchId" | "unitCostCents">;
 
 // Peças de uma OS, já ligadas ao cadastro: vendidas (OS entregue) ou prometidas (OS na fila).
 export type StockLine = { productId: number; quantity: number; date: string; orderNumber?: string };

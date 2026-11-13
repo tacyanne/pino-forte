@@ -335,6 +335,15 @@ export const productPriceHistory = pgTable("product_price_history", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
 
+export const purchaseBatches = pgTable("purchase_batches", {
+  id: serial("id").primaryKey(),
+  supplier: text("supplier").notNull(),
+  purchaseDate: text("purchase_date").notNull(),
+  notes: text("notes").notNull().default(""),
+  createdBy: integer("created_by"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+});
+
 export const stockMovements = pgTable("stock_movements", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull().references(() => products.id),
@@ -342,6 +351,8 @@ export const stockMovements = pgTable("stock_movements", {
   quantity: integer("quantity").notNull(),
   movementDate: text("movement_date").notNull(),
   notes: text("notes").notNull().default(""),
+  batchId: integer("batch_id"),
+  unitCostCents: integer("unit_cost_cents"),
   createdBy: integer("created_by"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => ({

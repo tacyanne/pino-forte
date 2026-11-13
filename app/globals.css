@@ -1211,3 +1211,35 @@ button.plain-row{cursor:pointer}
   .dash-band{padding:22px}
   .dash-forward strong{font-size:17px}
 }
+
+/* Lotes de compra (Estoque) */
+.batch-list{display:grid;gap:10px}
+.batch-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;width:100%;padding:14px;border:1px solid var(--border);border-radius:12px;background:#fff;color:inherit;text-align:left;cursor:pointer}
+.batch-card:hover{background:#f7faf9}
+.batch-card b{display:block;font-size:14px;color:var(--ink)}
+.batch-card small{display:block;margin-top:3px;font-size:11px;color:var(--muted)}
+.batch-card-result{text-align:right}
+.batch-card-result strong{display:block;font-size:15px;white-space:nowrap}
+.batch-card .good,.batch-row .good{color:#1b7a4b}
+.batch-card .bad,.batch-row .bad{color:#b3261e}
+.batch-study{display:grid;gap:14px}
+.batch-sub{margin:0;font-size:12px;color:var(--muted)}
+.batch-hero{display:grid;gap:4px;padding:16px;border-radius:14px;background:#eef8f3;border:1px solid #cfe6da}
+.batch-hero.bad{background:#fdf0ee;border-color:#f0cfca}
+.batch-hero span{font-size:12px;font-weight:700;color:#247254}
+.batch-hero strong{font-size:26px;color:#1b7a4b}
+.batch-hero.bad span,.batch-hero.bad strong{color:#b3261e}
+.batch-hero small{font-size:12px;color:var(--muted)}
+.batch-bar{height:10px;margin:8px 0 2px;border-radius:6px;background:#dfe6e4;overflow:hidden}
+.batch-bar i{display:block;height:100%;background:var(--petrol)}
+.batch-block{padding:14px;border:1px solid var(--border);border-radius:12px}
+.batch-block h3{margin:0 0 8px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.batch-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:10px 0;border-top:1px solid #e5e9e8;font-size:13px}
+.batch-block h3+.batch-row{border-top:0}
+.batch-row b{white-space:nowrap}
+.batch-row small{grid-column:1/-1;font-size:11px;color:var(--muted)}
+.batch-note{display:grid;grid-template-columns:10px minmax(0,1fr);gap:10px;align-items:baseline;margin:0;padding:9px 0;border-top:1px solid #e5e9e8;font-size:13px}
+.batch-block h3+.batch-note{border-top:0}
+.batch-note i{width:9px;height:9px;border-radius:50%;background:#d08a00}
+.batch-note i.red{background:#c0392b}
+@media(min-width:760px){.batch-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
