@@ -3715,7 +3715,7 @@ export default function Home() {
                           </span>
                           <span className="piece-cell" data-label="Estoque">
                             {available === null ? (
-                              <small>sem contagem</small>
+                              <small>sem estoque</small>
                             ) : (
                               <b className={available <= 0 ? "piece-stock-low" : ""}>{available}</b>
                             )}
@@ -4338,9 +4338,9 @@ export default function Home() {
                     <small>{stock.totals.missing > 0 ? "Para entregar o que está na fila" : "A fila está coberta"}</small>
                   </article>
                   <article>
-                    <span>Sem contagem</span>
+                    <span>Sem estoque</span>
                     <strong>{stock.totals.uncounted}</strong>
-                    <small>{stock.totals.uncounted > 0 ? "Peças sem saldo conhecido" : "Todas as peças contadas"}</small>
+                    <small>{stock.totals.uncounted > 0 ? "Peças sem lançamento de estoque" : "Todas as peças com estoque lançado"}</small>
                   </article>
                 </section>
                 <section className="panel stock-panel">

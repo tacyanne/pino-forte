@@ -106,7 +106,7 @@ test("API de estoque exige login e grava nos dois caminhos de banco", () => {
 });
 
 test("tela de estoque usa OS entregues como saída e OS na fila como prometido", () => {
-  for (const text of ['["stock", "▥", "Estoque"]', 'screen === "stock"', "stockPosition({", "Peças em estoque", "Prometidas na fila", "Falta comprar", "Sem contagem", "refreshStock"])
+  for (const text of ['["stock", "▥", "Estoque"]', 'screen === "stock"', "stockPosition({", "Peças em estoque", "Prometidas na fila", "Falta comprar", "Sem estoque", "refreshStock"])
     assert.ok(page.includes(text), text);
 });
 
