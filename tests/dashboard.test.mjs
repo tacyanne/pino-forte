@@ -153,5 +153,5 @@ test("lote que caminha para prejuízo ou está acabando vira ação do painel", 
   assert.equal(actions[1].title, "Lote Fornecedor Z está acabando: 4 peças restantes");
   assert.equal(actions[1].detail, "36 de 40 já saíram · hora de pensar na próxima compra");
   assert.ok(page.includes('if (action.target === "batch") {'));
-  assert.ok(page.includes('go("batches");'));
+  assert.ok(page.includes('go("financial-batches");'));
 });

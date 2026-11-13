@@ -1260,3 +1260,9 @@ button.plain-row{cursor:pointer}
   .batch-form-head{grid-template-columns:1.2fr 180px 1.4fr}
   .batch-form-row{grid-template-columns:minmax(0,1.4fr) 140px 200px;padding:8px 14px}
 }
+
+/* Lote aberto como página: blocos brancos sobre o fundo e ações no fim, sem cobrir o conteúdo */
+.batch-study .batch-block,.batch-study .dash-kpis>div{background:#fff}
+.batch-study .batch-actions{position:static;display:flex;background:transparent;padding:4px 0 0}
+.batch-study .batch-actions .primary-button{grid-column:auto;grid-row:auto}
+.batch-form .batch-form-list,.batch-form .field input{background:#fff}
