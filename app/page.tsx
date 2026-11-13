@@ -493,6 +493,8 @@ export default function Home() {
   const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
   const [productPrices, setProductPrices] = useState<ProductPrice[]>([]);
   const [productCostUses, setProductCostUses] = useState<CostUse[]>([]);
+  // Rascunho do "Custo em uso" enquanto a peça está aberta para edição (key = peça em edição).
+  const [costUseDraft, setCostUseDraft] = useState<{ key: string; source: "comprada" | "fabricada"; startsAt: string } | null>(null);
   const [targetRate, setTargetRate] = useState(DEFAULT_TARGET_PROFIT_RATE);
   const [targetInput, setTargetInput] = useState("");
   const [pricingProduct, setPricingProduct] = useState<Product | null>(null);
@@ -1355,7 +1357,7 @@ export default function Home() {
     setCustomerModal(false);
     setEditingCustomer(null);
     setViewingCustomer(null);
-    setProductModal(false);
+    setProductModal(false); setCostUseDraft(null);
     setEditingProduct(null);
     setViewingProduct(null);
     setOrderModal(null);
@@ -1797,7 +1799,7 @@ export default function Home() {
         const savedUses = j.productCostUses;
         setProductCostUses((v) => [...v.filter((row) => row.productId !== j.product.id), ...savedUses]);
       }
-      setProductModal(false);
+      setProductModal(false); setCostUseDraft(null);
       setEditingProduct(null);
       notifyCatalogUpdate();
       flash(editingProduct ? "Peça atualizada com sucesso." : "Peça cadastrada com sucesso.");
@@ -3690,13 +3692,17 @@ export default function Home() {
                       <span>Peça</span><span>Tipo / Linha</span><span>Preço</span><span>Custo</span><span>Lucro</span><span>Estoque</span><span>Status</span>
                     </div>
                     {!filteredProducts.length && <p className="compact-empty">Nenhuma peça encontrada.</p>}
-                    {filteredProducts.map((p) => {
+                    {filteredProducts
+                      // Mesma ordem da tela Estoque: menos disponível primeiro; as zeradas ficam no fim.
+                      .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
+                      .sort((a, b) => Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .map(({ item: p }) => {
                       const cost = currentCostOf(p.id);
                       const costValue = (cost?.unitCostCents ?? 0) / 100;
                       const rate = profitOnCost(p.price, costValue);
                       const since = priceTimeline(productPrices, p.id)[0]?.startsAt;
                       const stockRow = stock.rows.find((entry) => entry.productId === p.id);
-                      const available = stockRow?.available ?? null;
+                      const available = stockRow?.available ?? 0;
                       return (
                         <div
                           key={p.id}
@@ -3739,11 +3745,7 @@ export default function Home() {
                             )}
                           </span>
                           <span className="piece-cell" data-label="Estoque">
-                            {available === null ? (
-                              <small>sem estoque</small>
-                            ) : (
-                              <b className={available <= 0 ? "piece-stock-low" : ""}>{available}</b>
-                            )}
+                            <b className={available <= 0 ? "piece-stock-low" : ""}>{available}</b>
                           </span>
                           <span className="piece-status">
                             <span className={`status ${p.active ? "green" : "red"}`}>{p.active ? "Ativo" : "Inativo"}</span>
@@ -4933,19 +4935,14 @@ export default function Home() {
               return (
                 <>
                   <fieldset className="product-cost-fields product-cost-readonly">
-                    <legend>Custo em uso</legend>
-                    <div className="product-cost-row">
-                      <ReviewField label="Custo usado no lucro" value={use.source === "comprada" ? "Custo revenda" : "Custo fabricação"} />
-                      <ReviewField label="A partir de" value={brDate(use.startsAt)} />
-                    </div>
-                  </fieldset>
-                  <fieldset className="product-cost-fields product-cost-readonly">
                     <legend>Custo revenda</legend>
                     <div className="product-cost-row">
                       <ReviewField label="Valor de compra" value={cents(purchase?.rawMaterialCostCents)} />
                       <ReviewField label="Frete" value={cents(purchase?.freightCents)} />
                       <ReviewField label="Fornecedor" value={purchase?.supplier || "—"} />
                       <ReviewField label="Custo válido desde" value={purchase ? brDate(purchase.startsAt) : "—"} />
+                      <ReviewField label="Custo em uso" value={use.source === "comprada" ? "Sim" : "Não"} />
+                      {use.source === "comprada" && <ReviewField label="Em uso desde" value={brDate(use.startsAt)} />}
                     </div>
                     <small>{profitNote(purchase?.unitCostCents)}</small>
                   </fieldset>
@@ -4956,6 +4953,8 @@ export default function Home() {
                       <ReviewField label="Mão de obra / terceiros" value={cents(cost?.additionalCostsCents)} />
                       <ReviewField label="Frete" value={cents(cost?.freightCents)} />
                       <ReviewField label="Custo válido desde" value={cost ? brDate(cost.startsAt) : "—"} />
+                      <ReviewField label="Custo em uso" value={use.source === "fabricada" ? "Sim" : "Não"} />
+                      {use.source === "fabricada" && <ReviewField label="Em uso desde" value={brDate(use.startsAt)} />}
                     </div>
                     <small>{profitNote(cost?.unitCostCents)}</small>
                   </fieldset>
@@ -5180,7 +5179,7 @@ export default function Home() {
         );
       })()}
       {productModal && (
-        <Modal title={editingProduct ? "Editar peça" : "Cadastrar peça"} page pageLabel="" close={() => { setProductModal(false); setEditingProduct(null); }}>
+        <Modal title={editingProduct ? "Editar peça" : "Cadastrar peça"} page pageLabel="" close={() => { setProductModal(false); setCostUseDraft(null); setEditingProduct(null); }}>
           <form className="customer-page-form" onSubmit={saveProduct} noValidate>
             <div className="form-grid product-single-row">
               <Field label="Código *">
@@ -5231,23 +5230,42 @@ export default function Home() {
                 />
               );
               const use = editingProduct ? costUseOf(editingProduct.id) : { source: "comprada" as const, startsAt: todayIso(), saved: null };
-              return (
-                <>
-                <fieldset className="product-cost-fields">
-                  <legend>Custo em uso</legend>
-                  <div className="product-cost-row">
-                    <Field label="Custo usado no lucro">
-                      <select name="costUseSource" defaultValue={use.source}>
-                        <option value="comprada">Custo revenda</option>
-                        <option value="fabricada">Custo fabricação</option>
+              const draftKey = String(editingProduct?.id ?? "new");
+              const draft = costUseDraft?.key === draftKey ? costUseDraft : { key: draftKey, source: use.source, startsAt: use.startsAt };
+              // "Custo em uso" dentro de cada custo: marcar Sim em um põe Não no outro.
+              const costUseFields = (source: "comprada" | "fabricada") => {
+                const other = source === "comprada" ? "fabricada" : "comprada";
+                const active = draft.source === source;
+                return (
+                  <>
+                    <Field label="Custo em uso">
+                      <select
+                        value={active ? "sim" : "nao"}
+                        onChange={(e) => {
+                          const next = e.target.value === "sim" ? source : other;
+                          setCostUseDraft({ key: draftKey, source: next, startsAt: next === use.source ? use.startsAt : todayIso() });
+                        }}
+                      >
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
                       </select>
                     </Field>
-                    <Field label="A partir de">
-                      <input type="date" name="costUseStartsAt" defaultValue={use.startsAt} />
-                    </Field>
-                  </div>
-                  <small>Vale para o lucro em todo o sistema a partir da data informada. As vendas anteriores continuam com o custo que estava em uso na época.</small>
-                </fieldset>
+                    {active && (
+                      <Field label="Em uso desde">
+                        <input
+                          type="date"
+                          name="costUseStartsAt"
+                          value={draft.startsAt}
+                          onChange={(e) => setCostUseDraft({ ...draft, startsAt: e.target.value })}
+                        />
+                      </Field>
+                    )}
+                  </>
+                );
+              };
+              return (
+                <>
+                <input type="hidden" name="costUseSource" value={draft.source} />
                 <fieldset className="product-cost-fields">
                   <legend>Custo revenda</legend>
                   <div className="product-cost-row">
@@ -5259,6 +5277,7 @@ export default function Home() {
                     <Field label="Custo válido desde">
                       <input type="date" name="purchaseStartsAt" defaultValue={purchase?.startsAt || todayIso()} />
                     </Field>
+                    {costUseFields("comprada")}
                   </div>
                   <small>
                     {purchase
@@ -5275,12 +5294,14 @@ export default function Home() {
                     <Field label="Custo válido desde">
                       <input type="date" name="costStartsAt" defaultValue={cost?.startsAt || todayIso()} />
                     </Field>
+                    {costUseFields("fabricada")}
                   </div>
                   <small>
                     {cost
                       ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Para guardar o custo anterior no histórico, mude os valores e informe a data em que o novo começa a valer.`
                       : "Quanto custa fabricar a peça. Não aparece no catálogo nem nos PDFs."}
                   </small>
+                  <small>O custo marcado como em uso vale para o lucro em todo o sistema a partir da data Em uso desde. As vendas anteriores continuam com o custo da época.</small>
                 </fieldset>
                 </>
               );
@@ -5293,7 +5314,7 @@ export default function Home() {
                 className="cancel-button"
                 onClick={() => {
                   const product = editingProduct;
-                  setProductModal(false);
+                  setProductModal(false); setCostUseDraft(null);
                   setEditingProduct(null);
                   if (product) setViewingProduct(product);
                 }}
