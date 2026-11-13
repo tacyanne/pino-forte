@@ -156,9 +156,24 @@ test("histórico mostra entradas e as saídas das OS entregues que entram no sal
   // OS-C (antes da entrada), OS-D (no dia da contagem) e OS-F (peça sem lançamento) ficam de fora
   assert.deepEqual(
     history.map((item) => `${item.kind}:${item.orderNumber || item.productId}`),
-    ["os:OS-A", "os:OS-E", "os:OS-B", "contagem:3", "entrada:7"],
+    ["os:OS-E", "os:OS-A", "os:OS-B", "contagem:3", "entrada:7"],
   );
   assert.equal(history.find((item) => item.orderNumber === "OS-A").movement, undefined);
+
+  // OS mais nova primeiro, e as peças da mesma OS ficam juntas
+  const grouped = stockHistory({
+    productIds: [1, 2],
+    movements: [move(1, 1, "entrada", 10, "2026-11-11"), move(2, 2, "entrada", 10, "2026-11-11")],
+    sold: [
+      { productId: 1, quantity: 4, date: "2026-11-11", orderNumber: "OS-13" },
+      { productId: 1, quantity: 4, date: "2026-11-11", orderNumber: "OS-12" },
+      { productId: 2, quantity: 4, date: "2026-11-11", orderNumber: "OS-13" },
+    ],
+  });
+  assert.deepEqual(
+    grouped.filter((item) => item.kind === "os").map((item) => `${item.orderNumber}:${item.productId}`),
+    ["OS-13:1", "OS-13:2", "OS-12:1"],
+  );
 
   const [row] = stockPosition({ productIds: [7], movements, sold, reserved: [], today: "2026-11-12" });
   assert.equal(row.balance, 2);
