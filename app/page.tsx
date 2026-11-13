@@ -25,7 +25,7 @@ import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, peri
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
 import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
-import { costAt, costOfSourceAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
@@ -2864,8 +2864,8 @@ export default function Home() {
     ["orders", "▤", "OS"],
     ["stock", "▥", "Estoque"],
     ["wallet", "▣", "Carteira"],
-    ["financial", "$", "Financeiro"],
     ["catalog", "▦", "Catálogo"],
+    ["financial", "$", "Financeiro"],
   ];
   const financeNav: [Screen, string][] = [
     ["financial", "Resumo"],
@@ -3659,29 +3659,23 @@ export default function Home() {
                     </select>
                   </label>
                 </Filters>
-                <div className="table-wrap standardized-table product-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Código</th>
-                        <th>Tipo</th>
-                        <th>Linha</th>
-                        <th>Medidas</th>
-                        <th>Valor</th>
-                        <th>Custo</th>
-                        <th>Lucro</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredProducts.map((p) => {
-                        const cost = currentCostOf(p.id);
-                        const costValue = (cost?.unitCostCents ?? 0) / 100;
-                        const rate = profitOnCost(p.price, costValue);
-                        return (
-                        <tr
+                <section className="panel stock-panel">
+                  <div className="piece-list">
+                    <div className="piece-head" aria-hidden="true">
+                      <span>Peça</span><span>Tipo / Linha</span><span>Preço</span><span>Custo</span><span>Lucro</span><span>Estoque</span><span>Status</span>
+                    </div>
+                    {!filteredProducts.length && <p className="compact-empty">Nenhuma peça encontrada.</p>}
+                    {filteredProducts.map((p) => {
+                      const cost = currentCostOf(p.id);
+                      const costValue = (cost?.unitCostCents ?? 0) / 100;
+                      const rate = profitOnCost(p.price, costValue);
+                      const since = priceTimeline(productPrices, p.id)[0]?.startsAt;
+                      const stockRow = stock.rows.find((entry) => entry.productId === p.id);
+                      const available = stockRow?.available ?? null;
+                      return (
+                        <div
                           key={p.id}
-                          className="clickable-table-row"
+                          className="piece-row"
                           role="button"
                           tabIndex={0}
                           aria-label={`Visualizar peça ${p.code}`}
@@ -3693,34 +3687,47 @@ export default function Home() {
                             }
                           }}
                         >
-                          <td>
-                            <b>{p.code}</b>
-                          </td>
-                          <td>{p.pieceType || "—"}</td>
-                          <td>{p.name.replace(/^Linha\s+/i, "")}</td>
-                          <td>{p.measure}</td>
-                          <td>{money(p.price)}</td>
-                          <td>{rate === null ? "—" : money(costValue)}</td>
-                          <td>
-                            {rate === null ? "—" : (
-                              <span className={`status ${marginTone(rate)}`}>
-                                {money(p.price - costValue)} · {percent(rate)}
-                              </span>
+                          <span className="stock-main piece-main"><b>{p.code}</b><small>{p.measure}</small></span>
+                          <span className="piece-cell piece-kind" data-label="Tipo / Linha">
+                            <b>{p.pieceType || "—"}</b>
+                            <small>{p.name.replace(/^Linha\s+/i, "")}</small>
+                          </span>
+                          <span className="piece-cell" data-label="Preço">
+                            <b>{money(p.price)}</b>
+                            {since && <small>{`desde ${brDate(since)}`}</small>}
+                          </span>
+                          <span className="piece-cell" data-label="Custo">
+                            {rate === null || !cost ? (
+                              <small>falta cadastrar</small>
+                            ) : (
+                              <>
+                                <b>{money(costValue)}</b>
+                                <small>{costSourceOf(cost.source) === "comprada" ? "revenda" : "fabricação"}</small>
+                              </>
                             )}
-                          </td>
-                          <td>
-                            <span
-                              className={`status ${p.active ? "green" : "red"}`}
-                            >
-                              {p.active ? "Ativo" : "Inativo"}
-                            </span>
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                          </span>
+                          <span className="piece-cell" data-label="Lucro">
+                            {rate === null ? (
+                              <small>—</small>
+                            ) : (
+                              <span className={`status ${marginTone(rate)}`}>{money(p.price - costValue)} · {percent(rate)}</span>
+                            )}
+                          </span>
+                          <span className="piece-cell" data-label="Estoque">
+                            {available === null ? (
+                              <small>sem contagem</small>
+                            ) : (
+                              <b className={available <= 0 ? "piece-stock-low" : ""}>{available}</b>
+                            )}
+                          </span>
+                          <span className="piece-status">
+                            <span className={`status ${p.active ? "green" : "red"}`}>{p.active ? "Ativo" : "Inativo"}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               </div>
             )}
             {screen === "catalog" && (
@@ -3783,7 +3790,7 @@ export default function Home() {
                         : screen === "financial-payables"
                           ? "Cadastre e acompanhe as contas da empresa."
                           : screen === "financial-pricing"
-                            ? "Veja quanto cada peça deixa de lucro, simule preços e compare fabricar com comprar pronta."
+                            ? "Veja quanto cada peça deixa de lucro, simule preços e compare o custo revenda com o custo fabricação."
                           : "Veja quanto você vendeu, quanto gastou e quanto sobrou."
                   }
                   action={screen === "financial" || screen === "reports" ? <button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button> : undefined}
@@ -3857,14 +3864,14 @@ export default function Home() {
                           <small>{belowTarget > 0 ? "Peças com lucro menor que a meta" : "Todas as peças na meta"}</small>
                         </article>
                         <article>
-                          <span>Comprar x fabricar</span>
+                          <span>Revenda x fabricação</span>
                           <strong>{`${cheaperToBuy} x ${cheaperToMake}`}</strong>
-                          <small>Peças em que comprar sai mais barato x fabricar</small>
+                          <small>Peças em que a revenda custa menos x a fabricação</small>
                         </article>
                         <article className={withoutPurchase > 0 ? "attention" : ""}>
-                          <span>Sem custo de compra</span>
+                          <span>Sem custo revenda</span>
                           <strong>{withoutPurchase}</strong>
-                          <small>{withoutPurchase > 0 ? "Cadastre em Peças para comparar" : "Todas com custo de compra"}</small>
+                          <small>{withoutPurchase > 0 ? "Cadastre em Peças para comparar" : "Todas com custo revenda"}</small>
                         </article>
                       </section>
                       <section className="panel plain-panel pricing-tools">
@@ -3903,7 +3910,7 @@ export default function Home() {
                       <section className="panel stock-panel">
                         <div className="pricing-list">
                           <div className="pricing-head" aria-hidden="true">
-                            <span>Peça</span><span>Preço</span><span>Comprando pronta</span><span>Fabricando</span><span>Comparação</span><span />
+                            <span>Peça</span><span>Preço</span><span>Custo revenda</span><span>Custo fabricação</span><span>Comparação</span><span />
                           </div>
                           {!rows.length && <p className="compact-empty">Nenhuma peça ativa cadastrada.</p>}
                           {rows.map((row) => (
@@ -3914,8 +3921,8 @@ export default function Home() {
                                 {row.newPriceCents !== null && row.newPriceCents !== row.priceCents && <small className="pricing-new">{`novo: ${money(row.newPriceCents / 100)}`}</small>}
                                 {row.lastChange && <small>{`desde ${brDate(row.lastChange.startsAt)}`}</small>}
                               </span>
-                              {sourceCell(row.simulation.comprada, "Comprando pronta")}
-                              {sourceCell(row.simulation.fabricada, "Fabricando")}
+                              {sourceCell(row.simulation.comprada, "Custo revenda")}
+                              {sourceCell(row.simulation.fabricada, "Custo fabricação")}
                               <span className="pricing-compare">{sourceComparison(row.simulation, money)}</span>
                               <span className="stock-action">
                                 <button type="button" className="outline-button" onClick={() => openPriceSimulator(row.product)}>Simular</button>
@@ -4897,7 +4904,7 @@ export default function Home() {
               return (
                 <>
                   <fieldset className="product-cost-fields product-cost-readonly">
-                    <legend>Custo comprando pronta (revenda)</legend>
+                    <legend>Custo revenda</legend>
                     <div className="product-cost-row">
                       <ReviewField label="Valor de compra" value={cents(purchase?.rawMaterialCostCents)} />
                       <ReviewField label="Frete" value={cents(purchase?.freightCents)} />
@@ -4907,7 +4914,7 @@ export default function Home() {
                     <small>{profitNote(purchase?.unitCostCents)}</small>
                   </fieldset>
                   <fieldset className="product-cost-fields product-cost-readonly">
-                    <legend>Custo fabricando</legend>
+                    <legend>Custo fabricação</legend>
                     <div className="product-cost-row">
                       <ReviewField label="Material" value={cents(cost?.rawMaterialCostCents)} />
                       <ReviewField label="Mão de obra / terceiros" value={cents(cost?.additionalCostsCents)} />
@@ -5118,11 +5125,11 @@ export default function Home() {
             </div>
             <p className="sim-note">
               {`Preço atual: ${money(currentCents / 100)}. `}
-              {baseCost === null ? "Cadastre o custo da peça para simular o lucro." : `O lucro desejado é calculado sobre o custo ${purchased !== null ? "comprando pronta" : "fabricando"}.`}
+              {baseCost === null ? "Cadastre o custo da peça para simular o lucro." : `O lucro desejado é calculado sobre o ${purchased !== null ? "custo revenda" : "custo fabricação"}.`}
             </p>
             <div className="sim-grid">
-              {column(simulation.comprada, "Comprando pronta")}
-              {column(simulation.fabricada, "Fabricando")}
+              {column(simulation.comprada, "Custo revenda")}
+              {column(simulation.fabricada, "Custo fabricação")}
             </div>
             <p className="sim-compare">{sourceComparison(simulation, money)}</p>
             <div className="form-actions">
@@ -5188,7 +5195,7 @@ export default function Home() {
               return (
                 <>
                 <fieldset className="product-cost-fields">
-                  <legend>Custo comprando pronta (revenda)</legend>
+                  <legend>Custo revenda</legend>
                   <div className="product-cost-row">
                     <Field label="Valor de compra">{costField("purchasePrice", purchase?.rawMaterialCostCents ?? 0)}</Field>
                     <Field label="Frete">{costField("purchaseFreight", purchase?.freightCents ?? 0)}</Field>
@@ -5206,7 +5213,7 @@ export default function Home() {
                   </small>
                 </fieldset>
                 <fieldset className="product-cost-fields">
-                  <legend>Custo fabricando</legend>
+                  <legend>Custo fabricação</legend>
                   <div className="product-cost-row">
                     <Field label="Material">{costField("costMaterial", cost?.rawMaterialCostCents ?? 0)}</Field>
                     <Field label="Mão de obra / terceiros">{costField("costLabor", cost?.additionalCostsCents ?? 0)}</Field>

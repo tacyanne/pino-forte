@@ -58,23 +58,23 @@ test("simulação compara a peça fabricada com a comprada pronta", () => {
   assert.equal(simulation.comprada.targetPriceCents, 3240);
   assert.equal(simulation.cheaper, "fabricada");
   assert.equal(simulation.savingCents, 900);
-  assert.equal(sourceComparison(simulation, money), "Fabricar sai R$ 9,00 mais barato");
+  assert.equal(sourceComparison(simulation, money), "Fabricação custa R$ 9,00 a menos");
 
   const buying = simulatePrice({ priceCents: 3000, fabricatedCostCents: 2600, purchasedCostCents: 2000, targetRate: 0.35 });
   assert.equal(buying.cheaper, "comprada");
-  assert.equal(sourceComparison(buying, money), "Comprar pronta sai R$ 6,00 mais barato");
+  assert.equal(sourceComparison(buying, money), "Revenda custa R$ 6,00 a menos");
 
   const loss = simulatePrice({ priceCents: 1800, fabricatedCostCents: 2000, purchasedCostCents: 2000, targetRate: 0.35 });
   assert.equal(loss.comprada.profitCents, -200);
   assert.equal(loss.cheaper, null);
-  assert.equal(sourceComparison(loss, money), "As duas custam o mesmo");
+  assert.equal(sourceComparison(loss, money), "Revenda e fabricação custam o mesmo");
 
   const missing = simulatePrice({ priceCents: 3000, fabricatedCostCents: 1500, purchasedCostCents: null, targetRate: 0.35 });
   assert.equal(missing.comprada.costCents, null);
   assert.equal(missing.comprada.onCost, null);
   assert.equal(missing.comprada.reachesTarget, null);
   assert.equal(missing.savingCents, null);
-  assert.equal(sourceComparison(missing, money), "Falta o custo comprando pronta");
+  assert.equal(sourceComparison(missing, money), "Falta o custo revenda");
   assert.equal(
     sourceComparison(simulatePrice({ priceCents: 3000, fabricatedCostCents: 0, purchasedCostCents: null, targetRate: 0.35 }), money),
     "Falta cadastrar o custo",

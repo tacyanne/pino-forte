@@ -111,9 +111,9 @@ export function adjustPrice(priceCents: number, rate: number, ending: "exact" | 
 // Frase curta de comparação entre as duas origens.
 export function sourceComparison(simulation: PriceSimulation, money: (value: number) => string) {
   if (simulation.fabricada.costCents === null && simulation.comprada.costCents === null) return "Falta cadastrar o custo";
-  if (simulation.comprada.costCents === null) return "Falta o custo comprando pronta";
-  if (simulation.fabricada.costCents === null) return "Falta o custo fabricando";
-  if (simulation.cheaper === null) return "As duas custam o mesmo";
+  if (simulation.comprada.costCents === null) return "Falta o custo revenda";
+  if (simulation.fabricada.costCents === null) return "Falta o custo fabricação";
+  if (simulation.cheaper === null) return "Revenda e fabricação custam o mesmo";
   const saving = money((simulation.savingCents ?? 0) / 100);
-  return simulation.cheaper === "comprada" ? `Comprar pronta sai ${saving} mais barato` : `Fabricar sai ${saving} mais barato`;
+  return simulation.cheaper === "comprada" ? `Revenda custa ${saving} a menos` : `Fabricação custa ${saving} a menos`;
 }

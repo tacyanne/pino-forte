@@ -145,7 +145,10 @@ test("custo nunca vai para o catálogo público", () => {
 });
 
 test("tela mostra custo nas peças e lucro no financeiro", () => {
-  assert.ok(page.includes("<th>Custo</th>"));
+  // lista de Peças: preço, custo em uso com a origem, lucro e estoque
+  assert.ok(page.includes('<span>Peça</span><span>Tipo / Linha</span><span>Preço</span><span>Custo</span><span>Lucro</span><span>Estoque</span><span>Status</span>'));
+  assert.ok(page.includes('costSourceOf(cost.source) === "comprada" ? "revenda" : "fabricação"'));
+  assert.ok(page.includes('className="piece-row"'));
   assert.ok(page.includes('costField("costMaterial"'));
   assert.ok(page.includes('name="costStartsAt"'));
   assert.ok(page.includes("...(costChanged ? { cost } : {})"));
@@ -196,7 +199,7 @@ test("peça tem um custo fabricando e outro comprando pronta, cada um com o pró
   assert.ok(page.includes('name="purchaseStartsAt" defaultValue={purchase?.startsAt || todayIso()}'));
   assert.ok(page.includes("savedCost.startsAt !== cost.startsAt"));
   assert.ok(costStore.includes("{ ...restValues, starts_at: input.startsAt }"));
-  assert.ok(page.includes("<legend>Custo comprando pronta (revenda)</legend>"));
+  assert.ok(page.includes("<legend>Custo revenda</legend>"));
   assert.ok(page.includes("...(purchaseChanged ? { purchaseCost } : {})"));
   assert.ok(/add column if not exists source/i.test(read("../supabase/migrations/20261113030000_product_cost_source.sql")));
 });
