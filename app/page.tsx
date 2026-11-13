@@ -5136,17 +5136,7 @@ export default function Home() {
         return (
           <Modal title={`Simular preço · ${product.code}`} close={() => setPricingProduct(null)}>
             <div className="sim-inputs">
-              <Field label="Preço de venda">
-                <input
-                  inputMode="numeric"
-                  value={simPrice}
-                  onChange={(e) => {
-                    setSimPrice(maskCurrency(e.target.value));
-                    setSimMargin("");
-                  }}
-                />
-              </Field>
-              <Field label="Ou o lucro desejado sobre o custo (%)">
+              <Field label="Lucro desejado sobre o custo (%)">
                 <input
                   inputMode="decimal"
                   value={simMargin}
@@ -5156,6 +5146,16 @@ export default function Home() {
                     setSimMargin(e.target.value);
                     const rate = parsePercent(e.target.value);
                     if (rate !== null && baseCost !== null) setSimPrice(money(priceForMargin(baseCost, rate) / 100));
+                  }}
+                />
+              </Field>
+              <Field label="Ou o preço de venda">
+                <input
+                  inputMode="numeric"
+                  value={simPrice}
+                  onChange={(e) => {
+                    setSimPrice(maskCurrency(e.target.value));
+                    setSimMargin("");
                   }}
                 />
               </Field>
