@@ -74,10 +74,11 @@ test("gravação cria, corrige ou abre nova vigência sem perder histórico", ()
   assert.deepEqual(planProductCostChange(null, { ...input, materialCents: 0 }), { kind: "none" });
 
   const open = row({ id: 5 });
-  assert.deepEqual(
-    planProductCostChange(open, { materialCents: 1500, laborCents: 500, freightCents: 0, startsAt: "2026-11-11" }),
-    { kind: "none" },
-  );
+  const unchanged = { materialCents: 1500, laborCents: 500, freightCents: 0 };
+  assert.deepEqual(planProductCostChange(open, { ...unchanged, startsAt: "2026-06-01" }), { kind: "none" });
+  // só a data de início mudou: corrige a vigência atual
+  assert.deepEqual(planProductCostChange(open, { ...unchanged, startsAt: "2026-11-11" }), { kind: "update", id: 5 });
+  assert.deepEqual(planProductCostChange(open, { ...unchanged, startsAt: "2026-05-20" }), { kind: "update", id: 5 });
   assert.deepEqual(planProductCostChange(open, input), { kind: "insert", closeId: 5, closeEndsAt: "2026-11-10" });
   assert.deepEqual(planProductCostChange(open, { ...input, startsAt: "2026-06-01" }), { kind: "update", id: 5 });
   assert.throws(() => planProductCostChange(open, { ...input, startsAt: "2026-05-01" }), /01\/06\/2026/);
@@ -185,11 +186,16 @@ test("peça tem um custo fabricando e outro comprando pronta, cada um com o pró
 
   // só o fornecedor mudou: corrige a vigência atual
   const open = row({ id: 9, source: "comprada", supplier: "Fornecedor A" });
-  const same = { materialCents: 1500, laborCents: 500, freightCents: 0, startsAt: "2026-11-13", source: "comprada" };
+  const same = { materialCents: 1500, laborCents: 500, freightCents: 0, startsAt: "2026-06-01", source: "comprada" };
   assert.deepEqual(planProductCostChange(open, { ...same, supplier: "Fornecedor B" }), { kind: "update", id: 9 });
   assert.deepEqual(planProductCostChange(open, { ...same, supplier: "Fornecedor A" }), { kind: "none" });
 
   assert.ok(costStore.includes("openCost(await listProductCosts(productId), productId, input.source)"));
+  // a data de início salva volta no campo ao editar e é gravada quando muda
+  assert.ok(page.includes('name="costStartsAt" defaultValue={cost?.startsAt || todayIso()}'));
+  assert.ok(page.includes('name="purchaseStartsAt" defaultValue={purchase?.startsAt || todayIso()}'));
+  assert.ok(page.includes("savedCost.startsAt !== cost.startsAt"));
+  assert.ok(costStore.includes("{ ...restValues, starts_at: input.startsAt }"));
   assert.ok(page.includes("<legend>Custo comprando pronta (revenda)</legend>"));
   assert.ok(page.includes("...(purchaseChanged ? { purchaseCost } : {})"));
   assert.ok(/add column if not exists source/i.test(read("../supabase/migrations/20261113030000_product_cost_source.sql")));

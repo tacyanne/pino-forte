@@ -1701,13 +1701,15 @@ export default function Home() {
       const purchaseChanged = savedPurchase
         ? savedPurchase.rawMaterialCostCents !== purchaseCost.materialCents ||
           savedPurchase.freightCents !== purchaseCost.freightCents ||
-          savedPurchase.supplier !== purchaseCost.supplier
+          savedPurchase.supplier !== purchaseCost.supplier ||
+          savedPurchase.startsAt !== purchaseCost.startsAt
         : totalCostCents(purchaseCost) > 0;
       const savedCost = editingProduct ? openCost(productCosts, editingProduct.id) : null;
       const costChanged = savedCost
         ? savedCost.rawMaterialCostCents !== cost.materialCents ||
           savedCost.additionalCostsCents !== cost.laborCents ||
-          savedCost.freightCents !== cost.freightCents
+          savedCost.freightCents !== cost.freightCents ||
+          savedCost.startsAt !== cost.startsAt
         : totalCostCents(cost) > 0;
       const r = await fetch("/api/catalog", {
         method: editingProduct ? "PATCH" : "POST",
@@ -5156,12 +5158,12 @@ export default function Home() {
                       <input name="purchaseSupplier" maxLength={120} defaultValue={purchase?.supplier || ""} />
                     </Field>
                     <Field label="Custo válido desde">
-                      <input type="date" name="purchaseStartsAt" defaultValue={todayIso()} />
+                      <input type="date" name="purchaseStartsAt" defaultValue={purchase?.startsAt || todayIso()} />
                     </Field>
                   </div>
                   <small>
                     {purchase
-                      ? `Custo atual de ${money(purchase.unitCostCents / 100)} desde ${brDate(purchase.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
+                      ? `Custo atual de ${money(purchase.unitCostCents / 100)} desde ${brDate(purchase.startsAt)}. Para guardar o custo anterior no histórico, mude os valores e informe a data em que o novo começa a valer.`
                       : "Quanto custa comprar a peça pronta de outro fornecedor. Não aparece no catálogo nem nos PDFs."}
                   </small>
                 </fieldset>
@@ -5172,12 +5174,12 @@ export default function Home() {
                     <Field label="Mão de obra / terceiros">{costField("costLabor", cost?.additionalCostsCents ?? 0)}</Field>
                     <Field label="Frete">{costField("costFreight", cost?.freightCents ?? 0)}</Field>
                     <Field label="Custo válido desde">
-                      <input type="date" name="costStartsAt" defaultValue={todayIso()} />
+                      <input type="date" name="costStartsAt" defaultValue={cost?.startsAt || todayIso()} />
                     </Field>
                   </div>
                   <small>
                     {cost
-                      ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
+                      ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Para guardar o custo anterior no histórico, mude os valores e informe a data em que o novo começa a valer.`
                       : "Quanto custa fabricar a peça. Não aparece no catálogo nem nos PDFs."}
                   </small>
                   <small>O lucro usa o custo que começou a valer por último entre os dois.</small>
