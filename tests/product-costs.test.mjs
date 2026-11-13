@@ -144,3 +144,10 @@ test("tela mostra custo nas peças e lucro no financeiro", () => {
   assert.ok(page.includes("...(costChanged ? { cost } : {})"));
   assert.ok(page.includes("salesProfit.byProduct"));
 });
+
+test("preço em centavos da peça é gravado junto com o preço, nos dois caminhos de banco", () => {
+  assert.ok(catalogApi.includes("priceCents: Math.round(price * 100)"));
+  assert.ok(catalogApi.includes("changes.priceCents = Math.round(changes.price * 100)"));
+  assert.ok(catalogApi.includes("price_cents: Math.round(price * 100),"));
+  assert.ok(catalogApi.includes("changes.price_cents = Math.round(price * 100)"));
+});
