@@ -1,10 +1,12 @@
 import { and, desc, eq, isNotNull, notInArray } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { purchaseBatches, stockMovements } from "../../../db/schema";
+import { products, purchaseBatches, serviceOrders, stockMovements } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
 import { todayIso } from "../../../lib/finance";
 import { StockError, parseStockMovement, type StockKind, type StockMovement } from "../../../lib/stock";
-import { PurchaseBatchError, parsePurchaseBatch, type PurchaseBatch } from "../../../lib/purchase-batches";
+import { parseOrderItems } from "../../../lib/order-payables";
+import { normalizePieceCode } from "../../../lib/product-costs";
+import { PurchaseBatchError, assertBatchChangeAllowed, parsePurchaseBatch, type BatchOrderLine, type PurchaseBatch, type PurchaseBatchInput } from "../../../lib/purchase-batches";
 import { camelizeRows } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseDelete, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
@@ -133,12 +135,60 @@ async function createBatch(raw: unknown, userId: number) {
   });
 }
 
+// Peça com OS entregue ou na fila não pode ser alterada no lote: a checagem vale também aqui,
+// e não só na tela. next = null confere a exclusão do lote.
+async function assertBatchChange(id: number, next: PurchaseBatchInput | null) {
+  let purchaseDate = "";
+  let current: { productId: number; quantity: number; unitCostCents: number | null }[] = [];
+  let pieces: { id: number; code: string }[] = [];
+  let orders: { productCode: unknown; quantity: unknown; status: string; deliveryDate: string; createdAt: string }[] = [];
+  if (hasSupabaseRest()) {
+    const [batchRows, entryRows, productRows, orderRows] = await Promise.all([
+      supabaseSelect<Record<string, unknown>>("purchase_batches", { select: "purchase_date", id: `eq.${id}` }),
+      supabaseSelect<Record<string, unknown>>("stock_movements", { select: "product_id,quantity,unit_cost_cents", batch_id: `eq.${id}` }),
+      supabaseSelect<Record<string, unknown>>("products", { select: "id,code" }),
+      supabaseSelect<Record<string, unknown>>("service_orders", { select: "product_code,quantity,production_status,delivery_date,created_at", order: "id.desc", limit: "1000" }),
+    ]);
+    if (!batchRows.length) throw new PurchaseBatchError("Lote não encontrado.");
+    purchaseDate = String(batchRows[0].purchase_date || "");
+    current = entryRows.map((row) => ({ productId: Number(row.product_id), quantity: Number(row.quantity) || 0, unitCostCents: row.unit_cost_cents == null ? null : Number(row.unit_cost_cents) }));
+    pieces = productRows.map((row) => ({ id: Number(row.id), code: String(row.code || "") }));
+    orders = orderRows.map((row) => ({ productCode: row.product_code, quantity: row.quantity, status: String(row.production_status || ""), deliveryDate: String(row.delivery_date || ""), createdAt: String(row.created_at || "") }));
+  } else {
+    const db = await getDb();
+    const [batch] = await db.select().from(purchaseBatches).where(eq(purchaseBatches.id, id));
+    if (!batch) throw new PurchaseBatchError("Lote não encontrado.");
+    purchaseDate = batch.purchaseDate;
+    current = (await db.select().from(stockMovements).where(eq(stockMovements.batchId, id))).map((row) => ({ productId: row.productId, quantity: row.quantity, unitCostCents: row.unitCostCents }));
+    pieces = await db.select({ id: products.id, code: products.code }).from(products);
+    orders = (await db.select().from(serviceOrders)).map((row) => ({ productCode: row.productCode, quantity: row.quantity, status: row.productionStatus, deliveryDate: row.deliveryDate, createdAt: row.createdAt }));
+  }
+  const byKey = new Map(pieces.map((piece) => [normalizePieceCode(piece.code), piece]));
+  const lines: BatchOrderLine[] = orders.flatMap((order) => {
+    if (order.status === "Cancelada") return [];
+    const delivered = order.status === "Entregue";
+    const date = String((delivered ? order.deliveryDate : "") || order.createdAt).slice(0, 10);
+    return parseOrderItems(order.productCode, order.quantity).flatMap((item) => {
+      const piece = byKey.get(normalizePieceCode(item.code));
+      return piece ? [{ productId: piece.id, date, status: delivered ? ("entregue" as const) : ("fila" as const) }] : [];
+    });
+  });
+  assertBatchChangeAllowed({
+    purchaseDate,
+    current,
+    next,
+    lines,
+    codeOf: (productId) => pieces.find((piece) => piece.id === productId)?.code ?? "Peça",
+  });
+}
+
 // Edição do lote: atualiza fornecedor e data e deixa as entradas iguais à lista enviada
 // (muda quantidade e custo, inclui peça nova e tira a que saiu da lista).
 async function updateBatch(raw: unknown, userId: number) {
   const id = Number((raw as { id?: unknown } | null)?.id);
   if (!Number.isInteger(id) || id <= 0) throw new PurchaseBatchError("Lote não encontrado.");
   const input = parsePurchaseBatch(raw, todayIso());
+  await assertBatchChange(id, input);
   const note = `Lote ${input.supplier}`;
   if (hasSupabaseRest()) {
     const updated = await supabasePatch<Record<string, unknown>>("purchase_batches", { id: `eq.${id}` }, {
@@ -181,6 +231,7 @@ async function updateBatch(raw: unknown, userId: number) {
 
 // Exclui o lote inteiro: as entradas dele saem do estoque junto.
 async function deleteBatch(id: number) {
+  await assertBatchChange(id, null);
   if (hasSupabaseRest()) {
     await supabaseDelete("stock_movements", { batch_id: `eq.${id}` });
     await supabaseDelete("purchase_batches", { id: `eq.${id}` });
@@ -217,6 +268,10 @@ export async function POST(request: Request) {
       return Response.json({ movements: await listMovements(), batches: await listBatchesSafe() }, { status: 201, headers });
     }
     const input = parseStockMovement(body, todayIso());
+    // O saldo vem dos lotes de compra: aqui só entra saída sem venda.
+    // Entrada e contagem à mão criariam estoque sem fornecedor e sem custo.
+    if (input.kind !== "saida")
+      throw new StockError("O estoque vem dos lotes de compra (Financeiro → Lotes de compra). Aqui só é possível dar saída sem venda.");
     if (hasSupabaseRest()) {
       const created = await supabaseInsert<Record<string, unknown>>("stock_movements", {
         product_id: input.productId,

@@ -1266,3 +1266,9 @@ button.plain-row{cursor:pointer}
 .batch-study .batch-actions{position:static;display:flex;background:transparent;padding:4px 0 0}
 .batch-study .batch-actions .primary-button{grid-column:auto;grid-row:auto}
 .batch-form .batch-form-list,.batch-form .field input{background:#fff}
+
+/* Peça do lote com OS entregue ou na fila: travada na edição */
+.batch-form-row.locked{background:#f6f8f7}
+.batch-form-row.locked input,.batch-form .field input[readonly]{background:#eef1f0;color:#6b7779;cursor:not-allowed}
+.batch-form-row.locked small{color:#9a6400}
+.batch-actions .record-inactivate:disabled{opacity:.5;cursor:not-allowed}

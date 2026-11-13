@@ -114,7 +114,13 @@ test("tela de estoque fala em comprar, não em fabricar", () => {
   const start = page.indexOf('{screen === "stock" && (');
   const end = page.indexOf('{screen === "wallet" && (', start);
   assert.equal(/fabric/i.test(page.slice(start, end)), false);
-  assert.ok(page.includes("Entrada: comprei peças"));
+  // peça nova só entra pelo lote de compra: o Estoque fica com os ajustes
+  assert.equal(page.includes("Entrada: comprei peças"), false);
+  // o saldo vem dos lotes: sem entrada nem contagem à mão, só saída sem venda
+  assert.equal(page.includes("Contei: é isso que tenho agora"), false);
+  assert.ok(page.includes('<input type="hidden" name="kind" value="saida" />'));
+  assert.ok(page.includes("O saldo vem dos lotes de compra"));
+  assert.ok(api.includes('if (input.kind !== "saida")'));
 });
 
 test("entrada sem contagem já aparece no estoque, começando em zero", () => {
@@ -189,6 +195,6 @@ test("lista do estoque: zero no lugar do traço, menor quantidade primeiro e um 
   assert.ok(page.includes("(a.row?.available ?? 0) - (b.row?.available ?? 0)"));
   assert.ok(page.includes("Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) ||"));
   assert.ok(page.includes("(row?.balance ?? 0) <= 0 && (row?.reserved ?? 0) === 0"));
-  assert.ok(page.includes(">Lançar</button>"));
+  assert.ok(page.includes(">Dar saída</button>"));
   assert.equal(page.includes(">Contar</button>"), false);
 });

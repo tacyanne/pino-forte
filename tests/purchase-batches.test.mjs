@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NO_BATCH, PurchaseBatchError, allocateBatches, batchStudy, parsePurchaseBatch } from "../lib/purchase-batches.ts";
+import { NO_BATCH, PurchaseBatchError, allocateBatches, assertBatchChangeAllowed, batchStudy, lockedBatchProducts, parsePurchaseBatch } from "../lib/purchase-batches.ts";
 
 const money = (value) => `R$ ${value.toFixed(2).replace(".", ",")}`;
 const format = { money, percent: (rate) => `${Math.round(rate * 1000) / 10}%`.replace(".", ",") };
@@ -162,6 +162,37 @@ test("peça que saiu sem venda vira perda, e venda de peça sem custo fica fora 
   assert.ok(texts.includes("R$ 27,00 vendidos de peças sem custo ficaram fora do lucro."));
 });
 
+test("peça com OS entregue ou na fila fica travada no lote", () => {
+  const lines = [
+    { productId: 7, date: "2026-03-05", status: "entregue" },
+    { productId: 8, date: "2026-02-20", status: "entregue" },
+    { productId: 9, date: "2026-02-20", status: "fila" },
+    { productId: 99, date: "2026-03-05", status: "entregue" },
+  ];
+  // entregue antes da data do lote não trava; na fila trava sempre; peça de fora do lote não conta
+  assert.deepEqual([...lockedBatchProducts("2026-03-01", [7, 8, 9, 10], lines)].sort(), [7, 9]);
+
+  const current = [
+    { productId: 7, quantity: 10, unitCostCents: 2000 },
+    { productId: 10, quantity: 5, unitCostCents: 1000 },
+  ];
+  const next = (items, purchaseDate = "2026-03-01") => ({ supplier: "Fornecedor Y", purchaseDate, notes: "", items });
+  const check = (nextInput) => assertBatchChangeAllowed({ purchaseDate: "2026-03-01", current, next: nextInput, lines, codeOf: (id) => `PF-${id}` });
+
+  // peça livre pode mudar ou sair; a travada precisa ficar igual
+  check(next([{ productId: 7, quantity: 10, unitCostCents: 2000 }, { productId: 10, quantity: 8, unitCostCents: 1200 }]));
+  check(next([{ productId: 7, quantity: 10, unitCostCents: 2000 }]));
+  assert.throws(() => check(next([{ productId: 7, quantity: 9, unitCostCents: 2000 }])), /PF-7 já tem OS entregue ou na fila/);
+  assert.throws(() => check(next([{ productId: 7, quantity: 10, unitCostCents: 2100 }])), /PF-7 já tem OS/);
+  assert.throws(() => check(next([{ productId: 10, quantity: 5, unitCostCents: 1000 }])), /PF-7 já tem OS/);
+  assert.throws(() => check(next([{ productId: 7, quantity: 10, unitCostCents: 2000 }], "2026-02-01")), /data da compra não pode mudar/);
+  assert.throws(() => check(null), /não pode ser excluído/);
+  assert.throws(() => check(null), PurchaseBatchError);
+
+  // lote sem OS: tudo liberado, inclusive excluir
+  assertBatchChangeAllowed({ purchaseDate: "2026-03-01", current, next: null, lines: [], codeOf: (id) => `PF-${id}` });
+});
+
 test("lançamento de lote valida fornecedor, data e peças", () => {
   const ok = { supplier: " Fornecedor Y ", purchaseDate: "2026-03-01", items: [{ productId: 7, quantity: 10, unitCostCents: 2000.4 }, { productId: 8, quantity: 0, unitCostCents: 0 }] };
   assert.deepEqual(parsePurchaseBatch(ok, "2026-03-10"), {
@@ -208,4 +239,9 @@ test("tela de estoque lista os lotes e abre o estudo; API grava nos dois caminho
   assert.ok(api.includes("notInArray(stockMovements.productId, input.items.map((item) => item.productId))"));
   assert.ok(api.includes('await supabaseDelete("stock_movements", { batch_id: `eq.${id}` });'));
   assert.ok(api.includes("if (body.batchId !== undefined) {"));
+  // a trava de peça com OS vale na tela e também na API
+  assert.ok(api.includes("await assertBatchChange(id, input);"));
+  assert.ok(api.includes("await assertBatchChange(id, null);"));
+  assert.ok(page.includes("readOnly={locked.has(product.id)}"));
+  assert.ok(page.includes("disabled={saving || lockedPiecesOf(batch).size > 0}"));
 });

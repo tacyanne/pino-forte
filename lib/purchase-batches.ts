@@ -314,3 +314,39 @@ export function parsePurchaseBatch(raw: unknown, today: string): PurchaseBatchIn
   if (new Set(items.map((item) => item.productId)).size !== items.length) throw new PurchaseBatchError("Cada peça só pode aparecer uma vez no lote.");
   return { supplier, purchaseDate, notes: String(body.notes || "").trim().slice(0, 200), items };
 }
+
+// Peça de uma OS que não foi cancelada: já entregue (com a data da entrega) ou ainda na fila.
+export type BatchOrderLine = { productId: number; date: string; status: "entregue" | "fila" };
+
+// Peças do lote que já têm OS: entregue a partir da data do lote, ou na fila de produção.
+// Essas peças ficam travadas na edição, para o resultado das vendas não mudar depois do fato.
+export function lockedBatchProducts(purchaseDate: string, productIds: number[], lines: BatchOrderLine[]) {
+  const inBatch = new Set(productIds);
+  const locked = new Set<number>();
+  for (const line of lines) {
+    if (!inBatch.has(line.productId)) continue;
+    if (line.status === "fila" || day(line.date) >= day(purchaseDate)) locked.add(line.productId);
+  }
+  return locked;
+}
+
+// Barra a edição ou a exclusão (next = null) que mexe em peça travada.
+export function assertBatchChangeAllowed(input: {
+  purchaseDate: string;
+  current: { productId: number; quantity: number; unitCostCents: number | null }[];
+  next: PurchaseBatchInput | null;
+  lines: BatchOrderLine[];
+  codeOf: (productId: number) => string;
+}) {
+  const locked = lockedBatchProducts(input.purchaseDate, input.current.map((entry) => entry.productId), input.lines);
+  if (!locked.size) return;
+  if (!input.next) throw new PurchaseBatchError("Este lote já tem peça com OS entregue ou na fila e não pode ser excluído.");
+  if (day(input.next.purchaseDate) !== day(input.purchaseDate))
+    throw new PurchaseBatchError("Este lote já tem peça com OS entregue ou na fila: a data da compra não pode mudar.");
+  for (const entry of input.current) {
+    if (!locked.has(entry.productId)) continue;
+    const item = input.next.items.find((row) => row.productId === entry.productId);
+    if (!item || item.quantity !== entry.quantity || item.unitCostCents !== (entry.unitCostCents ?? item.unitCostCents))
+      throw new PurchaseBatchError(`${input.codeOf(entry.productId)} já tem OS entregue ou na fila e não pode ser alterada neste lote.`);
+  }
+}

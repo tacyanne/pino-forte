@@ -24,7 +24,7 @@ import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { STOCK_STATUS_LABEL, paceSentence, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
-import { NO_BATCH, allocateBatches, batchStudy, type PurchaseBatch } from "../lib/purchase-batches";
+import { NO_BATCH, allocateBatches, batchStudy, lockedBatchProducts, type PurchaseBatch } from "../lib/purchase-batches";
 import { buildDashboardActions, forecastAhead, previousLabel, tightSentence, type DashboardAction } from "../lib/dashboard";
 import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
 import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, costUseAt, latestCostUse, type CostUse, type ProductCost } from "../lib/product-costs";
@@ -1102,6 +1102,22 @@ export default function Home() {
       startsAt: chosen?.startsAt ?? current?.startsAt ?? todayIso(),
       saved: chosen,
     };
+  };
+  // Peças do lote que já têm OS entregue (a partir da data do lote) ou na fila: ficam travadas.
+  const lockedPiecesOf = (batch: PurchaseBatch) => {
+    const byKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
+    const lines = orders.flatMap((order) => {
+      const status = normalizeOrderStatus(order.productionStatus);
+      if (status === ORDER_STATUS.canceled) return [];
+      const delivered = status === ORDER_STATUS.delivered;
+      const date = ((delivered ? order.deliveryDate : "") || dayInSaoPaulo(order.createdAt)).slice(0, 10);
+      return getOrderItems(order).flatMap((item) => {
+        const piece = byKey.get(normalizePieceCode(item.code));
+        return piece ? [{ productId: piece.id, date, status: delivered ? ("entregue" as const) : ("fila" as const) }] : [];
+      });
+    });
+    const inBatch = stockMovements.filter((movement) => movement.kind === "entrada" && movement.batchId === batch.id).map((movement) => movement.productId);
+    return lockedBatchProducts(batch.purchaseDate, inBatch, lines);
   };
   const signedMoney = (cents: number) => `${cents < 0 ? "− " : "+ "}${money(Math.abs(cents) / 100)}`;
   const priceHistoryBlock = (productId: number, note?: string) => {
@@ -4511,14 +4527,14 @@ export default function Home() {
                 {stockError && <p className="modal-error">{stockError}</p>}
                 {!stockError && stock.totals.uncounted > 0 && (
                   <p className="plain-warning">
-                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não foi contada" : `${stock.totals.uncounted} peças ainda não foram contadas`}. Toque em "Lançar" para registrar uma contagem ou uma entrada: a partir daí, cada OS entregue baixa o estoque sozinha.`}
+                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não entrou em nenhum lote" : `${stock.totals.uncounted} peças ainda não entraram em nenhum lote`}. A peça entra no estoque quando você lança o lote de compra (Financeiro → Lotes de compra): a partir daí, cada OS entregue baixa o estoque sozinha.`}
                   </p>
                 )}
                 <section className="finance-kpi-grid payable-kpis">
                   <article>
                     <span>Peças em estoque</span>
                     <strong>{stock.totals.inStock}</strong>
-                    <small>Somando as peças já contadas</small>
+                    <small>O que entrou pelos lotes, menos o que já saiu</small>
                   </article>
                   <article>
                     <span>Prometidas na fila</span>
@@ -4533,7 +4549,7 @@ export default function Home() {
                   <article>
                     <span>Sem estoque</span>
                     <strong>{stock.totals.uncounted}</strong>
-                    <small>{stock.totals.uncounted > 0 ? "Peças sem lançamento de estoque" : "Todas as peças com estoque lançado"}</small>
+                    <small>{stock.totals.uncounted > 0 ? "Peças que não entraram em lote" : "Todas as peças já entraram em lote"}</small>
                   </article>
                 </section>
                 <section className="panel stock-panel">
@@ -4559,7 +4575,7 @@ export default function Home() {
                           <span className="stock-pace">{paceSentence(row)}</span>
                           <span className="stock-status"><span className={`status ${tone}`}>{STOCK_STATUS_LABEL[row.status]}</span></span>
                           <span className="stock-action">
-                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "entrada" })} disabled={saving}>Lançar</button>
+                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "saida" })} disabled={saving}>Dar saída</button>
                           </span>
                         </div>
                       );
@@ -5402,7 +5418,15 @@ export default function Home() {
                 ))}
               </section>
               <div className="form-actions batch-actions">
-                <button type="button" className="record-inactivate" disabled={saving} onClick={() => deleteBatch(batch)}>Excluir lote</button>
+                <button
+                  type="button"
+                  className="record-inactivate"
+                  disabled={saving || lockedPiecesOf(batch).size > 0}
+                  title={lockedPiecesOf(batch).size > 0 ? "Lote com OS entregue ou na fila não pode ser excluído" : undefined}
+                  onClick={() => deleteBatch(batch)}
+                >
+                  Excluir lote
+                </button>
                 <button type="button" className="primary-button" disabled={saving} onClick={() => { setViewingBatchId(null); setBatchForm({ id: batch.id }); }}>
                   Editar lote
                 </button>
@@ -5417,6 +5441,7 @@ export default function Home() {
           batch ? stockMovements.find((movement) => movement.kind === "entrada" && movement.batchId === batch.id && movement.productId === productId) : undefined;
         // Peças ativas e, na edição, também as que já estão no lote.
         const rows = products.filter((product) => product.active || entryOf(product.id));
+        const locked = batch ? lockedPiecesOf(batch) : new Set<number>();
         return (
           <Modal title={batch ? "Editar lote de compra" : "Lançar lote de compra"} page pageLabel="" backLabel="Voltar" close={() => setBatchForm(null)}>
             <form className="batch-form" onSubmit={saveBatch}>
@@ -5425,7 +5450,7 @@ export default function Home() {
                   <input name="batchSupplier" required maxLength={120} defaultValue={batch?.supplier || ""} />
                 </Field>
                 <Field label="Data da compra">
-                  <input type="date" name="batchDate" required max={todayIso()} defaultValue={batch?.purchaseDate || todayIso()} />
+                  <input type="date" name="batchDate" required max={todayIso()} defaultValue={batch?.purchaseDate || todayIso()} readOnly={locked.size > 0} />
                 </Field>
                 <Field label="Observação">
                   <input name="batchNotes" maxLength={200} defaultValue={batch?.notes || ""} />
@@ -5438,14 +5463,15 @@ export default function Home() {
                   const entry = entryOf(product.id);
                   const suggested = entry?.unitCostCents ?? costOfSourceAt(productCosts, product.id, "comprada", todayIso())?.unitCostCents ?? 0;
                   return (
-                    <div className="batch-form-row" key={product.id}>
-                      <span className="stock-main"><b>{product.code}</b><small>{product.measure}</small></span>
-                      <input name={`batchQty-${product.id}`} inputMode="numeric" placeholder="0" aria-label={`Quantidade de ${product.code}`} defaultValue={entry ? String(entry.quantity) : ""} />
+                    <div className={`batch-form-row${locked.has(product.id) ? " locked" : ""}`} key={product.id}>
+                      <span className="stock-main"><b>{product.code}</b><small>{locked.has(product.id) ? "já tem OS · não pode mudar" : product.measure}</small></span>
+                      <input name={`batchQty-${product.id}`} inputMode="numeric" placeholder="0" aria-label={`Quantidade de ${product.code}`} defaultValue={entry ? String(entry.quantity) : ""} readOnly={locked.has(product.id)} />
                       <input
                         name={`batchCost-${product.id}`}
                         inputMode="numeric"
                         aria-label={`Custo pago por peça de ${product.code}`}
                         defaultValue={money(suggested / 100)}
+                        readOnly={locked.has(product.id)}
                         onChange={(e) => {
                           e.currentTarget.value = maskCurrency(e.currentTarget.value);
                         }}
@@ -5454,7 +5480,12 @@ export default function Home() {
                   );
                 })}
               </div>
-              {batch && <p className="sim-note">Para tirar uma peça do lote, apague a quantidade dela. As vendas já feitas não são alteradas.</p>}
+              {batch && (
+                <p className="sim-note">
+                  Para tirar uma peça do lote, apague a quantidade dela.
+                  {locked.size > 0 ? " Peça com OS entregue ou na fila fica travada, e a data da compra também." : ""}
+                </p>
+              )}
               <div className="form-actions">
                 <button type="button" className="cancel-button" onClick={() => setBatchForm(null)}>Cancelar</button>
                 <button type="submit" className="primary-button" disabled={saving}>{batch ? "Salvar lote" : "Lançar lote"}</button>
@@ -5614,17 +5645,11 @@ export default function Home() {
         </Modal>
       )}
       {stockForm && (
-        <Modal title={`Estoque de ${stockForm.product.code}`} close={() => setStockForm(null)}>
+        <Modal title={`Saída sem venda · ${stockForm.product.code}`} close={() => setStockForm(null)}>
           <form key={`${stockForm.product.id}-${stockForm.kind}`} onSubmit={saveStockMovement} noValidate>
             <div className="form-grid">
-              <Field label="O que aconteceu *">
-                <select name="kind" defaultValue={stockForm.kind}>
-                  <option value="contagem">Contei: é isso que tenho agora</option>
-                  <option value="entrada">Entrada: comprei peças</option>
-                  <option value="saida">Saída: perdi, quebrei ou usei</option>
-                </select>
-              </Field>
-              <Field label="Quantidade de peças *">
+              <input type="hidden" name="kind" value="saida" />
+              <Field label="Quantas peças saíram *">
                 <input name="quantity" inputMode="numeric" pattern="[0-9]*" required autoFocus />
               </Field>
               <Field label="Data *">
@@ -5634,7 +5659,8 @@ export default function Home() {
                 <input name="notes" maxLength={200} />
               </Field>
             </div>
-            <p className="plain-text muted">A contagem vale como fim do dia: as OS entregues depois dessa data baixam o estoque sozinhas.</p>
+            <p className="plain-text muted">Use para peça perdida, quebrada ou usada sem venda. Ela sai do estoque e entra como perda no lote de onde saiu.</p>
+            <p className="plain-text muted">O saldo vem dos lotes de compra: o que entrou, menos as OS entregues e estas saídas. Peça nova entra só pelo lote (Financeiro → Lotes de compra).</p>
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setStockForm(null)}>Cancelar</button>
               <button className="primary-button" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
