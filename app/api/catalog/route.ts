@@ -10,6 +10,7 @@ import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supaba
 import { listPieceTypes, PieceTypeError, validateProductType } from "../../../lib/piece-types";
 import { parseProductCostInput, ProductCostError } from "../../../lib/product-costs";
 import { listProductCostsSafe, saveProductCost } from "../../../lib/product-cost-store";
+import { listProductPricesSafe, recordProductPriceSafe } from "../../../lib/product-price-store";
 import { todayIso } from "../../../lib/finance";
 
 const errorStatus = (error: unknown) =>
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
     }
     const customerRows = await db.select().from(customers).orderBy(asc(customers.name));
     return Response.json(
-      { products: productRows.map(displayProductLine), productCosts: await listProductCostsSafe(), customers: customerRows, pieceTypes: await listPieceTypes(), pieceLines: await listPieceLines() },
+      { products: productRows.map(displayProductLine), productCosts: await listProductCostsSafe(), productPrices: await listProductPricesSafe(), customers: customerRows, pieceTypes: await listPieceTypes(), pieceLines: await listPieceLines() },
       { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error) {
@@ -93,7 +94,8 @@ export async function POST(request: Request) {
       const cost = parseProductCostInput(body.cost, todayIso());
       const [product] = await db.insert(products).values({ code, sku, pieceType, name, lineName, measure, price, priceCents: Math.round(price * 100), imageData: body.imageData ?? null }).returning();
       const productCosts = cost ? await saveProductCost(product.id, cost) : [];
-      return Response.json({ product: displayProductLine(product), productCosts }, { status: 201 });
+      const productPrices = (await recordProductPriceSafe(product.id, Math.round(price * 100), todayIso(), "cadastro")) ?? [];
+      return Response.json({ product: displayProductLine(product), productCosts, productPrices }, { status: 201 });
     }
     const name = body.name?.trim() || "";
     const whatsapp = body.whatsapp?.trim() || "";
@@ -147,7 +149,9 @@ export async function PATCH(request: Request) {
       const cost = parseProductCostInput(body.cost, todayIso());
       const [product] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
       if (!product) return Response.json({ error: "Peça não encontrada. Atualize a lista e tente novamente." }, { status: 404 });
-      return Response.json({ product: displayProductLine(product), ...(cost ? { productCosts: await saveProductCost(id, cost) } : {}) });
+      // Toda mudança de preço entra no histórico (fecha a vigência anterior e abre a nova).
+      const productPrices = changes.priceCents !== undefined ? await recordProductPriceSafe(id, changes.priceCents, todayIso(), "tela") : null;
+      return Response.json({ product: displayProductLine(product), ...(cost ? { productCosts: await saveProductCost(id, cost) } : {}), ...(productPrices ? { productPrices } : {}) });
     }
     if (body.name !== undefined && !body.document?.trim()) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
     if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.street?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !body.state?.trim() || !body.number?.trim())) return Response.json({ error: "Preencha o endereço obrigatório usando um CEP válido." }, { status: 400 });
@@ -217,7 +221,7 @@ async function getCatalogFromRest() {
     order: "name.asc",
   });
   return Response.json(
-    { products: camelizeRows(productRows).map(displayProductLine), productCosts: await listProductCostsSafe(), customers: camelizeRows(customerRows), pieceTypes: await listPieceTypes(), pieceLines: await listPieceLines() },
+    { products: camelizeRows(productRows).map(displayProductLine), productCosts: await listProductCostsSafe(), productPrices: await listProductPricesSafe(), customers: camelizeRows(customerRows), pieceTypes: await listPieceTypes(), pieceLines: await listPieceLines() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate" } },
   );
 }
@@ -248,7 +252,8 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
       price_cents: Math.round(price * 100),
     });
     const productCosts = cost ? await saveProductCost(Number(product.id), cost) : [];
-    return Response.json({ product: displayProductLine(camelizeRow(product)), productCosts }, { status: 201 });
+    const productPrices = (await recordProductPriceSafe(Number(product.id), Math.round(price * 100), todayIso(), "cadastro")) ?? [];
+    return Response.json({ product: displayProductLine(camelizeRow(product)), productCosts, productPrices }, { status: 201 });
   }
 
   const name = body.name?.trim() || "";
@@ -307,7 +312,8 @@ async function patchCatalogWithRest(body: { type?: string; id?: number; active?:
     const cost = parseProductCostInput(body.cost, todayIso());
     const product = await supabasePatch<Record<string, unknown>>("products", { id: `eq.${id}` }, changes);
     if (!product) return Response.json({ error: "Peça não encontrada. Atualize a lista e tente novamente." }, { status: 404 });
-    return Response.json({ product: displayProductLine(camelizeRow(product)), ...(cost ? { productCosts: await saveProductCost(id, cost) } : {}) });
+    const productPrices = changes.price_cents !== undefined ? await recordProductPriceSafe(id, Number(changes.price_cents), todayIso(), "tela") : null;
+    return Response.json({ product: displayProductLine(camelizeRow(product)), ...(cost ? { productCosts: await saveProductCost(id, cost) } : {}), ...(productPrices ? { productPrices } : {}) });
   }
 
   const changes: Record<string, string | boolean> = {};
