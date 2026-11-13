@@ -23,6 +23,7 @@ import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, daysBetween, fabricationCategoryIds, leftSentence, overdueSentence, payableSentence, periodMonth, pieceResultLabel, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
 type Screen =
@@ -1061,6 +1062,9 @@ export default function Home() {
     otherExpensesCents: paidSplit.otherCents,
   });
   const financePeriod = activePeriod(reportMonth, todayIso());
+  // Indicadores da tela Contas a pagar: sempre sobre as contas listadas no período escolhido.
+  const payableTotals = payableKpis(payableRows, fabricationIds, todayIso());
+  const payablePeriodLabel = financePeriod === "this" ? " deste mês" : financePeriod === "last" ? " do mês passado" : "";
   const upcomingPayables = financeData.accountsPayable
     .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
     .map((payable) => ({ payable, days: daysBetween(todayIso(), payable.dueDate) }))
@@ -3778,6 +3782,53 @@ export default function Home() {
                 </>
                 )}
                 {screen === "financial-payables" && (
+                  <>
+                    <section className="plain-card month-hero">
+                      <span>{`Total de contas${payablePeriodLabel}`}</span>
+                      <strong>{money(payableTotals.totalCents / 100)}</strong>
+                      <p>
+                        {payableTotals.count
+                          ? `${countLabel(payableTotals.count)}: ${money(payableTotals.paidCents / 100)} já pagos e ${money(payableTotals.openCents / 100)} a pagar.`
+                          : "Nenhuma conta cadastrada neste período."}
+                      </p>
+                    </section>
+                    <section className="finance-kpi-grid payable-kpis">
+                      <article>
+                        <span>Já pago</span>
+                        <strong>{money(payableTotals.paidCents / 100)}</strong>
+                        <small>{countLabel(payableTotals.paidCount)}</small>
+                      </article>
+                      <article className={payableTotals.overdueCents > 0 ? "attention" : ""}>
+                        <span>A pagar</span>
+                        <strong>{money(payableTotals.openCents / 100)}</strong>
+                        <small>{openHint(payableTotals, money)}</small>
+                      </article>
+                      <article>
+                        <span>Para fabricar peça</span>
+                        <strong>{money(payableTotals.fabricationCents / 100)}</strong>
+                        <small>{`${wholePercent(payableTotals.fabricationShare)} do total · aço e torneiro`}</small>
+                      </article>
+                      <article>
+                        <span>Outras contas</span>
+                        <strong>{money(payableTotals.otherCents / 100)}</strong>
+                        <small>{`${wholePercent(payableTotals.fabricationShare === null ? null : 1 - payableTotals.fabricationShare)} do total · manutenção, máquinas e demais`}</small>
+                      </article>
+                    </section>
+                    {payableTotals.suppliers.length > 0 && (
+                      <section className="panel plain-panel">
+                        <h2>Para quem foi o dinheiro</h2>
+                        {payableTotals.suppliers.slice(0, 5).map((supplier) => (
+                          <div className="supplier-row" key={supplier.supplier} title={`${supplier.supplier}: ${money(supplier.totalCents / 100)} em ${countLabel(supplier.count)}`}>
+                            <span>{supplier.supplier}<small>{countLabel(supplier.count)}</small></span>
+                            <div className="supplier-bar"><i style={{ width: `${Math.max(2, Math.round((supplier.totalCents / payableTotals.suppliers[0].totalCents) * 100))}%` }} /></div>
+                            <b>{money(supplier.totalCents / 100)}</b>
+                          </div>
+                        ))}
+                      </section>
+                    )}
+                  </>
+                )}
+                {screen === "financial-payables" && (
                 <section className="financial-layout">
                   <aside className="financial-side">
                     <div className="panel financial-next-card">
@@ -3844,6 +3895,10 @@ export default function Home() {
                               </div>
                             );
                           })}
+                          <div className="payable-total">
+                            <span>{`Total${payablePeriodLabel}`}</span>
+                            <strong>{money(payableTotals.totalCents / 100)}</strong>
+                          </div>
                         </div>
                       )}
                     </div>

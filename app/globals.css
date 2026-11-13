@@ -974,3 +974,24 @@ button.plain-row{cursor:pointer}
   .payable-row>.payable-status{grid-column:6}
   .payable-row>.payable-action{grid-column:7}
 }
+/* Contas a pagar: indicadores, fornecedores e total da lista (mobile first) */
+.payable-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;margin-bottom:16px}
+.payable-kpis article{min-width:0;min-height:0;padding:14px}
+.payable-kpis strong{font-size:18px;overflow-wrap:anywhere}
+.payable-kpis small{line-height:1.4}
+.supplier-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;padding:10px 0;border-top:1px solid #e5e9e8;font-size:13px}
+.supplier-row>span{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0;font-weight:750;color:var(--ink)}
+.supplier-row>span small{font-size:11px;font-weight:500;color:var(--muted)}
+.supplier-row>b{white-space:nowrap;font-variant-numeric:tabular-nums}
+.supplier-bar{grid-column:1/-1;grid-row:2;height:10px}
+.supplier-bar i{display:block;height:100%;min-width:4px;border-radius:0 4px 4px 0;background:#1f7fa6}
+.payable-total{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-top:2px solid var(--border);background:#f8faf9;font-size:13px;font-weight:800;color:var(--ink)}
+.payable-total strong{font-size:16px;white-space:nowrap}
+@media(min-width:761px){
+  .payable-kpis{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .payable-kpis article{padding:18px 20px}
+  .payable-kpis strong{font-size:22px}
+  .supplier-row{grid-template-columns:220px minmax(0,1fr) 120px}
+  .supplier-bar{grid-column:2;grid-row:1}
+  .supplier-row>b{text-align:right}
+}
