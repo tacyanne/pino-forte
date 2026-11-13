@@ -23,6 +23,7 @@ import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
+import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
 import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
@@ -488,6 +489,7 @@ export default function Home() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
+  const [productPrices, setProductPrices] = useState<ProductPrice[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [stockError, setStockError] = useState("");
   const [stockForm, setStockForm] = useState<{ product: Product; kind: StockKind } | null>(null);
@@ -679,6 +681,7 @@ export default function Home() {
       setCustomers(cat.customers || []);
       setProducts(cat.products || []);
       setProductCosts(cat.productCosts || []);
+      setProductPrices(cat.productPrices || []);
       setPieceTypes(cat.pieceTypes || []); setPieceLines(cat.pieceLines || []);
       setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
@@ -727,6 +730,7 @@ export default function Home() {
         if (response.ok && Array.isArray(data.products) && !request.signal.aborted) {
           setProducts(data.products);
           if (Array.isArray(data.productCosts)) setProductCosts(data.productCosts);
+          if (Array.isArray(data.productPrices)) setProductPrices(data.productPrices);
           if (Array.isArray(data.pieceTypes)) setPieceTypes(data.pieceTypes); if (Array.isArray(data.pieceLines)) setPieceLines(data.pieceLines);
         }
       } catch { /* Keep the last confirmed data; exports require a fresh successful read. */ }
@@ -1636,7 +1640,7 @@ export default function Home() {
           price: parseCurrency(String(f.get("price"))),
         }),
       });
-      const j = await r.json().catch(() => ({} as { error?: string; product?: Product; productCosts?: ProductCost[] }));
+      const j = await r.json().catch(() => ({} as { error?: string; product?: Product; productCosts?: ProductCost[]; productPrices?: ProductPrice[] }));
       if (!r.ok)
         throw new Error(
           j.error ||
@@ -1655,6 +1659,10 @@ export default function Home() {
       if (costChanged && Array.isArray(j.productCosts)) {
         const saved = j.productCosts;
         setProductCosts((v) => [...v.filter((row) => row.productId !== j.product.id), ...saved]);
+      }
+      if (Array.isArray(j.productPrices)) {
+        const savedPrices = j.productPrices;
+        setProductPrices((v) => [...v.filter((row) => row.productId !== j.product.id), ...savedPrices]);
       }
       setProductModal(false);
       setEditingProduct(null);
@@ -4869,6 +4877,26 @@ export default function Home() {
                       ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
                       : "Usado para calcular o lucro no Financeiro. Não aparece no catálogo nem nos PDFs."}
                   </small>
+                </fieldset>
+              );
+            })()}
+            {(() => {
+              const timeline = editingProduct ? priceTimeline(productPrices, editingProduct.id) : [];
+              if (!timeline.length) return null;
+              return (
+                <fieldset className="product-cost-fields price-history">
+                  <legend>Histórico de preço</legend>
+                  {timeline.map((item) => (
+                    <div className="price-history-row" key={item.id}>
+                      <span>{brDate(item.startsAt)}</span>
+                      <b>{money(item.priceCents / 100)}</b>
+                      <small className={item.deltaCents === null ? "" : item.deltaCents < 0 ? "down" : "up"}>
+                        {priceChangeLabel(item, money)}
+                        {item.source === "vendas" ? " · estimado pelas vendas" : ""}
+                      </small>
+                    </div>
+                  ))}
+                  <small>Ao salvar um preço diferente, o novo vale a partir de hoje e o anterior fica aqui.</small>
                 </fieldset>
               );
             })()}
