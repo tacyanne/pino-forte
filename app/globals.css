@@ -1168,3 +1168,10 @@ button.plain-row{cursor:pointer}
   .piece-main,.piece-status,.piece-cell,.piece-kind{order:0;grid-column:auto;justify-self:auto}
   .piece-cell::before{display:none}
 }
+
+/* Blocos de custo da peça: campos lado a lado, tudo em uma linha no computador */
+.product-cost-fields .product-cost-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.product-cost-fields .product-cost-row .field input,.product-cost-fields .product-cost-row .field select{padding:0 10px}
+.product-cost-fields .product-cost-row .field label,.product-cost-fields .product-cost-row .review-field>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(min-width:561px){.product-cost-fields .product-cost-row{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1000px){.product-cost-fields .product-cost-row{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}}
