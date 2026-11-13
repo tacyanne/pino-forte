@@ -106,6 +106,13 @@ test("API de estoque exige login e grava nos dois caminhos de banco", () => {
 });
 
 test("tela de estoque usa OS entregues como saída e OS na fila como prometido", () => {
-  for (const text of ['["stock", "▥", "Estoque"]', 'screen === "stock"', "stockPosition({", "Peças em estoque", "Prometidas na fila", "Falta fabricar", "Sem contagem", "refreshStock"])
+  for (const text of ['["stock", "▥", "Estoque"]', 'screen === "stock"', "stockPosition({", "Peças em estoque", "Prometidas na fila", "Falta comprar", "Sem contagem", "refreshStock"])
     assert.ok(page.includes(text), text);
+});
+
+test("tela de estoque fala em comprar, não em fabricar", () => {
+  const start = page.indexOf('{screen === "stock" && (');
+  const end = page.indexOf('{screen === "wallet" && (', start);
+  assert.equal(/fabric/i.test(page.slice(start, end)), false);
+  assert.ok(page.includes("Entrada: comprei peças"));
 });

@@ -4058,7 +4058,7 @@ export default function Home() {
                 <Heading
                   eyebrow="PEÇAS PRONTAS"
                   title="Estoque"
-                  subtitle="Quantas peças você tem, quantas já estão prometidas e o que falta fabricar."
+                  subtitle="Quantas peças você tem, quantas já estão prometidas e o que falta comprar."
                 />
                 {stockError && <p className="modal-error">{stockError}</p>}
                 {!stockError && stock.totals.uncounted > 0 && (
@@ -4078,7 +4078,7 @@ export default function Home() {
                     <small>{queueOrders.length === 1 ? "1 OS aguardando entrega" : `${queueOrders.length} OS aguardando entrega`}</small>
                   </article>
                   <article className={stock.totals.missing > 0 ? "attention" : ""}>
-                    <span>Falta fabricar</span>
+                    <span>Falta comprar</span>
                     <strong>{stock.totals.missing}</strong>
                     <small>{stock.totals.missing > 0 ? "Para entregar o que está na fila" : "A fila está coberta"}</small>
                   </article>
@@ -4872,7 +4872,7 @@ export default function Home() {
               <Field label="O que aconteceu *">
                 <select name="kind" defaultValue={stockForm.kind}>
                   <option value="contagem">Contei: é isso que tenho agora</option>
-                  <option value="entrada">Entrada: fabriquei ou comprei</option>
+                  <option value="entrada">Entrada: comprei peças</option>
                   <option value="saida">Saída: perdi, quebrei ou usei</option>
                 </select>
               </Field>
