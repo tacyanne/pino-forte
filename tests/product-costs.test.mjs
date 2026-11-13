@@ -145,7 +145,10 @@ test("custo nunca vai para o catálogo público", () => {
 });
 
 test("tela mostra custo nas peças e lucro no financeiro", () => {
-  assert.ok(page.includes("<th>Custo</th>"));
+  // lista de Peças: preço, custo em uso com a origem, lucro e estoque
+  assert.ok(page.includes('<span>Peça</span><span>Tipo / Linha</span><span>Preço</span><span>Custo</span><span>Lucro</span><span>Estoque</span><span>Status</span>'));
+  assert.ok(page.includes('costSourceOf(cost.source) === "comprada" ? "comprada" : "fabricada"'));
+  assert.ok(page.includes('className="piece-row"'));
   assert.ok(page.includes('costField("costMaterial"'));
   assert.ok(page.includes('name="costStartsAt"'));
   assert.ok(page.includes("...(costChanged ? { cost } : {})"));

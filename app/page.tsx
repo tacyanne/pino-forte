@@ -25,7 +25,7 @@ import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, peri
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
 import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
-import { costAt, costOfSourceAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
@@ -3659,29 +3659,23 @@ export default function Home() {
                     </select>
                   </label>
                 </Filters>
-                <div className="table-wrap standardized-table product-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Código</th>
-                        <th>Tipo</th>
-                        <th>Linha</th>
-                        <th>Medidas</th>
-                        <th>Valor</th>
-                        <th>Custo</th>
-                        <th>Lucro</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredProducts.map((p) => {
-                        const cost = currentCostOf(p.id);
-                        const costValue = (cost?.unitCostCents ?? 0) / 100;
-                        const rate = profitOnCost(p.price, costValue);
-                        return (
-                        <tr
+                <section className="panel stock-panel">
+                  <div className="piece-list">
+                    <div className="piece-head" aria-hidden="true">
+                      <span>Peça</span><span>Tipo / Linha</span><span>Preço</span><span>Custo</span><span>Lucro</span><span>Estoque</span><span>Status</span>
+                    </div>
+                    {!filteredProducts.length && <p className="compact-empty">Nenhuma peça encontrada.</p>}
+                    {filteredProducts.map((p) => {
+                      const cost = currentCostOf(p.id);
+                      const costValue = (cost?.unitCostCents ?? 0) / 100;
+                      const rate = profitOnCost(p.price, costValue);
+                      const since = priceTimeline(productPrices, p.id)[0]?.startsAt;
+                      const stockRow = stock.rows.find((entry) => entry.productId === p.id);
+                      const available = stockRow?.available ?? null;
+                      return (
+                        <div
                           key={p.id}
-                          className="clickable-table-row"
+                          className="piece-row"
                           role="button"
                           tabIndex={0}
                           aria-label={`Visualizar peça ${p.code}`}
@@ -3693,34 +3687,47 @@ export default function Home() {
                             }
                           }}
                         >
-                          <td>
-                            <b>{p.code}</b>
-                          </td>
-                          <td>{p.pieceType || "—"}</td>
-                          <td>{p.name.replace(/^Linha\s+/i, "")}</td>
-                          <td>{p.measure}</td>
-                          <td>{money(p.price)}</td>
-                          <td>{rate === null ? "—" : money(costValue)}</td>
-                          <td>
-                            {rate === null ? "—" : (
-                              <span className={`status ${marginTone(rate)}`}>
-                                {money(p.price - costValue)} · {percent(rate)}
-                              </span>
+                          <span className="stock-main piece-main"><b>{p.code}</b><small>{p.measure}</small></span>
+                          <span className="piece-cell piece-kind" data-label="Tipo / Linha">
+                            <b>{p.pieceType || "—"}</b>
+                            <small>{p.name.replace(/^Linha\s+/i, "")}</small>
+                          </span>
+                          <span className="piece-cell" data-label="Preço">
+                            <b>{money(p.price)}</b>
+                            {since && <small>{`desde ${brDate(since)}`}</small>}
+                          </span>
+                          <span className="piece-cell" data-label="Custo">
+                            {rate === null || !cost ? (
+                              <small>falta cadastrar</small>
+                            ) : (
+                              <>
+                                <b>{money(costValue)}</b>
+                                <small>{costSourceOf(cost.source) === "comprada" ? "comprada" : "fabricada"}</small>
+                              </>
                             )}
-                          </td>
-                          <td>
-                            <span
-                              className={`status ${p.active ? "green" : "red"}`}
-                            >
-                              {p.active ? "Ativo" : "Inativo"}
-                            </span>
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                          </span>
+                          <span className="piece-cell" data-label="Lucro">
+                            {rate === null ? (
+                              <small>—</small>
+                            ) : (
+                              <span className={`status ${marginTone(rate)}`}>{money(p.price - costValue)} · {percent(rate)}</span>
+                            )}
+                          </span>
+                          <span className="piece-cell" data-label="Estoque">
+                            {available === null ? (
+                              <small>sem contagem</small>
+                            ) : (
+                              <b className={available <= 0 ? "piece-stock-low" : ""}>{available}</b>
+                            )}
+                          </span>
+                          <span className="piece-status">
+                            <span className={`status ${p.active ? "green" : "red"}`}>{p.active ? "Ativo" : "Inativo"}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               </div>
             )}
             {screen === "catalog" && (
