@@ -3692,13 +3692,17 @@ export default function Home() {
                       <span>Peça</span><span>Tipo / Linha</span><span>Preço</span><span>Custo</span><span>Lucro</span><span>Estoque</span><span>Status</span>
                     </div>
                     {!filteredProducts.length && <p className="compact-empty">Nenhuma peça encontrada.</p>}
-                    {filteredProducts.map((p) => {
+                    {filteredProducts
+                      // Mesma ordem da tela Estoque: menos disponível primeiro; as zeradas ficam no fim.
+                      .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
+                      .sort((a, b) => Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .map(({ item: p }) => {
                       const cost = currentCostOf(p.id);
                       const costValue = (cost?.unitCostCents ?? 0) / 100;
                       const rate = profitOnCost(p.price, costValue);
                       const since = priceTimeline(productPrices, p.id)[0]?.startsAt;
                       const stockRow = stock.rows.find((entry) => entry.productId === p.id);
-                      const available = stockRow?.available ?? null;
+                      const available = stockRow?.available ?? 0;
                       return (
                         <div
                           key={p.id}
@@ -3741,11 +3745,7 @@ export default function Home() {
                             )}
                           </span>
                           <span className="piece-cell" data-label="Estoque">
-                            {available === null ? (
-                              <small>sem estoque</small>
-                            ) : (
-                              <b className={available <= 0 ? "piece-stock-low" : ""}>{available}</b>
-                            )}
+                            <b className={available <= 0 ? "piece-stock-low" : ""}>{available}</b>
                           </span>
                           <span className="piece-status">
                             <span className={`status ${p.active ? "green" : "red"}`}>{p.active ? "Ativo" : "Inativo"}</span>
