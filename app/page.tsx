@@ -1021,6 +1021,25 @@ export default function Home() {
     list.push(installment);
     installmentsByReceivable.set(installment.accountReceivableId, list);
   }
+  // Vencimento mostrado na lista de OS: a próxima parcela em aberto ou, já paga, a última.
+  const orderDueOf = (orderId: number) => {
+    const parcels = financeData.receivableInstallments
+      .filter((item) => item.serviceOrderId === orderId && item.status !== "Cancelado")
+      .sort((a, b) => a.number - b.number);
+    const open = parcels.find((item) => item.balanceCents > 0);
+    const pick = open ?? parcels[parcels.length - 1];
+    if (pick) {
+      return {
+        dueDate: pick.dueDate,
+        overdue: Boolean(open) && pick.dueDate < todayIso(),
+        label: pick.totalInstallments > 1 ? `parcela ${pick.number}/${pick.totalInstallments}` : "",
+      };
+    }
+    const receivable = financeData.accountsReceivable.find((item) => item.serviceOrderId === orderId);
+    return receivable?.dueDate
+      ? { dueDate: receivable.dueDate, overdue: receivable.balanceCents > 0 && receivable.dueDate < todayIso(), label: "" }
+      : null;
+  };
   const openInstallmentsOf = (receivableId: number) =>
     (installmentsByReceivable.get(receivableId) || [])
       .filter((item) => item.balanceCents > 0)
@@ -3453,14 +3472,16 @@ export default function Home() {
                 </div>
                 <div className="table-wrap standardized-table orders-table">
                   <table>
-                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th></tr></thead>
+                    <thead><tr><th>OS</th><th>Cliente</th><th>Data do pedido</th><th>Vencimento</th><th>Valor total</th><th>Forma de pagamento</th><th>Status</th></tr></thead>
                     <tbody>
                       {!paginatedOrders.length && (
                         <tr className="orders-empty-row">
-                          <td colSpan={6}>Nenhuma Ordem de Serviço encontrada.</td>
+                          <td colSpan={7}>Nenhuma Ordem de Serviço encontrada.</td>
                         </tr>
                       )}
-                      {paginatedOrders.map((order) => (
+                      {paginatedOrders.map((order) => {
+                        const due = orderDueOf(order.id);
+                        return (
                         <tr
                           key={order.id}
                           className="clickable-order-row"
@@ -3478,11 +3499,20 @@ export default function Home() {
                           <td><b>{order.number}</b></td>
                           <td><b>{order.customerName}</b></td>
                           <td>{brDate(order.createdAt)}</td>
+                          <td className="order-due">
+                            {due ? (
+                              <>
+                                <span className={due.overdue ? "overdue" : ""}>{brDate(due.dueDate)}</span>
+                                {due.label && <small>{due.label}</small>}
+                              </>
+                            ) : "—"}
+                          </td>
                           <td>{money(order.total)}</td>
                           <td>{order.paymentMethod || "—"}</td>
                           <td><span className={`status ${orderDisplayTone(order)}`}>{orderDisplayStatus(order)}</span></td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
