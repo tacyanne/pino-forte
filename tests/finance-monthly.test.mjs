@@ -122,7 +122,8 @@ test("recebimento automático só nasce para OS com valor recebido e sem recebim
 test("resumo e telas mês a mês usam a mesma regra de mês e de caixa", () => {
   assert.ok(page.includes("payableMonth(payable) === financialMonth"));
   assert.ok(page.includes("month: payableMonth(payable),"));
-  assert.ok(page.includes("entraram ${money(periodCashIn / 100)} e saíram ${money(periodCashOut / 100)}"));
+  assert.ok(page.includes("<b>{money(periodCashIn / 100)}</b>"));
+  assert.ok(page.includes("<b>{money(periodCashOut / 100)}</b>"));
   assert.equal(page.split("dayInSaoPaulo(order.createdAt)").length - 1, 2);
 });
 

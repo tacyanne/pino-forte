@@ -126,3 +126,10 @@ test("lista de contas mostra data da compra, vencimento e forma em colunas separ
   assert.ok(read("../supabase/migrations/20261112020000_payable_purchase_date.sql").includes("add column if not exists purchase_date"));
   assert.equal(page.includes("${brDate(payable.paidAt)}${payable.paymentMethod ?"), false);
 });
+
+test("resumo executivo: resultado em destaque, quatro indicadores e caixa", () => {
+  for (const text of ["summaryPeriodLabel", "A receber hoje", "A pagar hoje", "Entrou no caixa", "Saiu do caixa", "Saldo do caixa", "openHint(openPayableTotals, money)"])
+    assert.ok(page.includes(text), text);
+  assert.equal(page.includes('className="plain-summary"'), false);
+  assert.equal(page.includes("Dinheiro que entrou e saiu:"), false);
+});

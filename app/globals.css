@@ -995,3 +995,8 @@ button.plain-row{cursor:pointer}
   .supplier-bar{grid-column:2;grid-row:1}
   .supplier-row>b{text-align:right}
 }
+/* Resumo executivo: faixa do caixa */
+.cash-strip b.positive{color:#1d6b53}
+.cash-strip b.negative{color:#b3401d}
+.cash-strip span{font-size:11px}
+.cash-strip b{font-size:14px;white-space:nowrap}
