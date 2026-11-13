@@ -130,4 +130,7 @@ test("tela inicial tem as três faixas e não repete o histórico mensal", () =>
   for (const text of ["Precisa de você hoje", "O que vem pela frente · próximos 30 dias", "Como estou em ${monthName(dashboardMonth)}", "Tudo em dia.", "buildDashboardActions({", "forecastAhead({ today, receivables, payables: pendingPayables })"])
     assert.ok(page.includes(text), text);
   for (const text of ["Histórico mensal", "dashboardHistory", "OS a Receber"]) assert.equal(page.includes(text), false, text);
+  // sobrou com sinal, como o saldo previsto; no computador, "pela frente" vem acima de "como estou"
+  assert.ok(page.includes('{`${leftCents < 0 ? "− " : "+ "}${money(Math.abs(leftCents) / 100)}`}'));
+  assert.ok(page.indexOf("O que vem pela frente · próximos 30 dias") < page.indexOf("Como estou em ${monthName(dashboardMonth)}"));
 });

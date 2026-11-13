@@ -3066,6 +3066,8 @@ export default function Home() {
                             </div>
                           ))}
                         </section>
+                      </div>
+                      <div>
                         <section className="panel dash-band">
                           <h2>O que vem pela frente · próximos 30 dias</h2>
                           <div className="dash-forward">
@@ -3078,7 +3080,6 @@ export default function Home() {
                           </div>
                           {warning && <p className="dash-warn">{warning}</p>}
                         </section>
-                      </div>
                       <section className="panel dash-band">
                         <h2>{`Como estou em ${monthName(dashboardMonth)}`}</h2>
                         <div className="dash-kpis">
@@ -3087,13 +3088,14 @@ export default function Home() {
                           <div><span>Paguei</span><strong>{money((result?.spentCents ?? 0) / 100)}</strong><small>{before(lastResult?.spentCents)}</small></div>
                           <div className={leftCents < 0 ? "bad" : "good"}>
                             <span>{leftCents < 0 ? "Faltou" : "Sobrou"}</span>
-                            <strong>{money(Math.abs(leftCents) / 100)}</strong>
+                            <strong>{`${leftCents < 0 ? "− " : "+ "}${money(Math.abs(leftCents) / 100)}`}</strong>
                             <small>vendi menos o que paguei</small>
                           </div>
                         </div>
                         <p className="dash-phrase">{leftSentence(salesCents > 0 ? Math.round((leftCents / salesCents) * 10000) : null, money)}</p>
                         <button type="button" className="outline-button" onClick={() => go("financial")}>Ver o Financeiro completo</button>
                       </section>
+                      </div>
                     </div>
                   );
                 })()}
