@@ -118,3 +118,39 @@ export function pieceResultLabel(profitCents: number | null, money: (value: numb
   if (profitCents === null) return "falta cadastrar o custo";
   return profitCents >= 0 ? `sobrou ${money(profitCents / 100)}` : `perdeu ${money(-profitCents / 100)}`;
 }
+
+// Divide o que foi pago em contas no período entre as peças vendidas.
+// O peso de cada peça é o custo cadastrado dela (custo unitário x quantidade); peça sem
+// custo cadastrado entra pelo valor vendido, na mesma proporção custo/venda das demais.
+// A soma dos valores devolvidos é exatamente o total pago.
+export function allocateSpent(
+  pieces: { key: string; revenueCents: number; costCents: number | null }[],
+  spentCents: number,
+) {
+  const result = new Map<string, number>();
+  if (!pieces.length) return result;
+  const costed = pieces.filter((piece) => (piece.costCents ?? 0) > 0);
+  const costedRevenue = costed.reduce((sum, piece) => sum + piece.revenueCents, 0);
+  const costedCost = costed.reduce((sum, piece) => sum + (piece.costCents ?? 0), 0);
+  const ratio = costedRevenue > 0 ? costedCost / costedRevenue : 1;
+  const weights = pieces.map((piece) => ((piece.costCents ?? 0) > 0 ? (piece.costCents as number) : Math.max(0, piece.revenueCents) * ratio));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  const total = Math.max(0, Math.round(spentCents));
+  if (totalWeight <= 0) {
+    pieces.forEach((piece) => result.set(piece.key, 0));
+    result.set(pieces[0].key, total);
+    return result;
+  }
+  const exact = weights.map((weight) => (total * weight) / totalWeight);
+  const floors = exact.map((value) => Math.floor(value));
+  let remainder = total - floors.reduce((sum, value) => sum + value, 0);
+  // Os centavos que sobram do arredondamento vão para as maiores frações.
+  const order = exact.map((value, index) => ({ index, fraction: value - floors[index] })).sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (const item of order) {
+    if (remainder <= 0) break;
+    floors[item.index] += 1;
+    remainder -= 1;
+  }
+  pieces.forEach((piece, index) => result.set(piece.key, floors[index]));
+  return result;
+}

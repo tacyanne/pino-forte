@@ -1030,3 +1030,4 @@ button.plain-row{cursor:pointer}
 @media(min-width:761px){
   .forecast-table th:nth-child(4),.forecast-table td:nth-child(4){display:table-cell}
 }
+.piece-bar-row+.plain-text{margin-top:12px}

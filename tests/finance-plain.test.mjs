@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   activePeriod,
+  allocateSpent,
   daysBetween,
   fabricationCategoryIds,
   leftSentence,
@@ -152,6 +153,44 @@ test("resultado usa as contas pagas, e não o custo estimado das peças", () => 
 });
 
 test("barra de cada peça é dividida em custo e lucro, com os valores escritos", () => {
-  for (const text of ['className="piece-cost"', 'className="piece-profit"', 'className="piece-nocost"', '"sem custo cadastrado"', '"prejuízo" : "lucro"', "pelo custo cadastrado em cada peça"])
+  for (const text of ['className="piece-cost"', 'className="piece-profit"', '"prejuízo" : "lucro"', "allocateSpent(pieces, plain.spentCents)", "custo = contas pagas no período, divididas entre as peças"])
     assert.ok(page.includes(text), text);
+  assert.equal(page.includes("sem custo cadastrado"), false);
+});
+
+test("contas pagas são divididas entre as peças pelo custo cadastrado, sem sobrar centavo", () => {
+  const pieces = [
+    { key: "A", revenueCents: 100000, costCents: 60000 },
+    { key: "B", revenueCents: 50000, costCents: 30000 },
+    { key: "C", revenueCents: 30000, costCents: 10000 },
+  ];
+  const shares = allocateSpent(pieces, 50000);
+  assert.deepEqual([...shares.entries()], [["A", 30000], ["B", 15000], ["C", 5000]]);
+
+  // arredondamento: a soma sempre fecha no total pago
+  const odd = allocateSpent(pieces, 10001);
+  assert.equal([...odd.values()].reduce((sum, value) => sum + value, 0), 10001);
+
+  // peça sem custo cadastrado entra pelo valor vendido, na proporção das demais (60%)
+  const mixed = allocateSpent(
+    [
+      { key: "A", revenueCents: 100000, costCents: 60000 },
+      { key: "D", revenueCents: 50000, costCents: null },
+    ],
+    9000,
+  );
+  assert.deepEqual([...mixed.entries()], [["A", 6000], ["D", 3000]]);
+
+  // nenhuma peça com custo: divide pelo valor vendido
+  const noCost = allocateSpent(
+    [
+      { key: "A", revenueCents: 30000, costCents: null },
+      { key: "B", revenueCents: 10000, costCents: null },
+    ],
+    8000,
+  );
+  assert.deepEqual([...noCost.entries()], [["A", 6000], ["B", 2000]]);
+
+  assert.equal(allocateSpent([], 5000).size, 0);
+  assert.deepEqual([...allocateSpent(pieces, 0).values()], [0, 0, 0]);
 });
