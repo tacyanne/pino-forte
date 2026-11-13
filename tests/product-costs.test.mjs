@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  COST_SOURCE_LABEL,
   ProductCostError,
+  costOfSourceAt,
+  costSourceOf,
   TARGET_PROFIT_ON_COST,
   costAt,
   normalizePieceCode,
@@ -40,6 +43,8 @@ test("entrada de custo valida valores e data", () => {
     laborCents: 500,
     freightCents: 0,
     startsAt: "2026-11-11",
+    source: "fabricada",
+    supplier: "",
   });
   assert.throws(() => parseProductCostInput({ materialCents: -1 }, "2026-11-11"), ProductCostError);
   assert.throws(() => parseProductCostInput({ materialCents: "abc" }, "2026-11-11"), ProductCostError);
@@ -125,7 +130,8 @@ test("lucro das vendas usa o custo da data e separa vendas sem custo", () => {
 test("API grava e devolve custo nos dois caminhos de banco", () => {
   assert.equal(catalogApi.split("productCosts: await listProductCostsSafe()").length - 1, 2);
   assert.equal(catalogApi.split("parseProductCostInput(body.cost, todayIso())").length - 1, 4);
-  assert.equal(catalogApi.split("saveProductCost(").length - 1, 4);
+  assert.equal(catalogApi.split("saveProductCosts(").length - 1, 5);
+  assert.equal(catalogApi.split('parseProductCostInput(body.purchaseCost, todayIso(), "comprada")').length - 1, 4);
   assert.ok(catalogApi.includes("error instanceof ProductCostError"));
   assert.ok(costStore.includes("hasSupabaseRest()"));
   assert.ok(costStore.includes('supabaseInsert("product_cost_history"'));
@@ -150,4 +156,41 @@ test("preço em centavos da peça é gravado junto com o preço, nos dois caminh
   assert.ok(catalogApi.includes("changes.priceCents = Math.round(changes.price * 100)"));
   assert.ok(catalogApi.includes("price_cents: Math.round(price * 100),"));
   assert.ok(catalogApi.includes("changes.price_cents = Math.round(price * 100)"));
+});
+
+test("peça tem um custo fabricando e outro comprando pronta, cada um com o próprio histórico", () => {
+  const history = [
+    row({ id: 1, unitCostCents: 2000, startsAt: "2026-06-01", source: "fabricada" }),
+    row({ id: 2, unitCostCents: 3000, startsAt: "2026-11-11", source: "comprada", supplier: "Fornecedor A" }),
+  ];
+  // vale a origem que começou por último
+  assert.equal(costAt(history, 7, "2026-11-10").id, 1);
+  assert.equal(costAt(history, 7, "2026-11-11").id, 2);
+  assert.equal(costOfSourceAt(history, 7, "fabricada", "2026-11-12").id, 1);
+  assert.equal(costOfSourceAt(history, 7, "comprada", "2026-11-12").id, 2);
+  assert.equal(costOfSourceAt(history, 7, "comprada", "2026-11-10"), null);
+  assert.equal(openCost(history, 7).id, 1);
+  assert.equal(openCost(history, 7, "comprada").id, 2);
+  // no mesmo dia, a comprada vence
+  const sameDay = [row({ id: 1, source: "fabricada" }), row({ id: 2, source: "comprada" })];
+  assert.equal(costAt(sameDay, 7, "2026-06-01").id, 2);
+
+  assert.equal(costSourceOf("comprada"), "comprada");
+  assert.equal(costSourceOf(undefined), "fabricada");
+  assert.equal(Object.keys(COST_SOURCE_LABEL).length, 2);
+
+  const parsed = parseProductCostInput({ materialCents: 3000, supplier: "  Fornecedor A  " }, "2026-11-11", "comprada");
+  assert.equal(parsed.source, "comprada");
+  assert.equal(parsed.supplier, "Fornecedor A");
+
+  // só o fornecedor mudou: corrige a vigência atual
+  const open = row({ id: 9, source: "comprada", supplier: "Fornecedor A" });
+  const same = { materialCents: 1500, laborCents: 500, freightCents: 0, startsAt: "2026-11-13", source: "comprada" };
+  assert.deepEqual(planProductCostChange(open, { ...same, supplier: "Fornecedor B" }), { kind: "update", id: 9 });
+  assert.deepEqual(planProductCostChange(open, { ...same, supplier: "Fornecedor A" }), { kind: "none" });
+
+  assert.ok(costStore.includes("openCost(await listProductCosts(productId), productId, input.source)"));
+  assert.ok(page.includes("<legend>Custo comprando pronta (revenda)</legend>"));
+  assert.ok(page.includes("...(purchaseChanged ? { purchaseCost } : {})"));
+  assert.ok(/add column if not exists source/i.test(read("../supabase/migrations/20261113030000_product_cost_source.sql")));
 });

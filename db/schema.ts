@@ -308,6 +308,8 @@ export const productCostHistory = pgTable("product_cost_history", {
   unitCostCents: integer("unit_cost_cents").notNull().default(0),
   startsAt: text("starts_at").notNull(),
   endsAt: text("ends_at"),
+  source: text("source").notNull().default("fabricada"),
+  supplier: text("supplier").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
 

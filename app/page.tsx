@@ -1618,6 +1618,19 @@ export default function Home() {
         freightCents: centsField("costFreight"),
         startsAt: String(f.get("costStartsAt") || todayIso()),
       };
+      const purchaseCost = {
+        materialCents: centsField("purchasePrice"),
+        laborCents: 0,
+        freightCents: centsField("purchaseFreight"),
+        startsAt: String(f.get("purchaseStartsAt") || todayIso()),
+        supplier: String(f.get("purchaseSupplier") || "").trim(),
+      };
+      const savedPurchase = editingProduct ? openCost(productCosts, editingProduct.id, "comprada") : null;
+      const purchaseChanged = savedPurchase
+        ? savedPurchase.rawMaterialCostCents !== purchaseCost.materialCents ||
+          savedPurchase.freightCents !== purchaseCost.freightCents ||
+          savedPurchase.supplier !== purchaseCost.supplier
+        : totalCostCents(purchaseCost) > 0;
       const savedCost = editingProduct ? openCost(productCosts, editingProduct.id) : null;
       const costChanged = savedCost
         ? savedCost.rawMaterialCostCents !== cost.materialCents ||
@@ -1631,6 +1644,7 @@ export default function Home() {
           type: "product",
           id: editingProduct?.id,
           ...(costChanged ? { cost } : {}),
+          ...(purchaseChanged ? { purchaseCost } : {}),
           ...(imageData !== undefined ? { imageData } : {}),
           code: f.get("code"),
           pieceType: f.get("pieceType"),
@@ -1656,7 +1670,7 @@ export default function Home() {
           : [...v, j.product]
         ).sort((a, b) => a.code.localeCompare(b.code)),
       );
-      if (costChanged && Array.isArray(j.productCosts)) {
+      if ((costChanged || purchaseChanged) && Array.isArray(j.productCosts)) {
         const saved = j.productCosts;
         setProductCosts((v) => [...v.filter((row) => row.productId !== j.product.id), ...saved]);
       }
@@ -4851,6 +4865,7 @@ export default function Home() {
             </div>
             {(() => {
               const cost = editingProduct ? openCost(productCosts, editingProduct.id) : null;
+              const purchase = editingProduct ? openCost(productCosts, editingProduct.id, "comprada") : null;
               const costField = (name: string, cents: number) => (
                 <input
                   name={name}
@@ -4862,8 +4877,27 @@ export default function Home() {
                 />
               );
               return (
+                <>
                 <fieldset className="product-cost-fields">
-                  <legend>Custo da peça</legend>
+                  <legend>Custo comprando pronta (revenda)</legend>
+                  <div className="product-cost-row">
+                    <Field label="Valor de compra">{costField("purchasePrice", purchase?.rawMaterialCostCents ?? 0)}</Field>
+                    <Field label="Frete">{costField("purchaseFreight", purchase?.freightCents ?? 0)}</Field>
+                    <Field label="Fornecedor">
+                      <input name="purchaseSupplier" maxLength={120} defaultValue={purchase?.supplier || ""} />
+                    </Field>
+                    <Field label="Custo válido desde">
+                      <input type="date" name="purchaseStartsAt" defaultValue={todayIso()} />
+                    </Field>
+                  </div>
+                  <small>
+                    {purchase
+                      ? `Custo atual de ${money(purchase.unitCostCents / 100)} desde ${brDate(purchase.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
+                      : "Quanto custa comprar a peça pronta de outro fornecedor. Não aparece no catálogo nem nos PDFs."}
+                  </small>
+                </fieldset>
+                <fieldset className="product-cost-fields">
+                  <legend>Custo fabricando</legend>
                   <div className="product-cost-row">
                     <Field label="Material">{costField("costMaterial", cost?.rawMaterialCostCents ?? 0)}</Field>
                     <Field label="Mão de obra / terceiros">{costField("costLabor", cost?.additionalCostsCents ?? 0)}</Field>
@@ -4875,9 +4909,11 @@ export default function Home() {
                   <small>
                     {cost
                       ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
-                      : "Usado para calcular o lucro no Financeiro. Não aparece no catálogo nem nos PDFs."}
+                      : "Quanto custa fabricar a peça. Não aparece no catálogo nem nos PDFs."}
                   </small>
+                  <small>O lucro usa o custo que começou a valer por último entre os dois.</small>
                 </fieldset>
+                </>
               );
             })()}
             {(() => {
