@@ -243,5 +243,8 @@ test("tela de estoque lista os lotes e abre o estudo; API grava nos dois caminho
   assert.ok(api.includes("await assertBatchChange(id, input);"));
   assert.ok(api.includes("await assertBatchChange(id, null);"));
   assert.ok(page.includes("readOnly={locked.has(product.id)}"));
+  // trocar de menu fecha o lote aberto em página
+  const goBlock = page.slice(page.indexOf("function go(next: Screen) {"), page.indexOf("setScreen(next);"));
+  assert.ok(goBlock.includes("setViewingBatchId(null);") && goBlock.includes("setBatchForm(null);"));
   assert.ok(page.includes("disabled={saving || lockedPiecesOf(batch).size > 0}"));
 });

@@ -1453,6 +1453,10 @@ export default function Home() {
     setViewingProduct(null);
     setOrderModal(null);
     setWalletPayment(null);
+    // Lote aberto em página (estudo, lançamento ou edição) fecha ao trocar de menu.
+    setViewingBatchId(null);
+    setBatchForm(null);
+    setPricingProduct(null);
     if (next === "orders") {
       setQuery("");
       setPaymentFilter("Todos");
