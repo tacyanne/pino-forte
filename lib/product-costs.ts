@@ -34,6 +34,11 @@ export type ProductCostInput = {
   supplier: string;
 };
 
+// Escolha de qual custo a peça usa (revenda ou fabricação) a partir de uma data.
+export type CostUse = { id: number; productId: number; source: CostSource; startsAt: string };
+export type CostUseInput = { source: CostSource; startsAt: string };
+export type CostUsePlan = { kind: "none" } | { kind: "update"; id: number } | { kind: "insert" };
+
 export type ProductCostPlan =
   | { kind: "none" }
   | { kind: "update"; id: number }
@@ -84,11 +89,58 @@ export function previousDay(iso: string) {
   return date.toISOString().slice(0, 10);
 }
 
-// Custo vigente de uma peça em uma data (a vigência mais recente que cobre a data).
-// Com as duas origens cadastradas, vale a que começou por último: é a forma como a peça
-// está sendo obtida naquele momento. No empate, a comprada.
-export function costAt(history: ProductCost[], productId: number, date: string) {
+export function parseCostUseInput(raw: unknown, today: string): CostUseInput | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object") throw new ProductCostError("Custo em uso inválido.");
+  const body = raw as Record<string, unknown>;
+  if (!COST_SOURCES.includes(body.source as CostSource)) throw new ProductCostError("Escolha o custo em uso: revenda ou fabricação.");
+  const startsAt = String(body.startsAt || today).slice(0, 10);
+  if (!ISO_DATE.test(startsAt) || Number.isNaN(new Date(`${startsAt}T12:00:00Z`).getTime()))
+    throw new ProductCostError("Informe uma data válida para o custo em uso.");
+  return { source: body.source as CostSource, startsAt };
+}
+
+// Escolha mais recente da peça (a de maior data de início).
+export function latestCostUse(uses: CostUse[], productId: number) {
+  let match: CostUse | null = null;
+  for (const row of uses) {
+    if (row.productId !== productId) continue;
+    if (!match || row.startsAt > match.startsAt) match = row;
+  }
+  return match;
+}
+
+// Custo escolhido para a peça em uma data: a escolha mais recente que já começou.
+export function costUseAt(uses: CostUse[], productId: number, date: string) {
   const day = date.slice(0, 10);
+  let match: CostUse | null = null;
+  for (const row of uses) {
+    if (row.productId !== productId || row.startsAt > day) continue;
+    if (!match || row.startsAt > match.startsAt) match = row;
+  }
+  return match;
+}
+
+// Decide o que gravar: nada, corrigir a escolha atual ou registrar uma nova a partir da data.
+export function planCostUseChange(latest: CostUse | null, input: CostUseInput): CostUsePlan {
+  if (!latest) return { kind: "insert" };
+  if (latest.source === input.source) return latest.startsAt === input.startsAt ? { kind: "none" } : { kind: "update", id: latest.id };
+  if (input.startsAt === latest.startsAt) return { kind: "update", id: latest.id };
+  if (input.startsAt < latest.startsAt)
+    throw new ProductCostError(`A data do custo em uso deve ser igual ou posterior a ${brDate(latest.startsAt)}, data da escolha atual.`);
+  return { kind: "insert" };
+}
+
+// Custo vigente de uma peça em uma data.
+// Com a escolha de custo em uso registrada, vale o custo dessa origem. Sem escolha (ou sem
+// custo cadastrado na origem escolhida), vale o custo que começou por último; no empate, a revenda.
+export function costAt(history: ProductCost[], productId: number, date: string, uses: CostUse[] = []): ProductCost | null {
+  const day = date.slice(0, 10);
+  const chosen = costUseAt(uses, productId, day);
+  if (chosen) {
+    const chosenCost = costAt(history.filter((row) => costSourceOf(row.source) === chosen.source), productId, day);
+    if (chosenCost) return chosenCost;
+  }
   let match: ProductCost | null = null;
   for (const row of history) {
     if (row.productId !== productId) continue;
@@ -177,6 +229,7 @@ export function summarizeSalesProfit(
   lines: SaleLine[],
   products: { id: number; code: string }[],
   history: ProductCost[],
+  uses: CostUse[] = [],
 ): SalesProfit {
   const productByKey = new Map(products.map((product) => [normalizePieceCode(product.code), product]));
   const byKey = new Map<string, ProductProfit>();
@@ -194,7 +247,7 @@ export function summarizeSalesProfit(
     const revenueCents = Math.round(Number(line.revenueCents) || 0);
     const key = normalizePieceCode(line.code);
     const product = productByKey.get(key) || null;
-    const cost = product ? costAt(history, product.id, line.date) : null;
+    const cost = product ? costAt(history, product.id, line.date, uses) : null;
     const row =
       byKey.get(key) ||
       ({
