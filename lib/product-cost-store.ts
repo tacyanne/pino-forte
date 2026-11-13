@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { productCostHistory } from "../db/schema";
 import {
+  costSourceOf,
   openCost,
   planProductCostChange,
   totalCostCents,
@@ -20,6 +21,8 @@ const toProductCost = (row: Record<string, unknown>): ProductCost => ({
   unitCostCents: Number(row.unitCostCents) || 0,
   startsAt: String(row.startsAt || ""),
   endsAt: row.endsAt ? String(row.endsAt) : null,
+  source: costSourceOf(row.source),
+  supplier: String(row.supplier || ""),
 });
 
 export async function listProductCosts(productId?: number): Promise<ProductCost[]> {
@@ -42,7 +45,7 @@ export async function listProductCosts(productId?: number): Promise<ProductCost[
 
 // Grava o custo de uma peça respeitando o histórico e devolve as vigências dela.
 export async function saveProductCost(productId: number, input: ProductCostInput): Promise<ProductCost[]> {
-  const plan = planProductCostChange(openCost(await listProductCosts(productId), productId), input);
+  const plan = planProductCostChange(openCost(await listProductCosts(productId), productId, input.source), input);
   if (plan.kind === "none") return listProductCosts(productId);
 
   const values = {
@@ -50,6 +53,7 @@ export async function saveProductCost(productId: number, input: ProductCostInput
     additionalCostsCents: input.laborCents,
     freightCents: input.freightCents,
     unitCostCents: totalCostCents(input),
+    supplier: input.supplier || "",
   };
 
   if (hasSupabaseRest()) {
@@ -58,13 +62,14 @@ export async function saveProductCost(productId: number, input: ProductCostInput
       additional_costs_cents: values.additionalCostsCents,
       freight_cents: values.freightCents,
       unit_cost_cents: values.unitCostCents,
+      supplier: values.supplier,
     };
     if (plan.kind === "update") {
       await supabasePatch("product_cost_history", { id: `eq.${plan.id}` }, restValues);
     } else {
       if (plan.closeId)
         await supabasePatch("product_cost_history", { id: `eq.${plan.closeId}` }, { ends_at: plan.closeEndsAt });
-      await supabaseInsert("product_cost_history", { product_id: productId, ...restValues, starts_at: input.startsAt });
+      await supabaseInsert("product_cost_history", { product_id: productId, ...restValues, starts_at: input.startsAt, source: input.source });
     }
     return listProductCosts(productId);
   }
@@ -77,7 +82,7 @@ export async function saveProductCost(productId: number, input: ProductCostInput
     }
     if (plan.closeId)
       await tx.update(productCostHistory).set({ endsAt: plan.closeEndsAt }).where(eq(productCostHistory.id, plan.closeId));
-    await tx.insert(productCostHistory).values({ productId, ...values, startsAt: input.startsAt });
+    await tx.insert(productCostHistory).values({ productId, ...values, startsAt: input.startsAt, source: input.source });
   });
   return listProductCosts(productId);
 }

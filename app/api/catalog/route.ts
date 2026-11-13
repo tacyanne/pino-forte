@@ -8,13 +8,21 @@ import { requireUser } from "../../../lib/auth";
 import { camelizeRows, camelizeRow } from "../../../lib/supabase-mappers";
 import { hasSupabaseRest, supabaseDelete, supabaseGetOne, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 import { listPieceTypes, PieceTypeError, validateProductType } from "../../../lib/piece-types";
-import { parseProductCostInput, ProductCostError } from "../../../lib/product-costs";
+import { parseProductCostInput, ProductCostError, type ProductCost, type ProductCostInput } from "../../../lib/product-costs";
 import { listProductCostsSafe, saveProductCost } from "../../../lib/product-cost-store";
 import { listProductPricesSafe, recordProductPriceSafe } from "../../../lib/product-price-store";
 import { todayIso } from "../../../lib/finance";
 
 const errorStatus = (error: unknown) =>
   error instanceof PieceTypeError || error instanceof PieceLineError || error instanceof ProductCostError ? error.status : 500;
+
+// Grava o custo fabricando e o custo comprando pronta (cada um com o próprio histórico)
+// e devolve todas as vigências da peça, ou null se nada foi enviado.
+async function saveProductCosts(productId: number, inputs: (ProductCostInput | null)[]) {
+  let saved: ProductCost[] | null = null;
+  for (const input of inputs) if (input) saved = await saveProductCost(productId, input);
+  return saved;
+}
 
 const initialProducts = [
   ["RN 180", "RN-180", "Pino de balança RN 180", "180 mm", 49, "Pino"],
@@ -75,7 +83,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown };
+    const body = await request.json() as { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown; purchaseCost?: unknown };
     if (body.type === "product") { const error = productImageError(body.imageData); if (error) return Response.json({ error }, { status: 400 }); }
     if (hasSupabaseRest()) return await postCatalogWithRest(body);
     const db = await getDb();
@@ -92,8 +100,9 @@ export async function POST(request: Request) {
       if (existing.length)
         return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
       const cost = parseProductCostInput(body.cost, todayIso());
+      const purchaseCost = parseProductCostInput(body.purchaseCost, todayIso(), "comprada");
       const [product] = await db.insert(products).values({ code, sku, pieceType, name, lineName, measure, price, priceCents: Math.round(price * 100), imageData: body.imageData ?? null }).returning();
-      const productCosts = cost ? await saveProductCost(product.id, cost) : [];
+      const productCosts = (await saveProductCosts(product.id, [cost, purchaseCost])) ?? [];
       const productPrices = (await recordProductPriceSafe(product.id, Math.round(price * 100), todayIso(), "cadastro")) ?? [];
       return Response.json({ product: displayProductLine(product), productCosts, productPrices }, { status: 201 });
     }
@@ -116,7 +125,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
   try {
-    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown };
+    const body = await request.json() as { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown; purchaseCost?: unknown };
     if (body.type === "product") { const error = productImageError(body.imageData); if (error) return Response.json({ error }, { status: 400 }); }
     if (hasSupabaseRest()) return await patchCatalogWithRest(body);
     const id = Number(body.id);
@@ -147,11 +156,13 @@ export async function PATCH(request: Request) {
       if (body.measure) changes.measure = body.measure.trim();
       if (body.sku !== undefined) changes.sku = body.sku.trim().toUpperCase();
       const cost = parseProductCostInput(body.cost, todayIso());
+      const purchaseCost = parseProductCostInput(body.purchaseCost, todayIso(), "comprada");
       const [product] = await db.update(products).set(changes).where(eq(products.id, id)).returning();
       if (!product) return Response.json({ error: "Peça não encontrada. Atualize a lista e tente novamente." }, { status: 404 });
       // Toda mudança de preço entra no histórico (fecha a vigência anterior e abre a nova).
+      const savedCosts = await saveProductCosts(id, [cost, purchaseCost]);
       const productPrices = changes.priceCents !== undefined ? await recordProductPriceSafe(id, changes.priceCents, todayIso(), "tela") : null;
-      return Response.json({ product: displayProductLine(product), ...(cost ? { productCosts: await saveProductCost(id, cost) } : {}), ...(productPrices ? { productPrices } : {}) });
+      return Response.json({ product: displayProductLine(product), ...(savedCosts ? { productCosts: savedCosts } : {}), ...(productPrices ? { productPrices } : {}) });
     }
     if (body.name !== undefined && !body.document?.trim()) return Response.json({ error: "CPF ou CNPJ é obrigatório." }, { status: 400 });
     if (body.name !== undefined && ((body.zipCode || "").replace(/\D/g, "").length !== 8 || !body.street?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !body.state?.trim() || !body.number?.trim())) return Response.json({ error: "Preencha o endereço obrigatório usando um CEP válido." }, { status: 400 });
@@ -226,7 +237,7 @@ async function getCatalogFromRest() {
   );
 }
 
-async function postCatalogWithRest(body: { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown }) {
+async function postCatalogWithRest(body: { type?: string; name?: string; whatsapp?: string; document?: string; email?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; sku?: string; measure?: string; price?: number; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown; purchaseCost?: unknown }) {
   if (body.type === "product") {
     const code = body.code?.trim().toUpperCase() || "";
     const lineName = await validateProductLine(body.lineName ?? body.name);
@@ -240,6 +251,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
     if (existing)
       return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
     const cost = parseProductCostInput(body.cost, todayIso());
+      const purchaseCost = parseProductCostInput(body.purchaseCost, todayIso(), "comprada");
     const product = await supabaseInsert<Record<string, unknown>>("products", {
       code,
       sku: body.sku?.trim().toUpperCase() || code.replace(/\s+/g, "-"),
@@ -251,7 +263,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
       price,
       price_cents: Math.round(price * 100),
     });
-    const productCosts = cost ? await saveProductCost(Number(product.id), cost) : [];
+    const productCosts = (await saveProductCosts(Number(product.id), [cost, purchaseCost])) ?? [];
     const productPrices = (await recordProductPriceSafe(Number(product.id), Math.round(price * 100), todayIso(), "cadastro")) ?? [];
     return Response.json({ product: displayProductLine(camelizeRow(product)), productCosts, productPrices }, { status: 201 });
   }
@@ -282,7 +294,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
   return Response.json({ customer: camelizeRow(customer) }, { status: 201 });
 }
 
-async function patchCatalogWithRest(body: { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown }) {
+async function patchCatalogWithRest(body: { type?: string; id?: number; active?: boolean; price?: number; name?: string; whatsapp?: string; email?: string; document?: string; zipCode?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string; customerType?: string; code?: string; measure?: string; sku?: string; pieceType?: string; lineName?: string; imageData?: string | null; cost?: unknown; purchaseCost?: unknown }) {
   const id = Number(body.id);
   if (!id) return Response.json({ error: "Cadastro invalido." }, { status: 400 });
   if (body.type === "product") {
@@ -310,10 +322,12 @@ async function patchCatalogWithRest(body: { type?: string; id?: number; active?:
     if (body.measure) changes.measure = body.measure.trim();
     if (body.sku !== undefined) changes.sku = body.sku.trim().toUpperCase();
     const cost = parseProductCostInput(body.cost, todayIso());
+      const purchaseCost = parseProductCostInput(body.purchaseCost, todayIso(), "comprada");
     const product = await supabasePatch<Record<string, unknown>>("products", { id: `eq.${id}` }, changes);
     if (!product) return Response.json({ error: "Peça não encontrada. Atualize a lista e tente novamente." }, { status: 404 });
+    const savedCosts = await saveProductCosts(id, [cost, purchaseCost]);
     const productPrices = changes.price_cents !== undefined ? await recordProductPriceSafe(id, Number(changes.price_cents), todayIso(), "tela") : null;
-    return Response.json({ product: displayProductLine(camelizeRow(product)), ...(cost ? { productCosts: await saveProductCost(id, cost) } : {}), ...(productPrices ? { productPrices } : {}) });
+    return Response.json({ product: displayProductLine(camelizeRow(product)), ...(savedCosts ? { productCosts: savedCosts } : {}), ...(productPrices ? { productPrices } : {}) });
   }
 
   const changes: Record<string, string | boolean> = {};

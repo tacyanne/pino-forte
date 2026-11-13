@@ -1,6 +1,17 @@
 // Custo por peça com histórico de vigência (tabela product_cost_history).
 // Módulo puro: sem acesso a banco, para ser usado na API, na tela e nos testes.
 
+// Origem do custo: peça fabricada por nós ou comprada pronta de outro fornecedor para revenda.
+export const COST_SOURCES = ["fabricada", "comprada"] as const;
+export type CostSource = (typeof COST_SOURCES)[number];
+
+export const costSourceOf = (value: unknown): CostSource => (value === "comprada" ? "comprada" : "fabricada");
+
+export const COST_SOURCE_LABEL: Record<CostSource, string> = {
+  fabricada: "Fabricando",
+  comprada: "Comprando pronta",
+};
+
 export type ProductCost = {
   id: number;
   productId: number;
@@ -10,6 +21,8 @@ export type ProductCost = {
   unitCostCents: number;
   startsAt: string;
   endsAt: string | null;
+  source: CostSource;
+  supplier: string;
 };
 
 export type ProductCostInput = {
@@ -17,6 +30,8 @@ export type ProductCostInput = {
   laborCents: number;
   freightCents: number;
   startsAt: string;
+  source: CostSource;
+  supplier: string;
 };
 
 export type ProductCostPlan =
@@ -43,7 +58,7 @@ function costCents(value: unknown, label: string) {
   return Math.round(cents);
 }
 
-export function parseProductCostInput(raw: unknown, today: string): ProductCostInput | null {
+export function parseProductCostInput(raw: unknown, today: string, source: CostSource = "fabricada"): ProductCostInput | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "object") throw new ProductCostError("Custo da peça inválido.");
   const body = raw as Record<string, unknown>;
@@ -55,6 +70,8 @@ export function parseProductCostInput(raw: unknown, today: string): ProductCostI
     laborCents: costCents(body.laborCents, "a mão de obra"),
     freightCents: costCents(body.freightCents, "o frete"),
     startsAt,
+    source,
+    supplier: String(body.supplier || "").trim().slice(0, 120),
   };
 }
 
@@ -68,6 +85,8 @@ export function previousDay(iso: string) {
 }
 
 // Custo vigente de uma peça em uma data (a vigência mais recente que cobre a data).
+// Com as duas origens cadastradas, vale a que começou por último: é a forma como a peça
+// está sendo obtida naquele momento. No empate, a comprada.
 export function costAt(history: ProductCost[], productId: number, date: string) {
   const day = date.slice(0, 10);
   let match: ProductCost | null = null;
@@ -75,16 +94,22 @@ export function costAt(history: ProductCost[], productId: number, date: string) 
     if (row.productId !== productId) continue;
     if (row.startsAt > day) continue;
     if (row.endsAt && row.endsAt < day) continue;
-    if (!match || row.startsAt > match.startsAt) match = row;
+    if (!match || row.startsAt > match.startsAt || (row.startsAt === match.startsAt && costSourceOf(row.source) === "comprada"))
+      match = row;
   }
   return match;
 }
 
-// Vigência em aberto (sem data de fim) de uma peça.
-export function openCost(history: ProductCost[], productId: number) {
+// Custo vigente de uma origem específica (fabricada ou comprada) em uma data.
+export function costOfSourceAt(history: ProductCost[], productId: number, source: CostSource, date: string) {
+  return costAt(history.filter((row) => costSourceOf(row.source) === source), productId, date);
+}
+
+// Vigência em aberto (sem data de fim) de uma peça, em uma das origens.
+export function openCost(history: ProductCost[], productId: number, source: CostSource = "fabricada") {
   let match: ProductCost | null = null;
   for (const row of history) {
-    if (row.productId !== productId || row.endsAt) continue;
+    if (row.productId !== productId || row.endsAt || costSourceOf(row.source) !== source) continue;
     if (!match || row.startsAt > match.startsAt) match = row;
   }
   return match;
@@ -99,7 +124,8 @@ export function planProductCostChange(open: ProductCost | null, input: ProductCo
     open.rawMaterialCostCents === input.materialCents &&
     open.additionalCostsCents === input.laborCents &&
     open.freightCents === input.freightCents;
-  if (sameValues) return { kind: "none" };
+  // Só o fornecedor mudou: corrige a vigência atual, sem abrir outra.
+  if (sameValues) return (input.supplier ?? "") !== (open.supplier ?? "") ? { kind: "update", id: open.id } : { kind: "none" };
   if (input.startsAt === open.startsAt) return { kind: "update", id: open.id };
   if (input.startsAt < open.startsAt)
     throw new ProductCostError(
