@@ -177,12 +177,9 @@ test("histórico mostra entradas e as saídas das OS entregues que entram no sal
 
   const [row] = stockPosition({ productIds: [7], movements, sold, reserved: [], today: "2026-11-12" });
   assert.equal(row.balance, 2);
-  assert.ok(page.includes('className="stock-history-day"'));
-  // o histórico saiu da tela: fica recolhido, só para desfazer um lançamento
-  assert.equal(page.includes("<h2>Histórico do estoque</h2>"), false);
-  assert.ok(page.includes("<summary>Corrigir lançamentos de estoque</summary>"));
-  assert.ok(page.includes("`−${item.quantity} · ${item.orderNumber || \"OS\"}`"));
-  assert.ok(page.includes("stockHistory({ productIds, movements: stockMovements, sold })"));
+  // o histórico saiu da tela Estoque: o dia a dia agora se lê nos lotes de compra
+  assert.equal(page.includes("Histórico do estoque"), false);
+  assert.equal(page.includes('className="stock-history-day"'), false);
 });
 
 test("lista do estoque: zero no lugar do traço, menor quantidade primeiro e um botão só", () => {

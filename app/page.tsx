@@ -22,7 +22,7 @@ import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
-import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
+import { STOCK_STATUS_LABEL, paceSentence, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
 import { NO_BATCH, allocateBatches, batchStudy, type PurchaseBatch } from "../lib/purchase-batches";
 import { buildDashboardActions, forecastAhead, previousLabel, tightSentence, type DashboardAction } from "../lib/dashboard";
@@ -967,7 +967,7 @@ export default function Home() {
       reserved: linesOf(queueOrders, (order) => dayInSaoPaulo(order.createdAt)),
       today: todayIso(),
     });
-    return { rows, totals: stockTotals(rows), history: stockHistory({ productIds, movements: stockMovements, sold }) };
+    return { rows, totals: stockTotals(rows) };
   }, [products, orders, queueOrders, stockMovements]);
   const receivableByOrderId = new Map(
     financeData.accountsReceivable.map((receivable) => [receivable.serviceOrderId, receivable]),
@@ -4506,42 +4506,6 @@ export default function Home() {
                     })}
                   </div>
                 </section>
-                {/* O dia a dia do estoque agora se lê nos lotes; aqui fica só o caminho para desfazer um lançamento. */}
-                <details className="panel plain-panel stock-history-details">
-                  <summary>Corrigir lançamentos de estoque</summary>
-                  {!stock.history.length && <p className="compact-empty">Nenhum lançamento ainda. Depois da primeira contagem ou entrada, as OS entregues aparecem aqui como saída.</p>}
-                  {(() => {
-                    // Agrupado por dia: a data aparece uma vez, e cada lançamento ocupa uma linha curta.
-                    const days: { date: string; items: typeof stock.history }[] = [];
-                    for (const item of stock.history.slice(0, 30)) {
-                      const day = days[days.length - 1];
-                      if (day && day.date === item.date) day.items.push(item);
-                      else days.push({ date: item.date, items: [item] });
-                    }
-                    return days.map((day) => (
-                      <div className="stock-history-day" key={day.date}>
-                        <h3>{brDate(day.date)}</h3>
-                        {day.items.map((item) => {
-                          const piece = products.find((product) => product.id === item.productId);
-                          const movement = item.movement;
-                          const isOrder = item.kind === "os";
-                          return (
-                            <div className="stock-history-row" key={item.key}>
-                              <b>{piece?.code || "Peça removida"}</b>
-                              <span className={isOrder ? "out" : item.kind === "entrada" ? "in" : ""}>
-                                {isOrder ? `−${item.quantity} · ${item.orderNumber || "OS"}` : item.kind === "entrada" ? `+${item.quantity} · entrada` : item.kind === "saida" ? `−${item.quantity} · saída` : `${item.quantity} · contagem`}
-                                {movement?.notes ? ` · ${movement.notes}` : ""}
-                              </span>
-                              {movement ? (
-                                <button type="button" className="link-delete" onClick={() => deleteStockMovement(movement)} disabled={saving} aria-label={`Excluir lançamento de ${piece?.code || "peça"}`}>Excluir</button>
-                              ) : <small>automática</small>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ));
-                  })()}
-                </details>
               </div>
             )}
             {screen === "wallet" && (
