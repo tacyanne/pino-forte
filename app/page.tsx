@@ -21,7 +21,7 @@ import { loadCatalogImage } from "../lib/catalog-image";
 import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "../lib/catalog-sync";
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
-import { activePeriod, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
+import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
@@ -3793,40 +3793,41 @@ export default function Home() {
                   {salesProfit.byProduct.length > 0 && (
                     <p className="chart-legend">
                       <i className="swatch piece-cost" /> custo <i className="swatch piece-profit" /> lucro
-                      <em>pelo custo cadastrado em cada peça</em>
+                      <em>custo = contas pagas no período, divididas entre as peças</em>
                     </p>
                   )}
                   {(() => {
                     const pieces = salesProfit.byProduct.slice().sort((x, y) => y.revenueCents - x.revenueCents || y.quantity - x.quantity);
                     const top = pieces[0]?.revenueCents || 0;
+                    // Custo de cada peça = parte dela nas contas pagas do período (a soma bate com "Quanto gastei").
+                    const allocated = allocateSpent(pieces, plain.spentCents);
                     return pieces.map((row) => {
                       const measure = products.find((product) => product.id === row.productId)?.measure;
                       const units = row.quantity === 1 ? "1 unidade" : `${row.quantity} unidades`;
                       const width = top > 0 ? Math.max(2, Math.round((row.revenueCents / top) * 100)) : 2;
-                      const hasCost = row.costCents !== null && row.profitCents !== null;
-                      const profit = row.profitCents ?? 0;
+                      const cost = allocated.get(row.key) ?? 0;
+                      const profit = row.revenueCents - cost;
                       // Parte da barra que é custo; com prejuízo, o custo ocupa a barra inteira.
-                      const costShare = hasCost && row.revenueCents > 0 ? Math.min(100, Math.round(((row.costCents ?? 0) / row.revenueCents) * 100)) : 0;
-                      const split = !hasCost
-                        ? "sem custo cadastrado"
-                        : `custo ${money((row.costCents ?? 0) / 100)} · ${profit < 0 ? "prejuízo" : "lucro"} ${money(Math.abs(profit) / 100)}`;
+                      const costShare = row.revenueCents > 0 ? Math.min(100, Math.round((cost / row.revenueCents) * 100)) : 100;
+                      const split = `custo ${money(cost / 100)} · ${profit < 0 ? "prejuízo" : "lucro"} ${money(Math.abs(profit) / 100)}`;
                       return (
                         <div className="supplier-row piece-bar-row" key={row.key} title={`${row.code}: ${units}, vendeu ${money(row.revenueCents / 100)}, ${split}`}>
                           <span>{row.code}<small>{measure ? `${measure} · ${units}` : units}</small></span>
                           <div className="supplier-bar piece-bar" style={{ width: `${width}%` }}>
-                            {hasCost ? (
-                              <>
-                                <i className="piece-cost" style={{ width: `${costShare}%` }} />
-                                {costShare < 100 && <i className="piece-profit" style={{ width: `${100 - costShare}%` }} />}
-                              </>
-                            ) : <i className="piece-nocost" style={{ width: "100%" }} />}
+                            {costShare > 0 && <i className="piece-cost" style={{ width: `${costShare}%` }} />}
+                            {costShare < 100 && <i className="piece-profit" style={{ width: `${100 - costShare}%` }} />}
                           </div>
                           <b>{money(row.revenueCents / 100)}</b>
-                          <small className={`piece-split ${hasCost && profit < 0 ? "negative" : ""}`}>{split}</small>
+                          <small className={`piece-split ${profit < 0 ? "negative" : ""}`}>{split}</small>
                         </div>
                       );
                     });
                   })()}
+                  {salesProfit.byProduct.length > 0 && (
+                    <p className="plain-text muted">
+                      {`Os ${money(plain.spentCents / 100)} de contas pagas foram divididos entre as peças na proporção do custo cadastrado de cada uma. A soma dos lucros é o "Quanto sobrou" do topo.`}
+                    </p>
+                  )}
                 </section>
                 </>
                 )}
