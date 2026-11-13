@@ -131,6 +131,14 @@ export function needsInitialReceipt(input: { receivedCents: number; hasReceivabl
   return input.receivedCents > 0 && input.hasReceivable && !input.alreadyHasReceipt;
 }
 
+// Valor em centavos de uma OS. O valor em reais é o que aparece na tela e manda:
+// se o campo em centavos gravado ficou diferente dele (OS editada depois), é ignorado.
+export function trustedCents(amount: unknown, storedCents: unknown) {
+  const fromAmount = Math.round((Number(amount) || 0) * 100);
+  const stored = Math.round(Number(storedCents) || 0);
+  return stored > 0 && Math.abs(stored - fromAmount) <= 1 ? stored : fromAmount;
+}
+
 // Com poucos dias de mês, multiplicar o ritmo dá um número sem sentido.
 export const FORECAST_MIN_DAYS = 5;
 

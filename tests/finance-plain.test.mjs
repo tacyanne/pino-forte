@@ -133,3 +133,8 @@ test("resumo executivo: resultado em destaque, quatro indicadores e caixa", () =
   assert.equal(page.includes('className="plain-summary"'), false);
   assert.equal(page.includes("Dinheiro que entrou e saiu:"), false);
 });
+
+test("resumo traz indicadores das peças vendidas e o gasto em duas linhas", () => {
+  for (const text of ["Peças vendidas", "Mais vendida", "Deu mais lucro", "Deu menos lucro", "por peça`}", "em peças`}</small>", "em outras contas`}</small>"])
+    assert.ok(page.includes(text), text);
+});

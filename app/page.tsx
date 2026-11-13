@@ -1021,7 +1021,10 @@ export default function Home() {
       if (dueDifference !== 0) return dueDifference;
       return b.receivable.id - a.receivable.id;
     });
-  const dashboardReceivables = openReceivableRows.slice(0, 6);
+  // A tela inicial mostra todas as OS em aberto, da que vence primeiro para a que vence por último.
+  const dashboardReceivables = openReceivableRows
+    .slice()
+    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate) || a.receivable.id - b.receivable.id);
   // OS em fila entram como linhas da mesma tabela, sempre no topo.
   const dashboardRows = [
     ...queueOrders.map((order) => ({
@@ -3742,7 +3745,8 @@ export default function Home() {
                   <article>
                     <span>Quanto gastei</span>
                     <strong>{money(plain.spentCents / 100)}</strong>
-                    <small>{`${money(plain.pieceCostCents / 100)} em peças · ${money(plain.otherExpensesCents / 100)} em outras contas`}</small>
+                    <small>{`${money(plain.pieceCostCents / 100)} em peças`}</small>
+                    <small>{`${money(plain.otherExpensesCents / 100)} em outras contas`}</small>
                   </article>
                   <article className={receivableOverdue > 0 ? "attention" : ""}>
                     <span>A receber hoje</span>
@@ -3791,13 +3795,51 @@ export default function Home() {
                 <section className="panel plain-panel">
                   <h2>Suas peças: onde você ganha e onde perde</h2>
                   {!salesProfit.byProduct.length && <p className="compact-empty">Nenhuma venda entregue neste período.</p>}
+                  {salesProfit.byProduct.length > 0 && (() => {
+                    const pieces = salesProfit.byProduct;
+                    const totalSold = pieces.reduce((sum, row) => sum + row.quantity, 0);
+                    const mostSold = pieces.reduce((top, row) => (row.quantity > top.quantity ? row : top), pieces[0]);
+                    const withProfit = pieces.filter((row) => row.profitCents !== null);
+                    const best = withProfit.length ? withProfit.reduce((top, row) => ((row.profitCents ?? 0) > (top.profitCents ?? 0) ? row : top), withProfit[0]) : null;
+                    const worst = withProfit.length ? withProfit.reduce((low, row) => ((row.profitCents ?? 0) < (low.profitCents ?? 0) ? row : low), withProfit[0]) : null;
+                    return (
+                      <div className="finance-kpi-grid payable-kpis piece-kpis">
+                        <article>
+                          <span>Peças vendidas</span>
+                          <strong>{totalSold}</strong>
+                          <small>{pieces.length === 1 ? "1 tipo de peça" : `${pieces.length} tipos de peça`}</small>
+                        </article>
+                        <article>
+                          <span>Mais vendida</span>
+                          <strong>{mostSold.code}</strong>
+                          <small>{`${mostSold.quantity} unidades`}</small>
+                        </article>
+                        <article>
+                          <span>Deu mais lucro</span>
+                          <strong>{best ? best.code : "—"}</strong>
+                          <small>{best ? pieceResultLabel(best.profitCents, money) : "falta cadastrar o custo"}</small>
+                        </article>
+                        <article className={worst && (worst.profitCents ?? 0) < 0 ? "attention" : ""}>
+                          <span>Deu menos lucro</span>
+                          <strong>{worst ? worst.code : "—"}</strong>
+                          <small>{worst ? pieceResultLabel(worst.profitCents, money) : "falta cadastrar o custo"}</small>
+                        </article>
+                      </div>
+                    );
+                  })()}
                   {salesProfit.byProduct.map((row) => {
                     const measure = products.find((product) => product.id === row.productId)?.measure;
                     return (
-                      <div className="plain-row" key={row.key}>
-                        <span><b>{row.code}</b>{measure ? ` (${measure})` : ""} — vendeu {row.quantity}</span>
+                      <div className="plain-row piece-row" key={row.key}>
+                        <span>
+                          <b>{row.code}</b>{measure ? ` (${measure})` : ""}
+                          <small>{`vendeu ${row.quantity} · ${money(row.revenueCents / 100)}`}</small>
+                        </span>
                         <strong className={row.profitCents === null ? "muted" : row.profitCents >= 0 ? "positive" : "negative"}>
                           {pieceResultLabel(row.profitCents, money)}
+                          {row.profitCents !== null && row.quantity > 0 && (
+                            <small>{`${money(row.profitCents / row.quantity / 100)} por peça`}</small>
+                          )}
                         </strong>
                       </div>
                     );

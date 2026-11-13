@@ -1,3 +1,4 @@
+import { trustedCents } from "../../../lib/finance-monthly";
 import { isQueuedWithoutPayment } from "../../../lib/order-status";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
@@ -11,7 +12,7 @@ import {
   receivableInstallments,
   serviceOrders,
 } from "../../../db/schema";
-import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso, toCents } from "../../../lib/finance";
+import { RESIDUAL_SETTLE_CENTS, centsFromBody, currentMonth, receivableDueDateFromIssuedAt, receivableStatus, syncReceivablesFromOrders, todayIso } from "../../../lib/finance";
 import { parseBoletoTerm } from "../../../lib/boleto-installments";
 import { requireUser } from "../../../lib/auth";
 import { syncInstallmentsDb, syncInstallmentsRest } from "../../../lib/receivable-installments";
@@ -286,9 +287,9 @@ async function syncReceivablesFromOrdersRest() {
 
     const issuedAt = String(order.issued_at || order.created_at || todayIso()).slice(0, 10);
     const dueDate = String(order.due_date || receivableDueDateFromIssuedAt(issuedAt)).slice(0, 10);
-    const originalAmountCents = Number(order.total_cents || 0) || toCents(order.total);
+    const originalAmountCents = trustedCents(order.total, order.total_cents);
     const receivedAmountCents = Math.min(
-      Number(order.received_cents || 0) || toCents(order.received),
+      trustedCents(order.received, order.received_cents),
       originalAmountCents,
     );
     const balanceCents = Math.max(0, originalAmountCents - receivedAmountCents);

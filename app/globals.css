@@ -1000,3 +1000,12 @@ button.plain-row{cursor:pointer}
 .cash-strip b.negative{color:#b3401d}
 .cash-strip span{font-size:11px}
 .cash-strip b{font-size:14px;white-space:nowrap}
+/* Resumo: indicadores e lista das peças vendidas */
+.piece-kpis{margin:6px 0 12px}
+.piece-kpis strong{font-size:16px}
+.payable-kpis small+small{margin-top:2px}
+.piece-row>span small,.piece-row>strong small{display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--muted)}
+@media(min-width:761px){
+  .piece-kpis strong{font-size:19px}
+  .piece-row>strong{text-align:right}
+}
