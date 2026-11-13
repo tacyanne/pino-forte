@@ -7,7 +7,7 @@ import {
   receipts,
   serviceOrders,
 } from "../db/schema";
-import { needsInitialReceipt } from "./finance-monthly";
+import { needsInitialReceipt, trustedCents } from "./finance-monthly";
 import { syncInstallmentsDb } from "./receivable-installments";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -81,8 +81,8 @@ export async function syncReceivablesFromOrders(db: WritableDb, userId?: number)
     // OS em fila (sem pagamento) ainda não tem recebível: ele nasce na entrega.
     if (isQueuedWithoutPayment(order)) continue;
 
-    const totalCents = order.totalCents || toCents(order.total);
-    const receivedCents = order.receivedCents || toCents(order.received);
+    const totalCents = trustedCents(order.total, order.totalCents);
+    const receivedCents = trustedCents(order.received, order.receivedCents);
     const balanceCents = Math.max(0, totalCents - receivedCents);
     const issuedAt = order.issuedAt || order.createdAt.slice(0, 10);
     const dueDate = receivableDueDateFromIssuedAt(issuedAt);

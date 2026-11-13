@@ -12,6 +12,7 @@ import {
   monthlyResult,
   needsInitialReceipt,
   shortMonth,
+  trustedCents,
 } from "../lib/finance-monthly.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -132,4 +133,21 @@ test("financeiro carrega o histórico até o teto e avisa quando corta", () => {
   assert.equal(financeApi.includes('limit: "300"'), false);
   assert.equal(financeApi.split("historyTruncated: receiptRows.length >= HISTORY_LIMIT").length - 1, 2);
   assert.ok(page.includes("financeData.historyTruncated"));
+});
+
+test("valor da OS em centavos segue o valor em reais quando os dois divergem", () => {
+  assert.equal(trustedCents(100.8, 10080), 10080);
+  assert.equal(trustedCents(100.8, 4990), 10080);
+  assert.equal(trustedCents(100.8, 0), 10080);
+  assert.equal(trustedCents(100.8, null), 10080);
+  assert.equal(trustedCents(293.4, 29341), 29341);
+  assert.equal(trustedCents(0, 0), 0);
+  assert.equal(financeLib.includes("order.totalCents || toCents(order.total)"), false);
+  assert.ok(financeLib.includes("trustedCents(order.total, order.totalCents)"));
+  assert.ok(financeApi.includes("trustedCents(order.total, order.total_cents)"));
+});
+
+test("tela inicial lista todas as OS em aberto, da que vence primeiro", () => {
+  assert.equal(page.includes("openReceivableRows.slice(0, 6)"), false);
+  assert.ok(page.includes("dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate) || a.receivable.id - b.receivable.id"));
 });
