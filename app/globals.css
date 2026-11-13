@@ -1009,3 +1009,17 @@ button.plain-row{cursor:pointer}
   .piece-kpis strong{font-size:19px}
   .piece-row>strong{text-align:right}
 }
+/* Peças vendidas: barra dividida em custo e lucro (mobile first) */
+.piece-bar{display:flex;gap:2px}
+.piece-bar i{min-width:3px;border-radius:0}
+.piece-bar i:last-child{border-radius:0 4px 4px 0}
+.piece-bar i.piece-cost{background:#d9691f}
+.piece-bar i.piece-profit{background:#2f8f6f}
+.piece-bar i.piece-nocost{background:#b9c4c2}
+.swatch.piece-cost{background:#d9691f}.swatch.piece-profit{background:#2f8f6f}
+.piece-bar-row .piece-split{grid-column:1/-1;font-size:11px;color:var(--muted)}
+.piece-bar-row .piece-split.negative{color:#b3401d;font-weight:750}
+.plain-panel>.chart-legend{margin:0 0 6px}
+@media(min-width:761px){
+  .piece-bar-row .piece-split{grid-column:2/-1;grid-row:2;margin-top:-4px}
+}

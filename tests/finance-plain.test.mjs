@@ -150,3 +150,8 @@ test("resultado usa as contas pagas, e não o custo estimado das peças", () => 
   assert.equal(page.includes("pieceCostCents: salesProfit.costCents"), false);
   assert.ok(page.includes("para fabricar peça`}</small>"));
 });
+
+test("barra de cada peça é dividida em custo e lucro, com os valores escritos", () => {
+  for (const text of ['className="piece-cost"', 'className="piece-profit"', 'className="piece-nocost"', '"sem custo cadastrado"', '"prejuízo" : "lucro"', "pelo custo cadastrado em cada peça"])
+    assert.ok(page.includes(text), text);
+});
