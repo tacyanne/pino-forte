@@ -42,7 +42,22 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   const auth = await requireUser(request); if (auth instanceof Response) return auth;
-  const body = await request.json() as Partial<typeof defaults>;
+  const body = await request.json() as Partial<typeof defaults> & { targetProfitRate?: unknown };
+  // Meta de lucro sobre o custo: salva sozinha, sem tocar nos dados da empresa.
+  if (body.targetProfitRate !== undefined && body.companyName === undefined) {
+    const targetProfitRate = Number(body.targetProfitRate);
+    if (!Number.isFinite(targetProfitRate) || targetProfitRate < 0 || targetProfitRate > 10)
+      return Response.json({ error: "Informe uma meta de lucro válida." }, { status: 400 });
+    if (hasSupabaseRest()) {
+      const saved = await supabasePatch<Record<string, unknown>>("app_settings", { id: "eq.1" }, { target_profit_rate: targetProfitRate });
+      if (!saved) return Response.json({ error: "Configurações não encontradas." }, { status: 404 });
+      return Response.json({ settings: camelizeRow(saved) });
+    }
+    const db = await getDb();
+    const [saved] = await db.update(appSettings).set({ targetProfitRate }).where(eq(appSettings.id, 1)).returning();
+    if (!saved) return Response.json({ error: "Configurações não encontradas." }, { status: 404 });
+    return Response.json({ settings: saved });
+  }
   const settings = {
     id: 1,
     companyName: String(body.companyName || defaults.companyName).trim(),

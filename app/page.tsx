@@ -24,7 +24,8 @@ import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
-import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
+import { costAt, costOfSourceAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
@@ -42,6 +43,7 @@ type Screen =
   | "financial-monthly"
   | "financial-cash"
   | "financial-payables"
+  | "financial-pricing"
   | "wallet"
   | "reports"
   | "settings";
@@ -490,6 +492,14 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
   const [productPrices, setProductPrices] = useState<ProductPrice[]>([]);
+  const [targetRate, setTargetRate] = useState(DEFAULT_TARGET_PROFIT_RATE);
+  const [targetInput, setTargetInput] = useState("");
+  const [pricingProduct, setPricingProduct] = useState<Product | null>(null);
+  const [simPrice, setSimPrice] = useState("");
+  const [simMargin, setSimMargin] = useState("");
+  const [bulkPercent, setBulkPercent] = useState("");
+  const [bulkNinety, setBulkNinety] = useState(true);
+  const [bulkType, setBulkType] = useState("");
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [stockError, setStockError] = useState("");
   const [stockForm, setStockForm] = useState<{ product: Product; kind: StockKind } | null>(null);
@@ -704,6 +714,7 @@ export default function Home() {
         setResponsible(settings.responsible || "Rogerio Mendes");
         setCompanyPhone(settings.companyPhone);
         setOrderFooter(settings.orderFooter);
+        setTargetRate(targetRateOf(settings.targetProfitRate));
       }
       if (!selectedCode && cat.products?.[0])
         setSelectedCode(cat.products[0].code);
@@ -1003,7 +1014,7 @@ export default function Home() {
   const percent = (rate: number) => `${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
   const currentCostOf = (productId: number) => costAt(productCosts, productId, todayIso());
   const marginTone = (rate: number | null) =>
-    rate === null ? "" : rate >= TARGET_PROFIT_ON_COST ? "green" : rate > 0 ? "amber" : "red";
+    rate === null ? "" : rate >= targetRate ? "green" : rate > 0 ? "amber" : "red";
   const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
   const reportMonths = Array.from(
     new Set(orders.filter((o) => o.productionStatus === ORDER_STATUS.delivered).map((o) => monthInSaoPaulo(o.createdAt))),
@@ -1244,7 +1255,7 @@ export default function Home() {
   const periodCashOut = periodCash.reduce((sum, row) => sum + row.outCents, 0);
   const wholeMoney = (cents: number) => Math.round(cents / 100).toLocaleString("pt-BR");
   const isFinanceScreen =
-    screen === "financial" || screen === "reports" || screen === "financial-monthly" || screen === "financial-cash" || screen === "financial-payables";
+    screen === "financial" || screen === "reports" || screen === "financial-monthly" || screen === "financial-cash" || screen === "financial-payables" || screen === "financial-pricing";
   const showFinanceMenu = isFinanceScreen ? !financeCollapsed : financeOpen;
   const walletCustomers = useMemo(() => {
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
@@ -1378,6 +1389,67 @@ export default function Home() {
     });
     if (!response.ok) return flash("Não foi possível salvar as configurações.");
     flash("Configurações salvas e sincronizadas com sucesso.");
+  }
+  async function saveTargetRate() {
+    const rate = parsePercent(targetInput);
+    if (rate === null || rate < 0 || rate > 10) return flash("Informe a meta em percentual, por exemplo 35.", "error");
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ targetProfitRate: rate }),
+    });
+    if (!response.ok) return flash("Não foi possível salvar a meta de lucro.", "error");
+    setTargetRate(rate);
+    setTargetInput("");
+    flash("Meta de lucro salva.");
+  }
+  // Grava só o preço da peça; a API registra a mudança no histórico de preço.
+  async function applyProductPrice(product: Product, priceCents: number) {
+    const r = await fetch("/api/catalog", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "product", id: product.id, price: priceCents / 100 }),
+    });
+    const j = await r.json().catch(() => ({} as { product?: Product; productPrices?: ProductPrice[] }));
+    if (!r.ok || !j.product) return false;
+    const saved: Product = j.product;
+    setProducts((v) => v.map((p) => (p.id === saved.id ? saved : p)));
+    if (Array.isArray(j.productPrices)) {
+      const savedPrices: ProductPrice[] = j.productPrices;
+      setProductPrices((v) => [...v.filter((row) => row.productId !== saved.id), ...savedPrices]);
+    }
+    return true;
+  }
+  function openPriceSimulator(product: Product) {
+    setPricingProduct(product);
+    setSimPrice(money(product.price));
+    setSimMargin("");
+  }
+  async function applySimulatedPrice(product: Product, priceCents: number) {
+    setSaving(true);
+    try {
+      if (!(await applyProductPrice(product, priceCents))) return flash("Não foi possível aplicar o preço. Tente novamente.", "error");
+      setPricingProduct(null);
+      notifyCatalogUpdate();
+      flash(`Preço de ${product.code} alterado para ${money(priceCents / 100)}.`);
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function applyBulkPrices(changes: { product: Product; priceCents: number }[]) {
+    if (!changes.length) return;
+    if (!window.confirm(`Aplicar o novo preço em ${changes.length === 1 ? "1 peça" : `${changes.length} peças`}? O preço anterior fica no histórico.`)) return;
+    setSaving(true);
+    try {
+      let failed = 0;
+      for (const change of changes) if (!(await applyProductPrice(change.product, change.priceCents))) failed += 1;
+      notifyCatalogUpdate();
+      if (failed) return flash(`${failed === 1 ? "1 peça não foi alterada" : `${failed} peças não foram alteradas`}. Tente novamente.`, "error");
+      setBulkPercent("");
+      flash("Preços reajustados.");
+    } finally {
+      setSaving(false);
+    }
   }
   function updateItem(
     index: number,
@@ -2778,6 +2850,7 @@ export default function Home() {
     ["financial-monthly", "Lucro mês a mês"],
     ["financial-cash", "Caixa mês a mês"],
     ["financial-payables", "Contas a pagar"],
+    ["financial-pricing", "Preços e margem"],
   ];
   const settingsNav: [SettingsSection, string, string][] = [
     ["customers", "♙", "Clientes"],
@@ -3679,7 +3752,7 @@ export default function Home() {
               <div className="page">
                 <Heading
                   eyebrow="FINANCEIRO"
-                  title={screen === "financial-monthly" ? "Lucro mês a mês" : screen === "financial-cash" ? "Caixa mês a mês" : screen === "financial-payables" ? "Contas a pagar" : "Financeiro"}
+                  title={screen === "financial-monthly" ? "Lucro mês a mês" : screen === "financial-cash" ? "Caixa mês a mês" : screen === "financial-payables" ? "Contas a pagar" : screen === "financial-pricing" ? "Preços e margem" : "Financeiro"}
                   subtitle={
                     screen === "financial-monthly"
                       ? "Quanto sobrou ou faltou em cada mês: o que foi vendido menos as contas pagas."
@@ -3687,6 +3760,8 @@ export default function Home() {
                         ? "O dinheiro que entrou e saiu de verdade em cada mês."
                         : screen === "financial-payables"
                           ? "Cadastre e acompanhe as contas da empresa."
+                          : screen === "financial-pricing"
+                            ? "Veja quanto cada peça deixa de lucro, simule preços e compare fabricar com comprar pronta."
                           : "Veja quanto você vendeu, quanto gastou e quanto sobrou."
                   }
                   action={screen === "financial" || screen === "reports" ? <button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button> : undefined}
@@ -3706,6 +3781,130 @@ export default function Home() {
                 {financeData.historyTruncated && (screen === "financial-monthly" || screen === "financial-cash") && (
                   <p className="plain-warning">Histórico incompleto: há mais registros do que o sistema carrega de uma vez, e os meses mais antigos podem estar faltando.</p>
                 )}
+                {screen === "financial-pricing" && (() => {
+                  const today = todayIso();
+                  const bulkRate = parsePercent(bulkPercent);
+                  const rows = products
+                    .filter((product) => product.active)
+                    .map((product) => {
+                      const priceCents = Math.round(product.price * 100);
+                      const simulation = simulatePrice({
+                        priceCents,
+                        fabricatedCostCents: costOfSourceAt(productCosts, product.id, "fabricada", today)?.unitCostCents ?? null,
+                        purchasedCostCents: costOfSourceAt(productCosts, product.id, "comprada", today)?.unitCostCents ?? null,
+                        targetRate,
+                      });
+                      const inBulk = bulkRate !== null && bulkRate !== 0 && (!bulkType || product.pieceType === bulkType);
+                      const newPriceCents = inBulk ? adjustPrice(priceCents, bulkRate, bulkNinety ? "ninety" : "exact") : null;
+                      return { product, priceCents, simulation, newPriceCents, lastChange: priceTimeline(productPrices, product.id)[0] ?? null };
+                    });
+                  const bulkChanges = rows.flatMap((row) =>
+                    row.newPriceCents !== null && row.newPriceCents > 0 && row.newPriceCents !== row.priceCents
+                      ? [{ product: row.product, priceCents: row.newPriceCents }]
+                      : [],
+                  );
+                  // Situação atual: a peça é comprada pronta; sem esse custo, vale o de fabricação.
+                  const inUse = (row: (typeof rows)[number]) => (row.simulation.comprada.costCents !== null ? row.simulation.comprada : row.simulation.fabricada);
+                  const belowTarget = rows.filter((row) => inUse(row).reachesTarget === false).length;
+                  const withoutPurchase = rows.filter((row) => row.simulation.comprada.costCents === null).length;
+                  const cheaperToBuy = rows.filter((row) => row.simulation.cheaper === "comprada").length;
+                  const cheaperToMake = rows.filter((row) => row.simulation.cheaper === "fabricada").length;
+                  const sourceCell = (source: SourceSimulation, label: string) => (
+                    <span className="pricing-source" data-label={label}>
+                      {source.costCents === null ? (
+                        <small>falta o custo</small>
+                      ) : (
+                        <>
+                          <b>{money(source.costCents / 100)}</b>
+                          <small className={marginTone(source.onCost)}>{`lucro ${money((source.profitCents ?? 0) / 100)} · ${percent(source.onCost ?? 0)}`}</small>
+                        </>
+                      )}
+                    </span>
+                  );
+                  return (
+                    <>
+                      <section className="finance-kpi-grid payable-kpis">
+                        <article>
+                          <span>Meta de lucro</span>
+                          <strong>{percent(targetRate)}</strong>
+                          <small>Sobre o custo da peça</small>
+                        </article>
+                        <article className={belowTarget > 0 ? "attention" : ""}>
+                          <span>Abaixo da meta</span>
+                          <strong>{belowTarget}</strong>
+                          <small>{belowTarget > 0 ? "Peças com lucro menor que a meta" : "Todas as peças na meta"}</small>
+                        </article>
+                        <article>
+                          <span>Comprar x fabricar</span>
+                          <strong>{`${cheaperToBuy} x ${cheaperToMake}`}</strong>
+                          <small>Peças em que comprar sai mais barato x fabricar</small>
+                        </article>
+                        <article className={withoutPurchase > 0 ? "attention" : ""}>
+                          <span>Sem custo de compra</span>
+                          <strong>{withoutPurchase}</strong>
+                          <small>{withoutPurchase > 0 ? "Cadastre em Peças para comparar" : "Todas com custo de compra"}</small>
+                        </article>
+                      </section>
+                      <section className="panel plain-panel pricing-tools">
+                        <div className="pricing-tool">
+                          <h2>Meta de lucro</h2>
+                          <div className="pricing-tool-row">
+                            <Field label="Meta sobre o custo (%)">
+                              <input inputMode="decimal" value={targetInput} placeholder={percent(targetRate)} onChange={(e) => setTargetInput(e.target.value)} />
+                            </Field>
+                            <button type="button" className="outline-button" onClick={saveTargetRate} disabled={!targetInput.trim()}>Salvar meta</button>
+                          </div>
+                        </div>
+                        <div className="pricing-tool">
+                          <h2>Simular reajuste em várias peças</h2>
+                          <div className="pricing-tool-row">
+                            <Field label="Reajuste (%)">
+                              <input inputMode="decimal" value={bulkPercent} placeholder="ex.: 5 ou -3" onChange={(e) => setBulkPercent(e.target.value)} />
+                            </Field>
+                            <Field label="Tipo de peça">
+                              <select value={bulkType} onChange={(e) => setBulkType(e.target.value)}>
+                                <option value="">Todas</option>
+                                {pieceTypes.filter((type) => type.active).map((type) => <option key={type.id} value={type.name}>{type.name}</option>)}
+                              </select>
+                            </Field>
+                            <label className="pricing-check">
+                              <input type="checkbox" checked={bulkNinety} onChange={(e) => setBulkNinety(e.target.checked)} />
+                              Terminar em ,90
+                            </label>
+                            <button type="button" className="primary-button" onClick={() => applyBulkPrices(bulkChanges)} disabled={saving || !bulkChanges.length}>
+                              {bulkChanges.length ? `Aplicar em ${bulkChanges.length === 1 ? "1 peça" : `${bulkChanges.length} peças`}` : "Aplicar"}
+                            </button>
+                          </div>
+                          <small>Nada é gravado até você tocar em Aplicar. O preço novo aparece em cada peça, abaixo.</small>
+                        </div>
+                      </section>
+                      <section className="panel stock-panel">
+                        <div className="pricing-list">
+                          <div className="pricing-head" aria-hidden="true">
+                            <span>Peça</span><span>Preço</span><span>Comprando pronta</span><span>Fabricando</span><span>Comparação</span><span />
+                          </div>
+                          {!rows.length && <p className="compact-empty">Nenhuma peça ativa cadastrada.</p>}
+                          {rows.map((row) => (
+                            <div className="pricing-row" key={row.product.id}>
+                              <span className="stock-main"><b>{row.product.code}</b><small>{row.product.measure}</small></span>
+                              <span className="pricing-price" data-label="Preço">
+                                <b>{money(row.priceCents / 100)}</b>
+                                {row.newPriceCents !== null && row.newPriceCents !== row.priceCents && <small className="pricing-new">{`novo: ${money(row.newPriceCents / 100)}`}</small>}
+                                {row.lastChange && <small>{`desde ${brDate(row.lastChange.startsAt)}`}</small>}
+                              </span>
+                              {sourceCell(row.simulation.comprada, "Comprando pronta")}
+                              {sourceCell(row.simulation.fabricada, "Fabricando")}
+                              <span className="pricing-compare">{sourceComparison(row.simulation, money)}</span>
+                              <span className="stock-action">
+                                <button type="button" className="outline-button" onClick={() => openPriceSimulator(row.product)}>Simular</button>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    </>
+                  );
+                })()}
                 {screen === "financial-monthly" && (
                   <>
                     <section className={`plain-card plain-result month-hero ${resultTotal < 0 ? "negative" : "positive"}`}>
@@ -4825,6 +5024,76 @@ export default function Home() {
           </form>
         </Modal>
       )}
+      {pricingProduct && (() => {
+        const product = products.find((item) => item.id === pricingProduct.id) || pricingProduct;
+        const currentCents = Math.round(product.price * 100);
+        const priceCents = Math.round(parseCurrency(simPrice) * 100);
+        const fabricated = costOfSourceAt(productCosts, product.id, "fabricada", todayIso())?.unitCostCents ?? null;
+        const purchased = costOfSourceAt(productCosts, product.id, "comprada", todayIso())?.unitCostCents ?? null;
+        const baseCost = purchased ?? fabricated;
+        const simulation = simulatePrice({ priceCents, fabricatedCostCents: fabricated, purchasedCostCents: purchased, targetRate });
+        const column = (source: SourceSimulation, label: string) => (
+          <article className={`sim-col ${source.reachesTarget === null ? "" : source.reachesTarget ? "ok" : (source.profitCents ?? 0) < 0 ? "bad" : "warn"}`}>
+            <h3>{label}</h3>
+            {source.costCents === null ? (
+              <p className="compact-empty">Falta cadastrar este custo em Peças.</p>
+            ) : (
+              <dl>
+                <div><dt>Custo</dt><dd>{money(source.costCents / 100)}</dd></div>
+                <div><dt>{(source.profitCents ?? 0) < 0 ? "Prejuízo por peça" : "Lucro por peça"}</dt><dd><b>{money(Math.abs(source.profitCents ?? 0) / 100)}</b></dd></div>
+                <div><dt>Lucro sobre o custo</dt><dd>{percent(source.onCost ?? 0)}</dd></div>
+                <div><dt>Lucro sobre o preço</dt><dd>{percent(source.onPrice ?? 0)}</dd></div>
+                <div><dt>Preço mínimo, sem prejuízo</dt><dd>{money((source.minPriceCents ?? 0) / 100)}</dd></div>
+                <div><dt>{`Preço para a meta de ${percent(targetRate)}`}</dt><dd>{money((source.targetPriceCents ?? 0) / 100)}</dd></div>
+              </dl>
+            )}
+          </article>
+        );
+        return (
+          <Modal title={`Simular preço · ${product.code}`} close={() => setPricingProduct(null)}>
+            <div className="sim-inputs">
+              <Field label="Preço de venda">
+                <input
+                  inputMode="numeric"
+                  value={simPrice}
+                  onChange={(e) => {
+                    setSimPrice(maskCurrency(e.target.value));
+                    setSimMargin("");
+                  }}
+                />
+              </Field>
+              <Field label="Ou o lucro desejado sobre o custo (%)">
+                <input
+                  inputMode="decimal"
+                  value={simMargin}
+                  placeholder={percent(targetRate)}
+                  disabled={baseCost === null}
+                  onChange={(e) => {
+                    setSimMargin(e.target.value);
+                    const rate = parsePercent(e.target.value);
+                    if (rate !== null && baseCost !== null) setSimPrice(money(priceForMargin(baseCost, rate) / 100));
+                  }}
+                />
+              </Field>
+            </div>
+            <p className="sim-note">
+              {`Preço atual: ${money(currentCents / 100)}. `}
+              {baseCost === null ? "Cadastre o custo da peça para simular o lucro." : `O lucro desejado é calculado sobre o custo ${purchased !== null ? "comprando pronta" : "fabricando"}.`}
+            </p>
+            <div className="sim-grid">
+              {column(simulation.comprada, "Comprando pronta")}
+              {column(simulation.fabricada, "Fabricando")}
+            </div>
+            <p className="sim-compare">{sourceComparison(simulation, money)}</p>
+            <div className="form-actions">
+              <button type="button" className="cancel-button" onClick={() => setPricingProduct(null)}>Fechar</button>
+              <button type="button" className="primary-button" disabled={saving || priceCents <= 0 || priceCents === currentCents} onClick={() => applySimulatedPrice(product, priceCents)}>
+                Aplicar preço
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
       {productModal && (
         <Modal title={editingProduct ? "Editar peça" : "Cadastrar peça"} page pageLabel="" close={() => { setProductModal(false); setEditingProduct(null); }}>
           <form className="customer-page-form" onSubmit={saveProduct} noValidate>

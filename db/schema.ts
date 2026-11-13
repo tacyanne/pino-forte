@@ -105,6 +105,7 @@ export const appSettings = pgTable("app_settings", {
   responsible: text("responsible").notNull().default("Rogerio Mendes"),
   companyPhone: text("company_phone").notNull().default(""),
   orderFooter: text("order_footer").notNull().default("Documento gerado pelo sistema Pino Forte"),
+  targetProfitRate: doublePrecision("target_profit_rate").notNull().default(0.35),
 });
 
 export const appUsers = pgTable("app_users", {
