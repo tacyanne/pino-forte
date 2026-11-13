@@ -111,10 +111,8 @@ test("próximos 30 dias: a receber, a pagar, saldo e alerta de caixa apertado", 
     ],
   });
   assert.deepEqual(ahead, { inCents: 60000, outCents: 46000, balanceCents: 14000, tightCents: 42000, tightOrders: ["OS-EX-1"] });
-  assert.equal(
-    tightSentence(ahead, money),
-    "Atenção: R$ 420,00 ao fornecedor vencem no mesmo dia ou antes de você receber a OS-EX-1. Se o cliente atrasar, falta caixa.",
-  );
+  // conta do fornecedor no mesmo dia do recebimento não gera mais aviso: só falta de caixa avisa
+  assert.equal(tightSentence(ahead, money), "");
 
   const calm = forecastAhead({ today, receivables: [receivable({ dueDate: "2026-03-12" })], payables: [{ id: 1, supplier: "Fornecedor Y", dueDate: "2026-03-20", amountCents: 3000, orderId: 1 }] });
   assert.equal(calm.tightCents, 0);

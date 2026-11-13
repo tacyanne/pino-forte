@@ -195,6 +195,7 @@ test("lista do estoque: zero no lugar do traço, zeradas primeiro e sem botão d
   assert.ok(page.includes("(a.row?.available ?? 0) - (b.row?.available ?? 0)"));
   // zeradas primeiro (menor disponível no topo) e sem botão de saída na lista
   assert.equal(page.includes("isEmptyStock"), false);
+  assert.ok(page.includes('(row?.status === "zerado" ? 0 : !row || row.status === "sem-contagem" ? 2 : 1)'));
   assert.equal(page.includes(">Dar saída</button>"), false);
   assert.equal(page.includes(">Contar</button>"), false);
 });

@@ -258,15 +258,11 @@ export function forecastAhead(input: { today: string; receivables: OpenReceivabl
   return { inCents, outCents, balanceCents: inCents - outCents, tightCents, tightOrders: [...tightOrders].sort() };
 }
 
-// Frase do alerta de caixa apertado (vazia quando não há).
+// Frase do alerta de caixa: só quando há mais a pagar do que a receber (vazia quando não há).
 export function tightSentence(forecast: DashboardForecast, money: (value: number) => string) {
   if (forecast.balanceCents < 0)
     return `Atenção: nos próximos dias você tem mais a pagar do que a receber. Faltam ${money(-forecast.balanceCents / 100)}.`;
-  if (forecast.tightCents <= 0) return "";
-  const orders = forecast.tightOrders.join(" e ");
-  return `Atenção: ${money(forecast.tightCents / 100)} ao fornecedor vencem no mesmo dia ou antes de você receber ${
-    forecast.tightOrders.length === 1 ? `a ${orders}` : `as ${orders}`
-  }. Se o cliente atrasar, falta caixa.`;
+  return "";
 }
 
 // "outubro: R$ 320,00" ao lado do número do mês atual.

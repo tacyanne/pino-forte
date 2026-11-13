@@ -216,6 +216,9 @@ type WalletEntry = {
 
 const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+// Ordem das listas de estoque: "Zerado" (já teve lote e acabou) vem primeiro;
+// "Sem estoque" (nunca entrou em lote) vai para o fim; o resto fica no meio.
+const stockRank = (row?: { status: string }) => (row?.status === "zerado" ? 0 : !row || row.status === "sem-contagem" ? 2 : 1);
 const isDistributor = (customerType?: string) =>
   customerType?.trim().toLocaleLowerCase("pt-BR") === "distribuidor";
 
@@ -3835,9 +3838,9 @@ export default function Home() {
                     </div>
                     {!filteredProducts.length && <p className="compact-empty">Nenhuma peça encontrada.</p>}
                     {filteredProducts
-                      // Mesma ordem da tela Estoque: do menor disponível para o maior, com as zeradas primeiro.
+                      // Mesma ordem da tela Estoque: zeradas no topo, depois do menor disponível para o maior.
                       .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
-                      .sort((a, b) => (a.row?.available ?? 0) - (b.row?.available ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .sort((a, b) => stockRank(a.row) - stockRank(b.row) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || a.item.code.localeCompare(b.item.code))
                       .map(({ item: p }) => {
                       const cost = currentCostOf(p.id);
                       const costValue = (cost?.unitCostCents ?? 0) / 100;
@@ -4561,9 +4564,9 @@ export default function Home() {
                     </div>
                     {products
                       .filter((item) => item.active)
-                      // Do menor disponível para o maior: o que falta e o que está zerado aparecem primeiro.
+                      // Zeradas no topo; depois do menor disponível para o maior; peças que nunca entraram em lote no fim.
                       .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
-                      .sort((a, b) => (a.row?.available ?? 0) - (b.row?.available ?? 0) || (a.row?.balance ?? 0) - (b.row?.balance ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .sort((a, b) => stockRank(a.row) - stockRank(b.row) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || (a.row?.balance ?? 0) - (b.row?.balance ?? 0) || a.item.code.localeCompare(b.item.code))
                       .map(({ item }) => {
                       const row = stock.rows.find((entry) => entry.productId === item.id);
                       if (!row) return null;
