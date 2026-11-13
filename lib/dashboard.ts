@@ -2,7 +2,7 @@
 // Módulo puro (tela e testes). Valores em centavos inteiros.
 
 export type ActionTone = "red" | "amber" | "blue";
-export type ActionTarget = "order" | "payables" | "stock" | "pricing" | "products";
+export type ActionTarget = "order" | "payables" | "stock" | "pricing" | "products" | "batch";
 
 export type DashboardAction = {
   key: string;
@@ -12,7 +12,14 @@ export type DashboardAction = {
   button: string;
   target: ActionTarget;
   orderId?: number | null;
+  batchId?: number;
 };
+
+// Situação de um lote de compra, vinda do estudo do lote.
+export type BatchSignal = { id: number; supplier: string; totalCents: number; stockQty: number; boughtQty: number };
+
+// Lote com 80% ou mais vendido está acabando.
+export const BATCH_ENDING_SHARE = 0.8;
 
 export type OpenReceivable = {
   key: string;
@@ -74,6 +81,7 @@ export function buildDashboardActions(input: {
   receivables: OpenReceivable[];
   payables: OpenPayable[];
   queue?: QueuedOrder[];
+  batches?: BatchSignal[];
   stock: StockSignal[];
   pieces: PieceMargin[];
   targetRate: number;
@@ -162,6 +170,30 @@ export function buildDashboardActions(input: {
       button: "Estoque",
       target: "stock",
     });
+  }
+
+  // Lotes de compra: o que caminha para prejuízo e o que está acabando.
+  for (const batch of input.batches ?? []) {
+    if (batch.totalCents < 0)
+      push(16, {
+        key: `lote-prejuizo-${batch.id}`,
+        tone: "red",
+        title: `Lote ${batch.supplier} caminha para prejuízo de ${format.money(-batch.totalCents / 100)}`,
+        detail: "Veja no estudo do lote quais peças e vendas puxam o resultado para baixo",
+        button: "Ver lote",
+        target: "batch",
+        batchId: batch.id,
+      });
+    else if (batch.boughtQty > 0 && batch.stockQty > 0 && 1 - batch.stockQty / batch.boughtQty >= BATCH_ENDING_SHARE)
+      push(25, {
+        key: `lote-acabando-${batch.id}`,
+        tone: "amber",
+        title: `Lote ${batch.supplier} está acabando: ${plural(batch.stockQty, "peça restante", "peças restantes")}`,
+        detail: `${batch.boughtQty - batch.stockQty} de ${batch.boughtQty} já saíram · hora de pensar na próxima compra`,
+        button: "Ver lote",
+        target: "batch",
+        batchId: batch.id,
+      });
   }
 
   const priced = input.pieces.filter((piece) => piece.onCost !== null) as { code: string; onCost: number }[];
