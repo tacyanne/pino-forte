@@ -46,6 +46,7 @@ type Screen =
   | "financial-cash"
   | "financial-payables"
   | "financial-pricing"
+  | "batches"
   | "wallet"
   | "reports"
   | "settings";
@@ -2966,6 +2967,7 @@ export default function Home() {
     ["dashboard", "⌂", "Início"],
     ["orders", "▤", "OS"],
     ["stock", "▥", "Estoque"],
+    ["batches", "▧", "Lotes"],
     ["wallet", "▣", "Carteira"],
     ["catalog", "▦", "Catálogo"],
     ["financial", "$", "Financeiro"],
@@ -3173,7 +3175,10 @@ export default function Home() {
                     format: { money, brDate, percent },
                   });
                   const openAction = (action: DashboardAction) => {
-                    if (action.target === "batch") return setViewingBatchId(action.batchId ?? null);
+                    if (action.target === "batch") {
+                      go("batches");
+                      return setViewingBatchId(action.batchId ?? null);
+                    }
                     if (action.target === "order") {
                       const order = action.orderId ? ordersById.get(action.orderId) : undefined;
                       return order ? setOrderModal(order) : go("orders");
@@ -4522,11 +4527,18 @@ export default function Home() {
                     })}
                   </div>
                 </section>
-                <section className="panel plain-panel">
-                  <div className="batch-title">
-                    <h2>Lotes de compra</h2>
-                    <button type="button" className="primary-button" onClick={() => setBatchForm({ id: null })}>＋ Lançar lote</button>
-                  </div>
+              </div>
+            )}
+            {screen === "batches" && (
+              <div className="page">
+                <Heading
+                  eyebrow="COMPRAS"
+                  title="Lotes de compra"
+                  subtitle="Cada compra do fornecedor, o que já vendeu e quanto ela rende."
+                  action={<button className="primary-button" onClick={() => setBatchForm({ id: null })}>＋ Lançar lote</button>}
+                />
+                {stockError && <p className="modal-error">{stockError}</p>}
+                <section className="panel plain-panel batch-panel">
                   {!purchaseBatches.length && <p className="compact-empty">Nenhum lote de compra lançado ainda.</p>}
                   {batchData.outsideQty > 0 && (
                     <p className="plain-warning">

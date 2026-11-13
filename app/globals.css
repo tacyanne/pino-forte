@@ -1245,9 +1245,6 @@ button.plain-row{cursor:pointer}
 @media(min-width:760px){.batch-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
 
 /* Lançar e editar lote de compra */
-.batch-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
-.batch-title h2{margin:0}
-.batch-title .primary-button{min-height:40px;padding:0 14px;white-space:nowrap}
 .batch-actions{justify-content:space-between}
 .batch-actions .record-inactivate{min-height:44px;padding:0 16px;border-radius:10px;font-weight:800}
 .batch-form{display:grid;gap:12px}
