@@ -218,8 +218,6 @@ const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const isDistributor = (customerType?: string) =>
   customerType?.trim().toLocaleLowerCase("pt-BR") === "distribuidor";
-// Peça zerada: nada em estoque e nada prometido na fila.
-const isEmptyStock = (row?: { balance: number | null; reserved: number }) => (row?.balance ?? 0) <= 0 && (row?.reserved ?? 0) === 0;
 
 const brDate = (date: string) => {
   if (date && (date.includes("T") || date.includes(" "))) {
@@ -1455,6 +1453,10 @@ export default function Home() {
     setViewingProduct(null);
     setOrderModal(null);
     setWalletPayment(null);
+    // Lote aberto em página (estudo, lançamento ou edição) fecha ao trocar de menu.
+    setViewingBatchId(null);
+    setBatchForm(null);
+    setPricingProduct(null);
     if (next === "orders") {
       setQuery("");
       setPaymentFilter("Todos");
@@ -3833,9 +3835,9 @@ export default function Home() {
                     </div>
                     {!filteredProducts.length && <p className="compact-empty">Nenhuma peça encontrada.</p>}
                     {filteredProducts
-                      // Mesma ordem da tela Estoque: menos disponível primeiro; as zeradas ficam no fim.
+                      // Mesma ordem da tela Estoque: do menor disponível para o maior, com as zeradas primeiro.
                       .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
-                      .sort((a, b) => Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .sort((a, b) => (a.row?.available ?? 0) - (b.row?.available ?? 0) || a.item.code.localeCompare(b.item.code))
                       .map(({ item: p }) => {
                       const cost = currentCostOf(p.id);
                       const costValue = (cost?.unitCostCents ?? 0) / 100;
@@ -4555,13 +4557,13 @@ export default function Home() {
                 <section className="panel stock-panel">
                   <div className="stock-list">
                     <div className="stock-head" aria-hidden="true">
-                      <span>Peça</span><span>Em estoque</span><span>Prometido</span><span>Disponível</span><span>Ritmo de venda</span><span>Situação</span><span />
+                      <span>Peça</span><span>Em estoque</span><span>Prometido</span><span>Disponível</span><span>Ritmo de venda</span><span>Situação</span>
                     </div>
                     {products
                       .filter((item) => item.active)
-                      // Peça com menos disponível primeiro; as zeradas (nada em estoque, nada prometido) ficam no fim.
+                      // Do menor disponível para o maior: o que falta e o que está zerado aparecem primeiro.
                       .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
-                      .sort((a, b) => Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || (a.row?.balance ?? 0) - (b.row?.balance ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .sort((a, b) => (a.row?.available ?? 0) - (b.row?.available ?? 0) || (a.row?.balance ?? 0) - (b.row?.balance ?? 0) || a.item.code.localeCompare(b.item.code))
                       .map(({ item }) => {
                       const row = stock.rows.find((entry) => entry.productId === item.id);
                       if (!row) return null;
@@ -4574,9 +4576,6 @@ export default function Home() {
                           <span className={`stock-number ${row.available !== null && row.available < 0 ? "negative" : ""}`} data-label="Disponível">{row.available ?? 0}</span>
                           <span className="stock-pace">{paceSentence(row)}</span>
                           <span className="stock-status"><span className={`status ${tone}`}>{STOCK_STATUS_LABEL[row.status]}</span></span>
-                          <span className="stock-action">
-                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "saida" })} disabled={saving}>Dar saída</button>
-                          </span>
                         </div>
                       );
                     })}

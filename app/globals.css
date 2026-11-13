@@ -1272,3 +1272,6 @@ button.plain-row{cursor:pointer}
 .batch-form-row.locked input,.batch-form .field input[readonly]{background:#eef1f0;color:#6b7779;cursor:not-allowed}
 .batch-form-row.locked small{color:#9a6400}
 .batch-actions .record-inactivate:disabled{opacity:.5;cursor:not-allowed}
+
+/* Estoque sem a coluna de ação: seis colunas no computador */
+@media(min-width:900px){.stock-head,.stock-row{grid-template-columns:minmax(0,1.3fr) 100px 100px 100px minmax(0,1.5fr) 120px!important}}
