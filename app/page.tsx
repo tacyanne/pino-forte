@@ -22,7 +22,7 @@ import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
-import { STOCK_KIND_LABEL, STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
+import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
@@ -211,6 +211,9 @@ const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const isDistributor = (customerType?: string) =>
   customerType?.trim().toLocaleLowerCase("pt-BR") === "distribuidor";
+// Peça zerada: nada em estoque e nada prometido na fila.
+const isEmptyStock = (row?: { balance: number | null; reserved: number }) => (row?.balance ?? 0) <= 0 && (row?.reserved ?? 0) === 0;
+
 const brDate = (date: string) => {
   if (date && (date.includes("T") || date.includes(" "))) {
     const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -4065,7 +4068,7 @@ export default function Home() {
                 {stockError && <p className="modal-error">{stockError}</p>}
                 {!stockError && stock.totals.uncounted > 0 && (
                   <p className="plain-warning">
-                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não foi contada" : `${stock.totals.uncounted} peças ainda não foram contadas`}. Conte no fim do dia e toque em "Contar": a partir daí, cada OS entregue baixa o estoque sozinha.`}
+                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não foi contada" : `${stock.totals.uncounted} peças ainda não foram contadas`}. Toque em "Lançar" para registrar uma contagem ou uma entrada: a partir daí, cada OS entregue baixa o estoque sozinha.`}
                   </p>
                 )}
                 <section className="finance-kpi-grid payable-kpis">
@@ -4095,21 +4098,25 @@ export default function Home() {
                     <div className="stock-head" aria-hidden="true">
                       <span>Peça</span><span>Em estoque</span><span>Prometido</span><span>Disponível</span><span>Ritmo de venda</span><span>Situação</span><span />
                     </div>
-                    {products.filter((item) => item.active).map((item) => {
+                    {products
+                      .filter((item) => item.active)
+                      // Peça com menos disponível primeiro; as zeradas (nada em estoque, nada prometido) ficam no fim.
+                      .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
+                      .sort((a, b) => Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || (a.row?.balance ?? 0) - (b.row?.balance ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .map(({ item }) => {
                       const row = stock.rows.find((entry) => entry.productId === item.id);
                       if (!row) return null;
                       const tone = row.status === "ok" ? "green" : row.status === "falta" || row.status === "zerado" ? "red" : "amber";
                       return (
                         <div className="stock-row" key={item.id}>
                           <span className="stock-main"><b>{item.code}</b><small>{item.measure}</small></span>
-                          <span className="stock-number" data-label="Em estoque">{row.balance === null ? "—" : row.balance}</span>
+                          <span className="stock-number" data-label="Em estoque">{row.balance ?? 0}</span>
                           <span className="stock-number" data-label="Prometido">{row.reserved}</span>
-                          <span className={`stock-number ${row.available !== null && row.available < 0 ? "negative" : ""}`} data-label="Disponível">{row.available === null ? "—" : row.available}</span>
+                          <span className={`stock-number ${row.available !== null && row.available < 0 ? "negative" : ""}`} data-label="Disponível">{row.available ?? 0}</span>
                           <span className="stock-pace">{paceSentence(row)}</span>
                           <span className="stock-status"><span className={`status ${tone}`}>{STOCK_STATUS_LABEL[row.status]}</span></span>
                           <span className="stock-action">
-                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "contagem" })} disabled={saving}>Contar</button>
-                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "entrada" })} disabled={saving}>Entrada</button>
+                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "entrada" })} disabled={saving}>Lançar</button>
                           </span>
                         </div>
                       );
@@ -4119,22 +4126,37 @@ export default function Home() {
                 <section className="panel plain-panel">
                   <h2>Histórico do estoque</h2>
                   {!stock.history.length && <p className="compact-empty">Nenhum lançamento ainda. Depois da primeira contagem ou entrada, as OS entregues aparecem aqui como saída.</p>}
-                  {stock.history.slice(0, 15).map((item) => {
-                    const piece = products.find((product) => product.id === item.productId);
-                    const movement = item.movement;
-                    return (
-                      <div className="plain-row" key={item.key}>
-                        <span>
-                          <b>{piece?.code || "Peça removida"}</b>
-                          {item.kind === "os" ? ` · Saída pela ${item.orderNumber || "OS"}: ${item.quantity}` : ` · ${STOCK_KIND_LABEL[item.kind]}: ${item.quantity}`}
-                          <small>{` ${brDate(item.date)}${item.kind === "os" ? " · automática, da OS entregue" : movement?.notes ? ` · ${movement.notes}` : ""}`}</small>
-                        </span>
-                        {movement && (
-                          <button className="outline-button" onClick={() => deleteStockMovement(movement)} disabled={saving}>Excluir</button>
-                        )}
+                  {(() => {
+                    // Agrupado por dia: a data aparece uma vez, e cada lançamento ocupa uma linha curta.
+                    const days: { date: string; items: typeof stock.history }[] = [];
+                    for (const item of stock.history.slice(0, 30)) {
+                      const day = days[days.length - 1];
+                      if (day && day.date === item.date) day.items.push(item);
+                      else days.push({ date: item.date, items: [item] });
+                    }
+                    return days.map((day) => (
+                      <div className="stock-history-day" key={day.date}>
+                        <h3>{brDate(day.date)}</h3>
+                        {day.items.map((item) => {
+                          const piece = products.find((product) => product.id === item.productId);
+                          const movement = item.movement;
+                          const isOrder = item.kind === "os";
+                          return (
+                            <div className="stock-history-row" key={item.key}>
+                              <b>{piece?.code || "Peça removida"}</b>
+                              <span className={isOrder ? "out" : item.kind === "entrada" ? "in" : ""}>
+                                {isOrder ? `−${item.quantity} · ${item.orderNumber || "OS"}` : item.kind === "entrada" ? `+${item.quantity} · entrada` : item.kind === "saida" ? `−${item.quantity} · saída` : `${item.quantity} · contagem`}
+                                {movement?.notes ? ` · ${movement.notes}` : ""}
+                              </span>
+                              {movement ? (
+                                <button type="button" className="link-delete" onClick={() => deleteStockMovement(movement)} disabled={saving} aria-label={`Excluir lançamento de ${piece?.code || "peça"}`}>Excluir</button>
+                              ) : <small>automática</small>}
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    ));
+                  })()}
                 </section>
               </div>
             )}

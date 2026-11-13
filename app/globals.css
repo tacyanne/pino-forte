@@ -1060,3 +1060,15 @@ button.plain-row{cursor:pointer}
   .stock-action{justify-content:flex-end}
   .stock-action .outline-button{flex:0 0 auto;min-height:34px;height:34px}
 }
+/* Histórico do estoque compacto, agrupado por dia */
+.stock-history-day{border-top:1px solid #e5e9e8;padding:8px 0 4px}
+.stock-history-day h3{margin:0 0 4px;font-size:11px;font-weight:800;letter-spacing:.03em;color:var(--muted)}
+.stock-history-row{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:30px;font-size:12.5px}
+.stock-history-row b{color:var(--ink);white-space:nowrap}
+.stock-history-row span{min-width:0;color:#3f4f52;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stock-history-row span.in{color:#1d6b53}
+.stock-history-row span.out{color:#b3401d}
+.stock-history-row small{font-size:11px;color:var(--muted)}
+.stock-history-row .link-delete{border:0;background:transparent;padding:4px 0;color:#b3401d;font-size:11.5px;font-weight:700;cursor:pointer}
+.stock-history-row .link-delete:hover{text-decoration:underline}
+@media(min-width:900px){.stock-head,.stock-row{grid-template-columns:minmax(0,1.2fr) 92px 92px 92px minmax(0,1.3fr) 110px 96px}}
