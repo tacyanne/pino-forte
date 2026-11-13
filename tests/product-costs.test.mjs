@@ -156,7 +156,7 @@ test("tela mostra custo nas peças e lucro no financeiro", () => {
   // estoque sempre em número (zero quando não há) e na mesma ordem da tela Estoque
   assert.ok(page.includes("const available = stockRow?.available ?? 0;"));
   assert.equal(page.includes("<small>sem estoque</small>"), false);
-  assert.equal(page.split(".sort((a, b) => (a.row?.available ?? 0) - (b.row?.available ?? 0) ||").length - 1, 2);
+  assert.equal(page.split(".sort((a, b) => stockRank(a.row) - stockRank(b.row) || (a.row?.available ?? 0) - (b.row?.available ?? 0) ||").length - 1, 2);
   assert.ok(page.includes('costField("costMaterial"'));
   assert.ok(page.includes('name="costStartsAt"'));
   assert.ok(page.includes("...(costChanged ? { cost } : {})"));
