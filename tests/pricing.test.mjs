@@ -103,6 +103,8 @@ test("tela Preços e margem fica no Financeiro, com simulador e meta configuráv
     "Aplicar preço",
     "saveTargetRate",
     "rate >= targetRate",
+    'value={simMargin !== "" ? simMargin : currentRate === null ? "" : percent(currentRate)}',
+    'onBlur={() => setSimMargin("")}',
   ])
     assert.ok(page.includes(text), text);
   assert.ok(settingsApi.includes("target_profit_rate: targetProfitRate"));
