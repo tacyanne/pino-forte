@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   FORECAST_MIN_DAYS,
+  cashForecast,
   barHeights,
   dedupeReceipts,
   divergingBars,
@@ -152,4 +153,31 @@ test("valor da OS em centavos segue o valor em reais quando os dois divergem", (
 test("tela inicial lista todas as OS em aberto, da que vence primeiro", () => {
   assert.equal(page.includes("openReceivableRows.slice(0, 6)"), false);
   assert.ok(page.includes("dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate) || a.receivable.id - b.receivable.id"));
+});
+
+test("previsão de caixa cobre o resto do mês e os próximos 3, com atrasados no mês atual", () => {
+  const rows = cashForecast({
+    receivables: [
+      { dueDate: "2026-10-20", balanceCents: 10000 },
+      { dueDate: "2026-11-25", balanceCents: 30000 },
+      { dueDate: "2026-12-06", balanceCents: 20000 },
+      { dueDate: "2027-02-10", balanceCents: 5000 },
+      { dueDate: "2027-03-01", balanceCents: 99900 },
+      { dueDate: "2026-12-15", balanceCents: 0 },
+    ],
+    payables: [
+      { dueDate: "2026-11-15", amountCents: 4000 },
+      { dueDate: "2027-01-05", amountCents: 12000 },
+    ],
+    todayIso: "2026-11-12",
+    startBalanceCents: -8000,
+  });
+  assert.deepEqual(rows.map((row) => row.month), ["2026-11", "2026-12", "2027-01", "2027-02"]);
+  assert.deepEqual(rows.map((row) => row.isCurrent), [true, false, false, false]);
+  assert.deepEqual(rows.map((row) => row.inCents), [40000, 20000, 0, 5000]);
+  assert.deepEqual(rows.map((row) => row.outCents), [4000, 0, 12000, 0]);
+  assert.deepEqual(rows.map((row) => row.balanceCents), [28000, 48000, 36000, 41000]);
+  assert.equal(cashForecast({ receivables: [], payables: [], todayIso: "2026-12-30", startBalanceCents: 100 }).length, 4);
+  assert.ok(page.includes("Previsão dos próximos 3 meses"));
+  assert.ok(page.includes("startBalanceCents: cashTotal"));
 });

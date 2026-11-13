@@ -24,7 +24,7 @@ import type { PieceType } from "../lib/piece-types";
 import { activePeriod, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
-import { barHeights, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
+import { barHeights, cashForecast, dedupeReceipts, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
 type Screen =
   | "dashboard"
@@ -1124,6 +1124,16 @@ export default function Home() {
   const monthForecast = monthly.forecast;
   const resultTotal = resultByMonth.length ? resultByMonth[resultByMonth.length - 1].accumulatedCents : 0;
   const cashTotal = cashByMonth.length ? cashByMonth[cashByMonth.length - 1].balanceCents : 0;
+  // Previsão do caixa: resto deste mês e os próximos 3, com o que já está lançado para receber e pagar.
+  const cashForecastRows = cashForecast({
+    receivables: openReceivableRows.map((row) => ({ dueDate: row.dueDate, balanceCents: Math.round(row.balance * 100) })),
+    payables: financeData.accountsPayable
+      .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
+      .map((payable) => ({ dueDate: payable.dueDate, amountCents: payable.amountCents })),
+    todayIso: todayIso(),
+    startBalanceCents: cashTotal,
+  });
+  const cashForecastEnd = cashForecastRows[cashForecastRows.length - 1];
   // Caixa do período escolhido no Resumo: mesma regra da tela "Caixa mês a mês" (data do recebimento e do pagamento).
   const periodCash = reportMonth ? cashByMonth.filter((row) => row.month === reportMonth) : cashByMonth;
   const periodCashIn = periodCash.reduce((sum, row) => sum + row.inCents, 0);
@@ -3673,6 +3683,29 @@ export default function Home() {
                         </section>
                       );
                     })()}
+                    <section className="panel plain-panel">
+                      <h2>Previsão dos próximos 3 meses</h2>
+                      <p className="plain-text">
+                        {`Se tudo for recebido e pago no vencimento, o caixa chega a ${money(cashForecastEnd.balanceCents / 100)} em ${shortMonth(cashForecastEnd.month)}.`}
+                      </p>
+                      <div className="month-table-wrap">
+                        <table className="month-table forecast-table">
+                          <thead><tr><th>Mês</th><th>Vai entrar</th><th>Vai sair</th><th>Saldo do mês</th><th>Caixa previsto</th></tr></thead>
+                          <tbody>
+                            {cashForecastRows.map((row) => (
+                              <tr key={row.month}>
+                                <td>{row.isCurrent ? `resto de ${shortMonth(row.month)}` : shortMonth(row.month)}</td>
+                                <td>{money(row.inCents / 100)}</td>
+                                <td>{money(row.outCents / 100)}</td>
+                                <td className={row.netCents < 0 ? "negative" : "positive"}>{money(row.netCents / 100)}</td>
+                                <td className={row.balanceCents < 0 ? "negative" : "positive"}>{money(row.balanceCents / 100)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="plain-text muted">Conta só o que já está lançado: OS a receber e contas a pagar, pelo vencimento. O que está atrasado entra neste mês. Vendas e contas novas ainda não aparecem.</p>
+                    </section>
                     {cashByMonth.length > 0 && (
                       <section className="panel plain-panel">
                         <h2>Os números de cada mês</h2>

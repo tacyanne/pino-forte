@@ -1023,3 +1023,10 @@ button.plain-row{cursor:pointer}
 @media(min-width:761px){
   .piece-bar-row .piece-split{grid-column:2/-1;grid-row:2;margin-top:-4px}
 }
+/* Previsão de caixa: no celular mostra o caixa previsto e esconde o saldo do mês */
+.forecast-table th:nth-child(4),.forecast-table td:nth-child(4){display:none}
+.forecast-table th:nth-child(5),.forecast-table td:nth-child(5){display:table-cell}
+.plain-panel .month-table-wrap+.plain-text{margin-top:10px}
+@media(min-width:761px){
+  .forecast-table th:nth-child(4),.forecast-table td:nth-child(4){display:table-cell}
+}
