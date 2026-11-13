@@ -93,7 +93,7 @@ test("resultado de cada peça em palavras", () => {
 });
 
 test("tela usa linguagem simples e não os termos técnicos antigos", () => {
-  for (const text of ["Quanto vendi", "Quanto gastei", "Quanto sobrou", "Precisa da sua atenção", "Suas peças: onde você ganha e onde perde", "Esse gasto é para fabricar peça?"])
+  for (const text of ["Quanto vendi", "Quanto gastei", "Quanto sobrou", "Precisa da sua atenção", "Suas peças: onde você ganha e onde perde", "Gasto para fabricar peça"])
     assert.ok(page.includes(text), text);
   const start = page.indexOf('title="Financeiro"');
   const end = page.indexOf('<section className="financial-layout">', start);
@@ -106,4 +106,12 @@ test("tela usa linguagem simples e não os termos técnicos antigos", () => {
 test("migration cria a categoria sem duplicar", () => {
   assert.ok(migration.includes("'Custo de fabricacao'"));
   assert.ok(/on conflict/i.test(migration));
+});
+
+test("conta pendente pode ser editada, inclusive a marcação de fabricação", () => {
+  assert.ok(page.includes('editingPayable ? "Editar conta a pagar" : "Cadastrar conta a pagar"'));
+  assert.ok(page.includes('{ entity: "accountsPayable", id: editingPayable.id, ...fields, ...categoryChange }'));
+  assert.ok(page.includes("onClick={() => openPayableForm(payable)}"));
+  assert.ok(page.includes('type="checkbox"\n                  name="isFabrication"'));
+  assert.ok(page.includes("!isFabrication && wasFabrication ? { categoryId: null }"));
 });
