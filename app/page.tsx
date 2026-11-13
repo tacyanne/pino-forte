@@ -4527,7 +4527,7 @@ export default function Home() {
                 {stockError && <p className="modal-error">{stockError}</p>}
                 {!stockError && stock.totals.uncounted > 0 && (
                   <p className="plain-warning">
-                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não foi contada" : `${stock.totals.uncounted} peças ainda não foram contadas`}. Toque em "Lançar" para registrar uma contagem ou uma entrada: a partir daí, cada OS entregue baixa o estoque sozinha.`}
+                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não foi contada" : `${stock.totals.uncounted} peças ainda não foram contadas`}. A peça entra no estoque quando você lança o lote de compra (Financeiro → Lotes de compra): a partir daí, cada OS entregue baixa o estoque sozinha.`}
                   </p>
                 )}
                 <section className="finance-kpi-grid payable-kpis">
@@ -4575,7 +4575,7 @@ export default function Home() {
                           <span className="stock-pace">{paceSentence(row)}</span>
                           <span className="stock-status"><span className={`status ${tone}`}>{STOCK_STATUS_LABEL[row.status]}</span></span>
                           <span className="stock-action">
-                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "entrada" })} disabled={saving}>Lançar</button>
+                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "saida" })} disabled={saving}>Ajustar</button>
                           </span>
                         </div>
                       );
@@ -5650,9 +5650,8 @@ export default function Home() {
             <div className="form-grid">
               <Field label="O que aconteceu *">
                 <select name="kind" defaultValue={stockForm.kind}>
-                  <option value="contagem">Contei: é isso que tenho agora</option>
-                  <option value="entrada">Entrada: comprei peças</option>
                   <option value="saida">Saída: perdi, quebrei ou usei</option>
+                  <option value="contagem">Contei: é isso que tenho agora</option>
                 </select>
               </Field>
               <Field label="Quantidade de peças *">
@@ -5665,6 +5664,7 @@ export default function Home() {
                 <input name="notes" maxLength={200} />
               </Field>
             </div>
+            <p className="plain-text muted">Peça nova entra no estoque só pelo lote de compra (Financeiro → Lotes de compra). Aqui ficam os ajustes: saída sem venda e contagem.</p>
             <p className="plain-text muted">A contagem vale como fim do dia: as OS entregues depois dessa data baixam o estoque sozinhas.</p>
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setStockForm(null)}>Cancelar</button>

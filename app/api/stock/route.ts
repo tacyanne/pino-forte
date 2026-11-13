@@ -268,6 +268,9 @@ export async function POST(request: Request) {
       return Response.json({ movements: await listMovements(), batches: await listBatchesSafe() }, { status: 201, headers });
     }
     const input = parseStockMovement(body, todayIso());
+    // Peça nova só entra pelo lote de compra, que guarda fornecedor e custo pago.
+    if (input.kind === "entrada")
+      throw new StockError("Peça nova entra no estoque pelo lote de compra (Financeiro → Lotes de compra).");
     if (hasSupabaseRest()) {
       const created = await supabaseInsert<Record<string, unknown>>("stock_movements", {
         product_id: input.productId,
