@@ -24,6 +24,7 @@ import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
+import { buildDashboardActions, forecastAhead, previousLabel, tightSentence, type DashboardAction } from "../lib/dashboard";
 import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
 import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, costUseAt, latestCostUse, type CostUse, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
@@ -151,6 +152,7 @@ type ReceivableInstallment = {
 type FinanceCategory = { id: number; name: string; type: string; active: boolean };
 type AccountPayable = {
   id: number;
+  serviceOrderId?: number | null;
   categoryId?: number | null;
   supplier: string;
   description: string;
@@ -857,30 +859,6 @@ export default function Home() {
     !!String(editingOrder.paymentMethod || "").trim();
   const showFinancialFields = selectedOrderStatus === ORDER_STATUS.delivered || legacyQueueWithPayment;
   // Recebido de cada mês pela data do recebimento, a mesma regra do Caixa mês a mês.
-  const cashInByMonth = useMemo(() => {
-    const byMonth: Record<string, number> = {};
-    const confirmed = dedupeReceipts(
-      financeData.receipts,
-      Object.fromEntries(orders.map((order) => [order.id, Math.round(order.received * 100)])),
-    );
-    for (const receipt of confirmed) {
-      const month = receipt.receiptDate.slice(0, 7);
-      byMonth[month] = (byMonth[month] || 0) + receipt.amountCents / 100;
-    }
-    return byMonth;
-  }, [financeData.receipts, orders]);
-  const dashboardFinance = useMemo(() => {
-    const monthOrders = orders.filter(
-      (order) => order.productionStatus === ORDER_STATUS.delivered && monthInSaoPaulo(order.createdAt) === dashboardMonth,
-    );
-    const sales = monthOrders.reduce((sum, order) => sum + order.total, 0);
-    const receivedOnMonthOrders = monthOrders.reduce(
-      (sum, order) => sum + order.received,
-      0,
-    );
-    // "Recebido" é o que entrou no mês; "Pendente" é o que falta receber das vendas do mês.
-    return { sales, received: cashInByMonth[dashboardMonth] || 0, pending: Math.max(0, sales - receivedOnMonthOrders) };
-  }, [orders, dashboardMonth, cashInByMonth]);
   // OS aguardando produção/entrega, da mais antiga para a mais nova.
   const queueOrders = useMemo(
     () =>
@@ -911,29 +889,6 @@ export default function Home() {
     });
     return { rows, totals: stockTotals(rows), history: stockHistory({ productIds, movements: stockMovements, sold }) };
   }, [products, orders, queueOrders, stockMovements]);
-  const dashboardHistory = useMemo(() => {
-    const grouped = orders.reduce(
-      (months, order) => {
-        if (order.productionStatus !== ORDER_STATUS.delivered) return months;
-        const month = monthInSaoPaulo(order.createdAt);
-        if (month === dashboardMonth) return months;
-        const summary = months[month] || { sales: 0, received: 0 };
-        summary.sales += order.total;
-        summary.received += order.received;
-        months[month] = summary;
-        return months;
-      },
-      {} as Record<string, { sales: number; received: number }>,
-    );
-    return Object.entries(grouped)
-      .sort(([monthA], [monthB]) => monthB.localeCompare(monthA))
-      .map(([month, summary]) => ({
-        month,
-        sales: summary.sales,
-        received: cashInByMonth[month] || 0,
-        pending: Math.max(0, summary.sales - summary.received),
-      }));
-  }, [orders, dashboardMonth, cashInByMonth]);
   const receivableByOrderId = new Map(
     financeData.accountsReceivable.map((receivable) => [receivable.serviceOrderId, receivable]),
   );
@@ -1181,23 +1136,6 @@ export default function Home() {
       return b.receivable.id - a.receivable.id;
     });
   // A tela inicial mostra todas as OS em aberto, da que vence primeiro para a que vence por último.
-  const dashboardReceivables = openReceivableRows
-    .slice()
-    .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate) || a.receivable.id - b.receivable.id);
-  // OS em fila entram como linhas da mesma tabela, sempre no topo.
-  const dashboardRows = [
-    ...queueOrders.map((order) => ({
-      key: `queue-${order.id}`,
-      order: order as Order | undefined,
-      orderNumber: order.number,
-      customerName: order.customerName,
-      installmentLabel: "",
-      dueDate: "",
-      balance: order.total,
-      status: "Na fila",
-    })),
-    ...dashboardReceivables.map((row) => ({ ...row, order: row.order as Order | undefined })),
-  ];
   const payableRows = financeData.accountsPayable
     .filter((payable) =>
       payable.status !== "Cancelado" &&
@@ -3045,7 +2983,7 @@ export default function Home() {
                 <Heading
                   eyebrow={brDate(todayIso())}
                   title="Painel de controle"
-                  subtitle="Acompanhe vendas e recebimentos."
+                  subtitle="O que precisa de você hoje e como está o mês."
                   action={
                     <button
                       className="primary-button"
@@ -3055,85 +2993,110 @@ export default function Home() {
                     </button>
                   }
                 />
-                <section className="metrics report-metrics">
-                  <Metric
-                    icon="R$"
-                    label={`Vendas ${monthYearLabel(dashboardMonth)}`}
-                    value={money(dashboardFinance.sales)}
-                  />
-                  <Metric
-                    icon="✓"
-                    label={`Recebido ${monthYearLabel(dashboardMonth)}`}
-                    value={money(dashboardFinance.received)}
-                  />
-                  <Metric
-                    icon="!"
-                    label={`Pendente ${monthYearLabel(dashboardMonth)}`}
-                    value={money(dashboardFinance.pending)}
-                    alert={dashboardFinance.pending > 0}
-                    tone="red"
-                  />
-                </section>
-                <section className="content-grid">
-                  <div className="panel">
-                    <div className="panel-title">
+                {(() => {
+                  const today = todayIso();
+                  const receivables = openReceivableRows.map((row) => ({
+                    key: row.key,
+                    orderId: row.order?.id ?? null,
+                    orderNumber: row.orderNumber,
+                    customerName: row.customerName,
+                    installmentLabel: row.installmentLabel,
+                    dueDate: row.dueDate,
+                    balanceCents: Math.round(row.balance * 100),
+                  }));
+                  const pendingPayables = financeData.accountsPayable
+                    .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
+                    .map((payable) => ({ id: payable.id, supplier: payable.supplier, dueDate: payable.dueDate, amountCents: payable.amountCents, orderId: payable.serviceOrderId ?? null }));
+                  const activeProducts = products.filter((product) => product.active);
+                  const actions = buildDashboardActions({
+                    today,
+                    receivables,
+                    payables: pendingPayables,
+                    queue: queueOrders.map((order) => ({
+                      orderId: order.id,
+                      orderNumber: order.number,
+                      customerName: order.customerName,
+                      totalCents: Math.round(order.total * 100),
+                      createdAt: dayInSaoPaulo(order.createdAt),
+                    })),
+                    stock: activeProducts.flatMap((product) => {
+                      const row = stock.rows.find((entry) => entry.productId === product.id);
+                      return row ? [{ code: product.code, status: row.status, available: row.available, missing: row.missing, monthlyPace: row.monthlyPace }] : [];
+                    }),
+                    pieces: activeProducts.map((product) => {
+                      const cost = currentCostOf(product.id);
+                      return { code: product.code, onCost: cost ? profitOnCost(product.price, cost.unitCostCents / 100) : null };
+                    }),
+                    targetRate,
+                    format: { money, brDate, percent },
+                  });
+                  const openAction = (action: DashboardAction) => {
+                    if (action.target === "order") {
+                      const order = action.orderId ? ordersById.get(action.orderId) : undefined;
+                      return order ? setOrderModal(order) : go("orders");
+                    }
+                    go(action.target === "payables" ? "financial-payables" : action.target === "stock" ? "stock" : action.target === "pricing" ? "financial-pricing" : "products");
+                  };
+                  const ahead = forecastAhead({ today, receivables, payables: pendingPayables });
+                  const warning = tightSentence(ahead, money);
+                  const [year, monthNumber] = dashboardMonth.split("-").map(Number);
+                  const previousMonth = monthNumber === 1 ? `${year - 1}-12` : `${year}-${String(monthNumber - 1).padStart(2, "0")}`;
+                  const monthName = (month: string) => monthLabel(month).split(" ")[0].toLowerCase();
+                  const result = resultByMonth.find((row) => row.month === dashboardMonth);
+                  const lastResult = resultByMonth.find((row) => row.month === previousMonth);
+                  const cashNow = cashByMonth.find((row) => row.month === dashboardMonth);
+                  const cashLast = cashByMonth.find((row) => row.month === previousMonth);
+                  const salesCents = result?.salesCents ?? 0;
+                  const leftCents = result?.leftCents ?? 0;
+                  const before = (cents: number | undefined) => previousLabel(monthName(previousMonth), cents ?? null, money);
+                  return (
+                    <div className="dash-cols">
                       <div>
-                        <h2>OS a Receber</h2>
-                      </div>
-                      <button onClick={() => go("orders")}>Ver todas</button>
-                    </div>
-                    <div className="dashboard-receivables">
-                      <div className="dashboard-receivables-head" aria-hidden="true">
-                        <span>OS / Cliente</span>
-                        <span>Data de vencimento</span>
-                        <span>Saldo Devedor</span>
-                        <span>Status</span>
-                      </div>
-                      {dashboardRows.length ? dashboardRows.map((row) => (
-                        <div
-                          className={`dashboard-receivable-row ${row.order ? "clickable" : ""}`}
-                          key={row.key}
-                          role={row.order ? "button" : undefined}
-                          tabIndex={row.order ? 0 : undefined}
-                          onClick={() => row.order && setOrderModal(row.order)}
-                          onKeyDown={(event) => {
-                            if (row.order && (event.key === "Enter" || event.key === " ")) {
-                              event.preventDefault();
-                              setOrderModal(row.order);
-                            }
-                          }}
-                        >
-                          <div className="dashboard-receivable-customer">
-                            <b>{row.orderNumber}</b>
-                            <small>{row.customerName}{row.installmentLabel ? ` · ${row.installmentLabel}` : ""}</small>
+                        <section className="panel dash-band">
+                          <h2>Precisa de você hoje</h2>
+                          {!actions.length && <p className="dash-clear">Tudo em dia. Nada vencendo nos próximos 7 dias.</p>}
+                          {actions.map((action) => (
+                            <div className="dash-action" key={action.key}>
+                              <i className={action.tone} aria-hidden="true" />
+                              <span>
+                                <b>{action.title}</b>
+                                <small>{action.detail}</small>
+                              </span>
+                              <button type="button" onClick={() => openAction(action)}>{action.button}</button>
+                            </div>
+                          ))}
+                        </section>
+                        <section className="panel dash-band">
+                          <h2>O que vem pela frente · próximos 30 dias</h2>
+                          <div className="dash-forward">
+                            <div><span>A receber</span><strong>{money(ahead.inCents / 100)}</strong></div>
+                            <div><span>A pagar</span><strong>{money(ahead.outCents / 100)}</strong></div>
+                            <div className={ahead.balanceCents < 0 ? "bad" : "good"}>
+                              <span>Saldo previsto</span>
+                              <strong>{`${ahead.balanceCents < 0 ? "− " : "+ "}${money(Math.abs(ahead.balanceCents) / 100)}`}</strong>
+                            </div>
                           </div>
-                          <span data-label="Data de vencimento">{row.dueDate ? brDate(row.dueDate) : "—"}</span>
-                          <strong data-label="Saldo Devedor">{money(row.balance)}</strong>
-                          <span className={`status ${row.status === "Atrasado" ? "red" : row.status === "Na fila" ? "blue" : "amber"}`}>{row.status}</span>
+                          {warning && <p className="dash-warn">{warning}</p>}
+                        </section>
+                      </div>
+                      <section className="panel dash-band">
+                        <h2>{`Como estou em ${monthName(dashboardMonth)}`}</h2>
+                        <div className="dash-kpis">
+                          <div><span>Vendi</span><strong>{money(salesCents / 100)}</strong><small>{before(lastResult?.salesCents)}</small></div>
+                          <div><span>Recebi</span><strong>{money((cashNow?.inCents ?? 0) / 100)}</strong><small>{before(cashLast?.inCents)}</small></div>
+                          <div><span>Paguei</span><strong>{money((result?.spentCents ?? 0) / 100)}</strong><small>{before(lastResult?.spentCents)}</small></div>
+                          <div className={leftCents < 0 ? "bad" : "good"}>
+                            <span>{leftCents < 0 ? "Faltou" : "Sobrou"}</span>
+                            <strong>{money(Math.abs(leftCents) / 100)}</strong>
+                            <small>vendi menos o que paguei</small>
+                          </div>
                         </div>
-                      )) : (
-                        <p className="dashboard-receivables-empty">Não há contas pendentes.</p>
-                      )}
+                        <p className="dash-phrase">{leftSentence(salesCents > 0 ? Math.round((leftCents / salesCents) * 10000) : null, money)}</p>
+                        <button type="button" className="outline-button" onClick={() => go("financial")}>Ver o Financeiro completo</button>
+                      </section>
                     </div>
-                  </div>
-                  <div className="side-stack">
-                    <div className="panel finance-history-card">
-                      <div className="finance-history-title">
-                        <h2>Histórico mensal</h2>
-                      </div>
-                      <div className="finance-history-list">
-                        {dashboardHistory.length ? dashboardHistory.map((summary) => (
-                          <div className="finance-history-row" key={summary.month}>
-                            <strong>{monthLabel(summary.month)}</strong>
-                            <div><span>Vendas</span><b>{money(summary.sales)}</b></div>
-                            <div><span>Recebido</span><b>{money(summary.received)}</b></div>
-                            <div className="pending"><span>Pendente</span><b>{money(summary.pending)}</b></div>
-                          </div>
-                        )) : <p className="finance-history-empty">Ainda não há dados de meses anteriores.</p>}
-                      </div>
-                    </div>
-                  </div>
-                </section>
+                  );
+                })()}
               </div>
             )}
             {screen === "new-order" && (

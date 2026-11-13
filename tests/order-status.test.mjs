@@ -77,10 +77,11 @@ test("sincronização de recebíveis ignora OS em fila sem pagamento", () => {
   assert.match(route, /isQueuedWithoutPayment\(\{ productionStatus: order\.production_status/);
 });
 
-test("painel principal mostra a fila como linhas da tabela existente", () => {
+test("painel principal mostra a fila como ações da lista do dia", () => {
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.equal(/queue-panel/.test(page), false);
-  assert.match(page, /status: "Na fila"/);
+  assert.match(page, /queue: queueOrders\.map\(/);
+  assert.match(readFileSync(new URL("../lib/dashboard.ts", import.meta.url), "utf8"), /Na fila /);
   assert.match(page, /normalizeOrderStatus\(order\.productionStatus\) === ORDER_STATUS\.queue/);
 });
 

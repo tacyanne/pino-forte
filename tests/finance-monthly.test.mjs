@@ -153,9 +153,9 @@ test("valor da OS em centavos segue o valor em reais quando os dois divergem", (
   assert.ok(financeApi.includes("trustedCents(order.total, order.total_cents)"));
 });
 
-test("tela inicial lista todas as OS em aberto, da que vence primeiro", () => {
+test("tela inicial usa todas as OS em aberto para montar as ações do dia", () => {
   assert.equal(page.includes("openReceivableRows.slice(0, 6)"), false);
-  assert.ok(page.includes("dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate) || a.receivable.id - b.receivable.id"));
+  assert.ok(page.includes("const receivables = openReceivableRows.map((row) => ({"));
 });
 
 test("previsão de caixa cobre o resto do mês e os próximos 3, com atrasados no mês atual", () => {
@@ -205,6 +205,6 @@ test("parcela única acompanha a conta a receber da OS", () => {
 });
 
 test("tela inicial mostra o recebido pela data do recebimento", () => {
-  assert.ok(page.includes("received: cashInByMonth[dashboardMonth] || 0"));
-  assert.ok(page.includes("received: cashInByMonth[month] || 0"));
+  assert.ok(page.includes("const cashNow = cashByMonth.find((row) => row.month === dashboardMonth);"));
+  assert.ok(page.includes("money((cashNow?.inCents ?? 0) / 100)"));
 });
