@@ -172,6 +172,8 @@ test("lista do estoque: zero no lugar do traço, menor quantidade primeiro e um 
   assert.ok(page.includes("{row.available ?? 0}"));
   assert.equal(page.includes('row.balance === null ? "—"'), false);
   assert.ok(page.includes("(a.row?.available ?? 0) - (b.row?.available ?? 0)"));
+  assert.ok(page.includes("Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) ||"));
+  assert.ok(page.includes("(row?.balance ?? 0) <= 0 && (row?.reserved ?? 0) === 0"));
   assert.ok(page.includes(">Lançar</button>"));
   assert.equal(page.includes(">Contar</button>"), false);
 });

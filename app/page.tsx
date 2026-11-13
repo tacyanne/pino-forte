@@ -211,6 +211,9 @@ const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const isDistributor = (customerType?: string) =>
   customerType?.trim().toLocaleLowerCase("pt-BR") === "distribuidor";
+// Peça zerada: nada em estoque e nada prometido na fila.
+const isEmptyStock = (row?: { balance: number | null; reserved: number }) => (row?.balance ?? 0) <= 0 && (row?.reserved ?? 0) === 0;
+
 const brDate = (date: string) => {
   if (date && (date.includes("T") || date.includes(" "))) {
     const utcValue = date.includes("T") ? date : `${date.replace(" ", "T")}Z`;
@@ -4097,9 +4100,9 @@ export default function Home() {
                     </div>
                     {products
                       .filter((item) => item.active)
-                      // Peça com menos disponível primeiro (sem lançamento conta como zero).
+                      // Peça com menos disponível primeiro; as zeradas (nada em estoque, nada prometido) ficam no fim.
                       .map((item) => ({ item, row: stock.rows.find((entry) => entry.productId === item.id) }))
-                      .sort((a, b) => (a.row?.available ?? 0) - (b.row?.available ?? 0) || (a.row?.balance ?? 0) - (b.row?.balance ?? 0) || a.item.code.localeCompare(b.item.code))
+                      .sort((a, b) => Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) || (a.row?.available ?? 0) - (b.row?.available ?? 0) || (a.row?.balance ?? 0) - (b.row?.balance ?? 0) || a.item.code.localeCompare(b.item.code))
                       .map(({ item }) => {
                       const row = stock.rows.find((entry) => entry.productId === item.id);
                       if (!row) return null;
