@@ -22,7 +22,8 @@ import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
-import { TARGET_PROFIT_ON_COST, costAt, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { STOCK_KIND_LABEL, STOCK_STATUS_LABEL, paceSentence, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
+import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
@@ -30,6 +31,7 @@ type Screen =
   | "dashboard"
   | "new-order"
   | "orders"
+  | "stock"
   | "customers"
   | "products"
   | "piece-types"
@@ -483,6 +485,9 @@ export default function Home() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [stockError, setStockError] = useState("");
+  const [stockForm, setStockForm] = useState<{ product: Product; kind: StockKind } | null>(null);
   const [pieceTypes, setPieceTypes] = useState<PieceType[]>([]);
   const [typeModal, setTypeModal] = useState(false);
   const [editingType, setEditingType] = useState<PieceType | null>(null);
@@ -600,6 +605,66 @@ export default function Home() {
     }
   }
 
+  async function refreshStock() {
+    try {
+      const response = await fetch("/api/stock", { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar o estoque.");
+      setStockMovements(data.movements || []);
+      setStockError("");
+    } catch (error) {
+      setStockError(error instanceof Error ? error.message : "Não foi possível carregar o estoque.");
+    }
+  }
+  async function saveStockMovement(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!stockForm) return;
+    const form = new FormData(event.currentTarget);
+    const quantity = Number(String(form.get("quantity") || "").trim());
+    if (!Number.isInteger(quantity) || quantity < 0) return flash("Informe a quantidade em número inteiro.", "error");
+    setSaving(true);
+    try {
+      const response = await fetch("/api/stock", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          productId: stockForm.product.id,
+          kind: String(form.get("kind") || stockForm.kind),
+          quantity,
+          movementDate: String(form.get("movementDate") || todayIso()),
+          notes: String(form.get("notes") || ""),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar o lançamento.");
+      setStockForm(null);
+      await refreshStock();
+      flash("Estoque atualizado.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível salvar o lançamento.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function deleteStockMovement(movement: StockMovement) {
+    if (!window.confirm("Excluir este lançamento de estoque? O saldo da peça será recalculado.")) return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/stock", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: movement.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível excluir o lançamento.");
+      await refreshStock();
+      flash("Lançamento excluído.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível excluir o lançamento.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
   async function loadAll() {
     setLoading(true);
     try {
@@ -614,6 +679,7 @@ export default function Home() {
       setPieceTypes(cat.pieceTypes || []); setPieceLines(cat.pieceLines || []);
       setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
+      void refreshStock();
       let settings = config.settings;
       try {
         const localSettings = JSON.parse(localStorage.getItem("pino-settings") || "null");
@@ -800,6 +866,26 @@ export default function Home() {
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id),
     [orders],
   );
+  // Estoque: OS entregues baixam o saldo sozinhas; OS na fila ficam como prometido.
+  const stock = useMemo(() => {
+    const byKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
+    const linesOf = (list: Order[], dateOf: (order: Order) => string) =>
+      list.flatMap((order) =>
+        getOrderItems(order).flatMap((item) => {
+          const piece = byKey.get(normalizePieceCode(item.code));
+          return piece ? [{ productId: piece.id, quantity: Number(item.quantity) || 0, date: dateOf(order) }] : [];
+        }),
+      );
+    const delivered = orders.filter((order) => order.productionStatus === ORDER_STATUS.delivered);
+    const rows = stockPosition({
+      productIds: products.map((item) => item.id),
+      movements: stockMovements,
+      sold: linesOf(delivered, (order) => (order.deliveryDate || dayInSaoPaulo(order.createdAt)).slice(0, 10)),
+      reserved: linesOf(queueOrders, (order) => dayInSaoPaulo(order.createdAt)),
+      today: todayIso(),
+    });
+    return { rows, totals: stockTotals(rows) };
+  }, [products, orders, queueOrders, stockMovements]);
   const dashboardHistory = useMemo(() => {
     const grouped = orders.reduce(
       (months, order) => {
@@ -2655,6 +2741,7 @@ export default function Home() {
   const primaryNav: [Screen, string, string][] = [
     ["dashboard", "⌂", "Início"],
     ["orders", "▤", "OS"],
+    ["stock", "▥", "Estoque"],
     ["wallet", "▣", "Carteira"],
     ["financial", "$", "Financeiro"],
     ["catalog", "▦", "Catálogo"],
@@ -3966,6 +4053,85 @@ export default function Home() {
                 )}
               </div>
             )}
+            {screen === "stock" && (
+              <div className="page">
+                <Heading
+                  eyebrow="PEÇAS PRONTAS"
+                  title="Estoque"
+                  subtitle="Quantas peças você tem, quantas já estão prometidas e o que falta comprar."
+                />
+                {stockError && <p className="modal-error">{stockError}</p>}
+                {!stockError && stock.totals.uncounted > 0 && (
+                  <p className="plain-warning">
+                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não foi contada" : `${stock.totals.uncounted} peças ainda não foram contadas`}. Conte no fim do dia e toque em "Contar": a partir daí, cada OS entregue baixa o estoque sozinha.`}
+                  </p>
+                )}
+                <section className="finance-kpi-grid payable-kpis">
+                  <article>
+                    <span>Peças em estoque</span>
+                    <strong>{stock.totals.inStock}</strong>
+                    <small>Somando as peças já contadas</small>
+                  </article>
+                  <article>
+                    <span>Prometidas na fila</span>
+                    <strong>{stock.totals.reserved}</strong>
+                    <small>{queueOrders.length === 1 ? "1 OS aguardando entrega" : `${queueOrders.length} OS aguardando entrega`}</small>
+                  </article>
+                  <article className={stock.totals.missing > 0 ? "attention" : ""}>
+                    <span>Falta comprar</span>
+                    <strong>{stock.totals.missing}</strong>
+                    <small>{stock.totals.missing > 0 ? "Para entregar o que está na fila" : "A fila está coberta"}</small>
+                  </article>
+                  <article>
+                    <span>Sem contagem</span>
+                    <strong>{stock.totals.uncounted}</strong>
+                    <small>{stock.totals.uncounted > 0 ? "Peças sem saldo conhecido" : "Todas as peças contadas"}</small>
+                  </article>
+                </section>
+                <section className="panel stock-panel">
+                  <div className="stock-list">
+                    <div className="stock-head" aria-hidden="true">
+                      <span>Peça</span><span>Em estoque</span><span>Prometido</span><span>Disponível</span><span>Ritmo de venda</span><span>Situação</span><span />
+                    </div>
+                    {products.filter((item) => item.active).map((item) => {
+                      const row = stock.rows.find((entry) => entry.productId === item.id);
+                      if (!row) return null;
+                      const tone = row.status === "ok" ? "green" : row.status === "falta" || row.status === "zerado" ? "red" : "amber";
+                      return (
+                        <div className="stock-row" key={item.id}>
+                          <span className="stock-main"><b>{item.code}</b><small>{item.measure}</small></span>
+                          <span className="stock-number" data-label="Em estoque">{row.balance === null ? "—" : row.balance}</span>
+                          <span className="stock-number" data-label="Prometido">{row.reserved}</span>
+                          <span className={`stock-number ${row.available !== null && row.available < 0 ? "negative" : ""}`} data-label="Disponível">{row.available === null ? "—" : row.available}</span>
+                          <span className="stock-pace">{paceSentence(row)}</span>
+                          <span className="stock-status"><span className={`status ${tone}`}>{STOCK_STATUS_LABEL[row.status]}</span></span>
+                          <span className="stock-action">
+                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "contagem" })} disabled={saving}>Contar</button>
+                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "entrada" })} disabled={saving}>Entrada</button>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+                <section className="panel plain-panel">
+                  <h2>Últimos lançamentos</h2>
+                  {!stockMovements.length && <p className="compact-empty">Nenhum lançamento ainda. As saídas por OS entregue não aparecem aqui: elas já são descontadas sozinhas.</p>}
+                  {stockMovements.slice(0, 10).map((movement) => {
+                    const piece = products.find((item) => item.id === movement.productId);
+                    return (
+                      <div className="plain-row" key={movement.id}>
+                        <span>
+                          <b>{piece?.code || "Peça removida"}</b>{` · ${STOCK_KIND_LABEL[movement.kind]}: ${movement.quantity}`}
+                          <small>{` ${brDate(movement.movementDate)}${movement.notes ? ` · ${movement.notes}` : ""}`}</small>
+                        </span>
+                        <button className="outline-button" onClick={() => deleteStockMovement(movement)} disabled={saving}>Excluir</button>
+                      </div>
+                    );
+                  })}
+                </section>
+              </div>
+            )}
             {screen === "wallet" && (
               <div className="page">
                 <Heading eyebrow="FINANCEIRO" title="Carteira" subtitle="Acompanhe recebimentos por empresa e situação da carteira." />
@@ -4695,6 +4861,35 @@ export default function Home() {
               <button className="primary-button" disabled={saving || imageProcessing}>
                 {saving ? "Salvando..." : "Salvar"}
               </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {stockForm && (
+        <Modal title={`Estoque de ${stockForm.product.code}`} close={() => setStockForm(null)}>
+          <form key={`${stockForm.product.id}-${stockForm.kind}`} onSubmit={saveStockMovement} noValidate>
+            <div className="form-grid">
+              <Field label="O que aconteceu *">
+                <select name="kind" defaultValue={stockForm.kind}>
+                  <option value="contagem">Contei: é isso que tenho agora</option>
+                  <option value="entrada">Entrada: comprei peças</option>
+                  <option value="saida">Saída: perdi, quebrei ou usei</option>
+                </select>
+              </Field>
+              <Field label="Quantidade de peças *">
+                <input name="quantity" inputMode="numeric" pattern="[0-9]*" required autoFocus />
+              </Field>
+              <Field label="Data *">
+                <input type="date" name="movementDate" defaultValue={todayIso()} max={todayIso()} required />
+              </Field>
+              <Field label="Observações">
+                <input name="notes" maxLength={200} />
+              </Field>
+            </div>
+            <p className="plain-text muted">A contagem vale como fim do dia: as OS entregues depois dessa data baixam o estoque sozinhas.</p>
+            <div className="modal-actions">
+              <button type="button" className="cancel-button" onClick={() => setStockForm(null)}>Cancelar</button>
+              <button className="primary-button" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
             </div>
           </form>
         </Modal>

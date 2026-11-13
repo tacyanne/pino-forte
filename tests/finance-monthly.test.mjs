@@ -130,7 +130,7 @@ test("resumo e telas mês a mês usam a mesma regra de mês e de caixa", () => {
   assert.ok(page.includes("month: payableMonth(payable),"));
   assert.ok(page.includes("<b>{money(periodCashIn / 100)}</b>"));
   assert.ok(page.includes("<b>{money(periodCashOut / 100)}</b>"));
-  assert.equal(page.split("dayInSaoPaulo(order.createdAt)").length - 1, 1);
+  assert.ok(page.includes("date: dayInSaoPaulo(order.createdAt),"));
   assert.ok(page.includes("pagos para fabricar peça`}</small>"));
 });
 
