@@ -73,7 +73,7 @@ test("lançamento do mesmo dia da contagem só conta se foi gravado depois dela"
 test("status: sem contagem, falta para a fila, zerado e baixo", () => {
   const rows = stockPosition({
     productIds: [1, 2, 3, 4],
-    movements: [move(1, 2, "contagem", 3, "2026-03-01"), move(2, 3, "contagem", 0, "2026-03-01"), move(3, 4, "contagem", 2, "2026-03-01"), move(4, 1, "entrada", 9, "2026-03-02")],
+    movements: [move(1, 2, "contagem", 3, "2026-03-01"), move(2, 3, "contagem", 0, "2026-03-01"), move(3, 4, "contagem", 2, "2026-03-01")],
     sold: [{ productId: 4, quantity: 12, date: "2026-02-10" }],
     reserved: [{ productId: 2, quantity: 5, date: "2026-03-05" }, { productId: 1, quantity: 4, date: "2026-03-05" }],
     today: "2026-03-10",
@@ -115,4 +115,29 @@ test("tela de estoque fala em comprar, não em fabricar", () => {
   const end = page.indexOf('{screen === "wallet" && (', start);
   assert.equal(/fabric/i.test(page.slice(start, end)), false);
   assert.ok(page.includes("Entrada: comprei peças"));
+});
+
+test("entrada sem contagem já aparece no estoque, começando em zero", () => {
+  const [onlyEntry, withSale, untouched] = stockPosition({
+    productIds: [1, 2, 3],
+    movements: [
+      move(1, 1, "entrada", 10, "2026-11-11"),
+      move(2, 2, "entrada", 10, "2026-11-11"),
+      move(3, 2, "saida", 1, "2026-11-12"),
+    ],
+    sold: [
+      { productId: 2, quantity: 4, date: "2026-11-10" },
+      { productId: 2, quantity: 3, date: "2026-11-11" },
+    ],
+    reserved: [],
+    today: "2026-11-12",
+  });
+  assert.equal(onlyEntry.balance, 10);
+  assert.equal(onlyEntry.countedAt, null);
+  assert.equal(onlyEntry.status, "ok");
+  // 10 − 1 de saída − 3 vendidas no dia da entrada (a venda do dia anterior não conta)
+  assert.equal(withSale.balance, 6);
+  assert.equal(untouched.balance, null);
+  assert.equal(untouched.status, "sem-contagem");
+  assert.equal(stockTotals([onlyEntry, withSale, untouched]).uncounted, 1);
 });

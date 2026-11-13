@@ -3,6 +3,7 @@
 // O saldo de cada peça parte da última contagem e segue sozinho:
 //   contagem + entradas lançadas − saídas lançadas − peças de OS entregues depois da contagem.
 // A contagem vale como "fim do dia": vendas do próprio dia já estão fora do que foi contado.
+// Peça sem contagem, mas com entrada ou saída, começa em zero no dia do primeiro lançamento.
 
 export const STOCK_KINDS = ["contagem", "entrada", "saida"] as const;
 export type StockKind = (typeof STOCK_KINDS)[number];
@@ -96,6 +97,12 @@ export function stockPosition(input: {
         balance += movement.kind === "entrada" ? movement.quantity : -movement.quantity;
       }
       for (const line of sold) if (line.date.slice(0, 10) > count.movementDate) balance -= line.quantity;
+    } else if (movements.length) {
+      // Sem contagem, mas com entrada ou saída lançada: o estoque começa em zero no dia do
+      // primeiro lançamento, e as OS entregues a partir desse dia já descontam.
+      const first = movements.reduce((earliest, movement) => (isAfter(earliest, movement) ? movement : earliest), movements[0]);
+      balance = movements.reduce((sum, movement) => sum + (movement.kind === "entrada" ? movement.quantity : -movement.quantity), 0);
+      for (const line of sold) if (line.date.slice(0, 10) >= first.movementDate) balance -= line.quantity;
     }
 
     const soldRecently = sold.filter((line) => line.date.slice(0, 10) > paceStart).reduce((sum, line) => sum + line.quantity, 0);
