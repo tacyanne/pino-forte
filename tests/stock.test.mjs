@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { StockError, paceSentence, parseStockMovement, stockPosition, stockTotals } from "../lib/stock.ts";
+import { StockError, paceSentence, parseStockMovement, stockHistory, stockPosition, stockTotals } from "../lib/stock.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const page = read("../app/page.tsx");
@@ -140,4 +140,28 @@ test("entrada sem contagem já aparece no estoque, começando em zero", () => {
   assert.equal(untouched.balance, null);
   assert.equal(untouched.status, "sem-contagem");
   assert.equal(stockTotals([onlyEntry, withSale, untouched]).uncounted, 1);
+});
+
+test("histórico mostra entradas e as saídas das OS entregues que entram no saldo", () => {
+  const movements = [move(1, 7, "entrada", 10, "2026-11-11"), move(2, 3, "contagem", 8, "2026-11-11")];
+  const sold = [
+    { productId: 7, quantity: 4, date: "2026-11-12", orderNumber: "OS-A" },
+    { productId: 7, quantity: 4, date: "2026-11-11", orderNumber: "OS-B" },
+    { productId: 7, quantity: 5, date: "2026-11-10", orderNumber: "OS-C" },
+    { productId: 3, quantity: 2, date: "2026-11-11", orderNumber: "OS-D" },
+    { productId: 3, quantity: 1, date: "2026-11-12", orderNumber: "OS-E" },
+    { productId: 9, quantity: 6, date: "2026-11-12", orderNumber: "OS-F" },
+  ];
+  const history = stockHistory({ productIds: [7, 3, 9], movements, sold });
+  // OS-C (antes da entrada), OS-D (no dia da contagem) e OS-F (peça sem lançamento) ficam de fora
+  assert.deepEqual(
+    history.map((item) => `${item.kind}:${item.orderNumber || item.productId}`),
+    ["os:OS-A", "os:OS-E", "os:OS-B", "contagem:3", "entrada:7"],
+  );
+  assert.equal(history.find((item) => item.orderNumber === "OS-A").movement, undefined);
+
+  const [row] = stockPosition({ productIds: [7], movements, sold, reserved: [], today: "2026-11-12" });
+  assert.equal(row.balance, 2);
+  assert.ok(page.includes("Saída pela ${item.orderNumber"));
+  assert.ok(page.includes("stockHistory({ productIds, movements: stockMovements, sold })"));
 });
