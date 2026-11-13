@@ -1140,3 +1140,7 @@ button.plain-row{cursor:pointer}
   .pricing-source::before{display:none}
   .pricing-compare{font-weight:600}
 }
+
+/* Visualizar peça: blocos de custo iguais aos da edição, só leitura */
+.record-view .product-cost-fields{margin-top:0;background:#fff}
+.product-cost-readonly .review-field>strong{min-height:44px;padding:0 12px;font-weight:400;overflow-wrap:anywhere}

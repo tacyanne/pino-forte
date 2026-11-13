@@ -1013,6 +1013,26 @@ export default function Home() {
   );
   const percent = (rate: number) => `${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
   const currentCostOf = (productId: number) => costAt(productCosts, productId, todayIso());
+  const priceHistoryBlock = (productId: number, note?: string) => {
+    const timeline = priceTimeline(productPrices, productId);
+    if (!timeline.length) return null;
+    return (
+      <fieldset className="product-cost-fields price-history">
+        <legend>Histórico de preço</legend>
+        {timeline.map((item) => (
+          <div className="price-history-row" key={item.id}>
+            <span>{brDate(item.startsAt)}</span>
+            <b>{money(item.priceCents / 100)}</b>
+            <small className={item.deltaCents === null ? "" : item.deltaCents < 0 ? "down" : "up"}>
+              {priceChangeLabel(item, money)}
+              {item.source === "vendas" ? " · estimado pelas vendas" : ""}
+            </small>
+          </div>
+        ))}
+        {note && <small>{note}</small>}
+      </fieldset>
+    );
+  };
   const marginTone = (rate: number | null) =>
     rate === null ? "" : rate >= targetRate ? "green" : rate > 0 ? "amber" : "red";
   const reportReceived = reportOrders.reduce((sum, o) => sum + o.received, 0);
@@ -1701,13 +1721,15 @@ export default function Home() {
       const purchaseChanged = savedPurchase
         ? savedPurchase.rawMaterialCostCents !== purchaseCost.materialCents ||
           savedPurchase.freightCents !== purchaseCost.freightCents ||
-          savedPurchase.supplier !== purchaseCost.supplier
+          savedPurchase.supplier !== purchaseCost.supplier ||
+          savedPurchase.startsAt !== purchaseCost.startsAt
         : totalCostCents(purchaseCost) > 0;
       const savedCost = editingProduct ? openCost(productCosts, editingProduct.id) : null;
       const costChanged = savedCost
         ? savedCost.rawMaterialCostCents !== cost.materialCents ||
           savedCost.additionalCostsCents !== cost.laborCents ||
-          savedCost.freightCents !== cost.freightCents
+          savedCost.freightCents !== cost.freightCents ||
+          savedCost.startsAt !== cost.startsAt
         : totalCostCents(cost) > 0;
       const r = await fetch("/api/catalog", {
         method: editingProduct ? "PATCH" : "POST",
@@ -4859,27 +4881,45 @@ export default function Home() {
                 <ReviewField label="Linha" value={viewingProduct.name} />
                 <ReviewField label="Medidas" value={viewingProduct.measure} />
               </div>
-              {(() => {
-                const cost = currentCostOf(viewingProduct.id);
-                const costValue = (cost?.unitCostCents ?? 0) / 100;
-                const rate = profitOnCost(viewingProduct.price, costValue);
-                if (!cost || rate === null)
-                  return (
-                    <div className="product-cost-view">
-                      <ReviewField label="Custo" value="Não cadastrado" />
-                    </div>
-                  );
-                return (
-                  <div className="product-cost-view">
-                    <ReviewField label="Custo total" value={money(costValue)} />
-                    <ReviewField label="Material" value={money(cost.rawMaterialCostCents / 100)} />
-                    <ReviewField label="Mão de obra / terceiros" value={money(cost.additionalCostsCents / 100)} />
-                    <ReviewField label="Frete" value={money(cost.freightCents / 100)} />
-                    <ReviewField label="Lucro por peça" value={`${money(viewingProduct.price - costValue)} · ${percent(rate)} sobre o custo`} />
-                  </div>
-                );
-              })()}
             </div>
+            {(() => {
+              // Mesmos blocos e mesma ordem da tela de edição.
+              const purchase = openCost(productCosts, viewingProduct.id, "comprada");
+              const cost = openCost(productCosts, viewingProduct.id);
+              const cents = (value?: number) => money((value ?? 0) / 100);
+              const profitNote = (unitCostCents?: number) => {
+                const costValue = (unitCostCents ?? 0) / 100;
+                const rate = profitOnCost(viewingProduct.price, costValue);
+                return rate === null
+                  ? "Custo não cadastrado."
+                  : `Custo total de ${money(costValue)}. Lucro por peça: ${money(viewingProduct.price - costValue)} · ${percent(rate)} sobre o custo.`;
+              };
+              return (
+                <>
+                  <fieldset className="product-cost-fields product-cost-readonly">
+                    <legend>Custo comprando pronta (revenda)</legend>
+                    <div className="product-cost-row">
+                      <ReviewField label="Valor de compra" value={cents(purchase?.rawMaterialCostCents)} />
+                      <ReviewField label="Frete" value={cents(purchase?.freightCents)} />
+                      <ReviewField label="Fornecedor" value={purchase?.supplier || "—"} />
+                      <ReviewField label="Custo válido desde" value={purchase ? brDate(purchase.startsAt) : "—"} />
+                    </div>
+                    <small>{profitNote(purchase?.unitCostCents)}</small>
+                  </fieldset>
+                  <fieldset className="product-cost-fields product-cost-readonly">
+                    <legend>Custo fabricando</legend>
+                    <div className="product-cost-row">
+                      <ReviewField label="Material" value={cents(cost?.rawMaterialCostCents)} />
+                      <ReviewField label="Mão de obra / terceiros" value={cents(cost?.additionalCostsCents)} />
+                      <ReviewField label="Frete" value={cents(cost?.freightCents)} />
+                      <ReviewField label="Custo válido desde" value={cost ? brDate(cost.startsAt) : "—"} />
+                    </div>
+                    <small>{profitNote(cost?.unitCostCents)}</small>
+                  </fieldset>
+                  {priceHistoryBlock(viewingProduct.id)}
+                </>
+              );
+            })()}
             <section className="product-image-editor" aria-label="Imagem da peça">
               <div className="product-image-preview">
                 {productImageSource(viewingProduct) ? (
@@ -5156,12 +5196,12 @@ export default function Home() {
                       <input name="purchaseSupplier" maxLength={120} defaultValue={purchase?.supplier || ""} />
                     </Field>
                     <Field label="Custo válido desde">
-                      <input type="date" name="purchaseStartsAt" defaultValue={todayIso()} />
+                      <input type="date" name="purchaseStartsAt" defaultValue={purchase?.startsAt || todayIso()} />
                     </Field>
                   </div>
                   <small>
                     {purchase
-                      ? `Custo atual de ${money(purchase.unitCostCents / 100)} desde ${brDate(purchase.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
+                      ? `Custo atual de ${money(purchase.unitCostCents / 100)} desde ${brDate(purchase.startsAt)}. Para guardar o custo anterior no histórico, mude os valores e informe a data em que o novo começa a valer.`
                       : "Quanto custa comprar a peça pronta de outro fornecedor. Não aparece no catálogo nem nos PDFs."}
                   </small>
                 </fieldset>
@@ -5172,12 +5212,12 @@ export default function Home() {
                     <Field label="Mão de obra / terceiros">{costField("costLabor", cost?.additionalCostsCents ?? 0)}</Field>
                     <Field label="Frete">{costField("costFreight", cost?.freightCents ?? 0)}</Field>
                     <Field label="Custo válido desde">
-                      <input type="date" name="costStartsAt" defaultValue={todayIso()} />
+                      <input type="date" name="costStartsAt" defaultValue={cost?.startsAt || todayIso()} />
                     </Field>
                   </div>
                   <small>
                     {cost
-                      ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Ao mudar os valores, o custo novo vale a partir da data informada e o anterior fica no histórico.`
+                      ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Para guardar o custo anterior no histórico, mude os valores e informe a data em que o novo começa a valer.`
                       : "Quanto custa fabricar a peça. Não aparece no catálogo nem nos PDFs."}
                   </small>
                   <small>O lucro usa o custo que começou a valer por último entre os dois.</small>
@@ -5185,26 +5225,7 @@ export default function Home() {
                 </>
               );
             })()}
-            {(() => {
-              const timeline = editingProduct ? priceTimeline(productPrices, editingProduct.id) : [];
-              if (!timeline.length) return null;
-              return (
-                <fieldset className="product-cost-fields price-history">
-                  <legend>Histórico de preço</legend>
-                  {timeline.map((item) => (
-                    <div className="price-history-row" key={item.id}>
-                      <span>{brDate(item.startsAt)}</span>
-                      <b>{money(item.priceCents / 100)}</b>
-                      <small className={item.deltaCents === null ? "" : item.deltaCents < 0 ? "down" : "up"}>
-                        {priceChangeLabel(item, money)}
-                        {item.source === "vendas" ? " · estimado pelas vendas" : ""}
-                      </small>
-                    </div>
-                  ))}
-                  <small>Ao salvar um preço diferente, o novo vale a partir de hoje e o anterior fica aqui.</small>
-                </fieldset>
-              );
-            })()}
+            {editingProduct && priceHistoryBlock(editingProduct.id, "Ao salvar um preço diferente, o novo vale a partir de hoje e o anterior fica aqui.")}
             <ProductImageInput key={editingProduct?.id ?? "new"} initialSource={editingProduct ? productImageSource(editingProduct) : ""} disabled={saving} onBusyChange={setImageProcessing} />
             <div className="form-actions registration-actions">
               <button

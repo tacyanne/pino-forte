@@ -124,8 +124,11 @@ export function planProductCostChange(open: ProductCost | null, input: ProductCo
     open.rawMaterialCostCents === input.materialCents &&
     open.additionalCostsCents === input.laborCents &&
     open.freightCents === input.freightCents;
-  // Só o fornecedor mudou: corrige a vigência atual, sem abrir outra.
-  if (sameValues) return (input.supplier ?? "") !== (open.supplier ?? "") ? { kind: "update", id: open.id } : { kind: "none" };
+  // Só a data de início ou o fornecedor mudou: corrige a vigência atual, sem abrir outra.
+  if (sameValues)
+    return input.startsAt !== open.startsAt || (input.supplier ?? "") !== (open.supplier ?? "")
+      ? { kind: "update", id: open.id }
+      : { kind: "none" };
   if (input.startsAt === open.startsAt) return { kind: "update", id: open.id };
   if (input.startsAt < open.startsAt)
     throw new ProductCostError(

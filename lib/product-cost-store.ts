@@ -65,7 +65,7 @@ export async function saveProductCost(productId: number, input: ProductCostInput
       supplier: values.supplier,
     };
     if (plan.kind === "update") {
-      await supabasePatch("product_cost_history", { id: `eq.${plan.id}` }, restValues);
+      await supabasePatch("product_cost_history", { id: `eq.${plan.id}` }, { ...restValues, starts_at: input.startsAt });
     } else {
       if (plan.closeId)
         await supabasePatch("product_cost_history", { id: `eq.${plan.closeId}` }, { ends_at: plan.closeEndsAt });
@@ -77,7 +77,7 @@ export async function saveProductCost(productId: number, input: ProductCostInput
   const db = await getDb();
   await db.transaction(async (tx) => {
     if (plan.kind === "update") {
-      await tx.update(productCostHistory).set(values).where(eq(productCostHistory.id, plan.id));
+      await tx.update(productCostHistory).set({ ...values, startsAt: input.startsAt }).where(eq(productCostHistory.id, plan.id));
       return;
     }
     if (plan.closeId)
