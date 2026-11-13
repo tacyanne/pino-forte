@@ -8,8 +8,8 @@ export type CostSource = (typeof COST_SOURCES)[number];
 export const costSourceOf = (value: unknown): CostSource => (value === "comprada" ? "comprada" : "fabricada");
 
 export const COST_SOURCE_LABEL: Record<CostSource, string> = {
-  fabricada: "Fabricando",
-  comprada: "Comprando pronta",
+  fabricada: "Custo fabricação",
+  comprada: "Custo revenda",
 };
 
 export type ProductCost = {
