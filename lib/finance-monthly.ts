@@ -139,6 +139,34 @@ export function trustedCents(amount: unknown, storedCents: unknown) {
   return stored > 0 && Math.abs(stored - fromAmount) <= 1 ? stored : fromAmount;
 }
 
+// Divide um total em centavos na proporção dos pesos, sem sobrar nem faltar centavo:
+// os centavos do arredondamento vão para as maiores frações.
+export function distributeCents(totalCents: number, weights: number[]) {
+  if (!weights.length) return [];
+  const total = Math.round(totalCents);
+  const safe = weights.map((weight) => (Number.isFinite(weight) && weight > 0 ? weight : 0));
+  const sum = safe.reduce((acc, weight) => acc + weight, 0);
+  if (sum <= 0) return safe.map((_, index) => (index === 0 ? total : 0));
+  const exact = safe.map((weight) => (total * weight) / sum);
+  const parts = exact.map((value) => Math.floor(value));
+  let remainder = total - parts.reduce((acc, value) => acc + value, 0);
+  const order = exact.map((value, index) => ({ index, fraction: value - parts[index] })).sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (const item of order) {
+    if (remainder <= 0) break;
+    parts[item.index] += 1;
+    remainder -= 1;
+  }
+  return parts;
+}
+
+// OS sem boleto parcelado pode ter uma parcela única (criada na migração). Ela deve
+// espelhar a conta a receber: mesmo valor, mesmo recebido, mesmo saldo.
+export function singleInstallmentValues(totalCents: number, receivedCents: number) {
+  const received = Math.min(Math.max(0, receivedCents), totalCents);
+  const balanceCents = Math.max(0, totalCents - received);
+  return { amountCents: totalCents, receivedCents: received, balanceCents, status: balanceCents <= 0 ? "Pago" : "Pendente" };
+}
+
 // Com poucos dias de mês, multiplicar o ritmo dá um número sem sentido.
 export const FORECAST_MIN_DAYS = 5;
 

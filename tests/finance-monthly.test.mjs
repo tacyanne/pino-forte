@@ -6,6 +6,7 @@ import {
   cashForecast,
   barHeights,
   dedupeReceipts,
+  distributeCents,
   divergingBars,
   forecastCurrentMonth,
   monthRange,
@@ -13,6 +14,7 @@ import {
   monthlyResult,
   needsInitialReceipt,
   shortMonth,
+  singleInstallmentValues,
   trustedCents,
 } from "../lib/finance-monthly.ts";
 
@@ -129,6 +131,7 @@ test("resumo e telas mês a mês usam a mesma regra de mês e de caixa", () => {
   assert.ok(page.includes("<b>{money(periodCashIn / 100)}</b>"));
   assert.ok(page.includes("<b>{money(periodCashOut / 100)}</b>"));
   assert.equal(page.split("dayInSaoPaulo(order.createdAt)").length - 1, 1);
+  assert.ok(page.includes("pagos para fabricar peça`}</small>"));
 });
 
 test("financeiro carrega o histórico até o teto e avisa quando corta", () => {
@@ -180,4 +183,28 @@ test("previsão de caixa cobre o resto do mês e os próximos 3, com atrasados n
   assert.equal(cashForecast({ receivables: [], payables: [], todayIso: "2026-12-30", startBalanceCents: 100 }).length, 4);
   assert.ok(page.includes("Previsão dos próximos 3 meses"));
   assert.ok(page.includes("startBalanceCents: cashTotal"));
+});
+
+test("total da OS é dividido entre os itens sem sobrar centavo", () => {
+  // desconto de 5% que, arredondado item a item, somaria 1 centavo a mais
+  const parts = distributeCents(31863, [231.6, 52.9, 50.9]);
+  assert.equal(parts.reduce((sum, value) => sum + value, 0), 31863);
+  assert.deepEqual(distributeCents(100, [1, 1, 1]), [34, 33, 33]);
+  assert.deepEqual(distributeCents(500, [0, 0]), [500, 0]);
+  assert.deepEqual(distributeCents(500, []), []);
+  assert.ok(page.includes("distributeCents(Math.round(order.total * 100), items.map((item) => itemUnitPrice(item) * item.quantity))"));
+  assert.ok(page.includes("revenueCents: Math.round(order.total * 100) }));"));
+});
+
+test("parcela única acompanha a conta a receber da OS", () => {
+  assert.deepEqual(singleInstallmentValues(19170, 19170), { amountCents: 19170, receivedCents: 19170, balanceCents: 0, status: "Pago" });
+  assert.deepEqual(singleInstallmentValues(19380, 20400), { amountCents: 19380, receivedCents: 19380, balanceCents: 0, status: "Pago" });
+  assert.deepEqual(singleInstallmentValues(10080, 0), { amountCents: 10080, receivedCents: 0, balanceCents: 10080, status: "Pendente" });
+  assert.ok(financeLib.includes("if (!order.boletoTermDays && receivable) {"));
+  assert.ok(financeLib.includes("eq(receivableInstallments.totalInstallments, 1)"));
+});
+
+test("tela inicial mostra o recebido pela data do recebimento", () => {
+  assert.ok(page.includes("received: cashInByMonth[dashboardMonth] || 0"));
+  assert.ok(page.includes("received: cashInByMonth[month] || 0"));
 });
