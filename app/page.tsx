@@ -46,7 +46,7 @@ type Screen =
   | "financial-cash"
   | "financial-payables"
   | "financial-pricing"
-  | "batches"
+  | "financial-batches"
   | "wallet"
   | "reports"
   | "settings";
@@ -1368,7 +1368,7 @@ export default function Home() {
   const periodCashOut = periodCash.reduce((sum, row) => sum + row.outCents, 0);
   const wholeMoney = (cents: number) => Math.round(cents / 100).toLocaleString("pt-BR");
   const isFinanceScreen =
-    screen === "financial" || screen === "reports" || screen === "financial-monthly" || screen === "financial-cash" || screen === "financial-payables" || screen === "financial-pricing";
+    screen === "financial" || screen === "reports" || screen === "financial-monthly" || screen === "financial-cash" || screen === "financial-payables" || screen === "financial-pricing" || screen === "financial-batches";
   const showFinanceMenu = isFinanceScreen ? !financeCollapsed : financeOpen;
   const walletCustomers = useMemo(() => {
     const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
@@ -2967,7 +2967,6 @@ export default function Home() {
     ["dashboard", "⌂", "Início"],
     ["orders", "▤", "OS"],
     ["stock", "▥", "Estoque"],
-    ["batches", "▧", "Lotes"],
     ["wallet", "▣", "Carteira"],
     ["catalog", "▦", "Catálogo"],
     ["financial", "$", "Financeiro"],
@@ -2978,6 +2977,7 @@ export default function Home() {
     ["financial-cash", "Caixa mês a mês"],
     ["financial-payables", "Contas a pagar"],
     ["financial-pricing", "Preços e margem"],
+    ["financial-batches", "Lotes de compra"],
   ];
   const settingsNav: [SettingsSection, string, string][] = [
     ["customers", "♙", "Clientes"],
@@ -3176,7 +3176,7 @@ export default function Home() {
                   });
                   const openAction = (action: DashboardAction) => {
                     if (action.target === "batch") {
-                      go("batches");
+                      go("financial-batches");
                       return setViewingBatchId(action.batchId ?? null);
                     }
                     if (action.target === "order") {
@@ -3932,7 +3932,7 @@ export default function Home() {
               <div className="page">
                 <Heading
                   eyebrow="FINANCEIRO"
-                  title={screen === "financial-monthly" ? "Lucro mês a mês" : screen === "financial-cash" ? "Caixa mês a mês" : screen === "financial-payables" ? "Contas a pagar" : screen === "financial-pricing" ? "Preços e margem" : "Financeiro"}
+                  title={screen === "financial-monthly" ? "Lucro mês a mês" : screen === "financial-cash" ? "Caixa mês a mês" : screen === "financial-payables" ? "Contas a pagar" : screen === "financial-pricing" ? "Preços e margem" : screen === "financial-batches" ? "Lotes de compra" : "Financeiro"}
                   subtitle={
                     screen === "financial-monthly"
                       ? "Quanto sobrou ou faltou em cada mês: o que foi vendido menos as contas pagas."
@@ -3942,9 +3942,17 @@ export default function Home() {
                           ? "Cadastre e acompanhe as contas da empresa."
                           : screen === "financial-pricing"
                             ? "Veja quanto cada peça deixa de lucro, simule preços e compare o custo revenda com o custo fabricação."
+                          : screen === "financial-batches"
+                            ? "Cada compra do fornecedor, o que já vendeu e quanto ela rende."
                           : "Veja quanto você vendeu, quanto gastou e quanto sobrou."
                   }
-                  action={screen === "financial" || screen === "reports" ? <button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button> : undefined}
+                  action={
+                    screen === "financial" || screen === "reports" ? (
+                      <button className="primary-button" onClick={exportCsv}>↓ Exportar CSV</button>
+                    ) : screen === "financial-batches" ? (
+                      <button className="primary-button" onClick={() => setBatchForm({ id: null })}>＋ Lançar lote</button>
+                    ) : undefined
+                  }
                 />
                 <nav className="finance-tabs" aria-label="Seções do financeiro">
                   {financeNav.map(([target, label]) => (
@@ -3960,6 +3968,37 @@ export default function Home() {
                 </nav>
                 {financeData.historyTruncated && (screen === "financial-monthly" || screen === "financial-cash") && (
                   <p className="plain-warning">Histórico incompleto: há mais registros do que o sistema carrega de uma vez, e os meses mais antigos podem estar faltando.</p>
+                )}
+                {screen === "financial-batches" && (
+                  <>
+                {stockError && <p className="modal-error">{stockError}</p>}
+                <section className="panel plain-panel batch-panel">
+                  {!purchaseBatches.length && <p className="compact-empty">Nenhum lote de compra lançado ainda.</p>}
+                  {batchData.outsideQty > 0 && (
+                    <p className="plain-warning">
+                      {`${batchData.outsideQty === 1 ? "1 peça vendida não saiu" : `${batchData.outsideQty} peças vendidas não saíram`} de nenhum lote, porque a venda passou do estoque lançado. Elas ficam fora dos estudos.`}
+                    </p>
+                  )}
+                  <div className="batch-list">
+                    {purchaseBatches.map((batch) => {
+                      const study = batchStudies.get(batch.id);
+                      if (!study) return null;
+                      return (
+                        <button type="button" className="batch-card" key={batch.id} onClick={() => setViewingBatchId(batch.id)}>
+                          <span>
+                            <b>{batch.supplier}</b>
+                            <small>{`${brDate(batch.purchaseDate)} · ${study.soldQty} de ${study.boughtQty} vendidas · ${study.stockQty} em estoque`}</small>
+                          </span>
+                          <span className="batch-card-result">
+                            <strong className={study.totalCents < 0 ? "bad" : "good"}>{signedMoney(study.totalCents)}</strong>
+                            <small>{`lucro esperado${study.rateOnCost === null ? "" : ` · ${percent(study.rateOnCost)}`}`}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+                  </>
                 )}
                 {screen === "financial-pricing" && (() => {
                   const today = todayIso();
@@ -4523,43 +4562,6 @@ export default function Home() {
                             <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "entrada" })} disabled={saving}>Lançar</button>
                           </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              </div>
-            )}
-            {screen === "batches" && (
-              <div className="page">
-                <Heading
-                  eyebrow="COMPRAS"
-                  title="Lotes de compra"
-                  subtitle="Cada compra do fornecedor, o que já vendeu e quanto ela rende."
-                  action={<button className="primary-button" onClick={() => setBatchForm({ id: null })}>＋ Lançar lote</button>}
-                />
-                {stockError && <p className="modal-error">{stockError}</p>}
-                <section className="panel plain-panel batch-panel">
-                  {!purchaseBatches.length && <p className="compact-empty">Nenhum lote de compra lançado ainda.</p>}
-                  {batchData.outsideQty > 0 && (
-                    <p className="plain-warning">
-                      {`${batchData.outsideQty === 1 ? "1 peça vendida não saiu" : `${batchData.outsideQty} peças vendidas não saíram`} de nenhum lote, porque a venda passou do estoque lançado. Elas ficam fora dos estudos.`}
-                    </p>
-                  )}
-                  <div className="batch-list">
-                    {purchaseBatches.map((batch) => {
-                      const study = batchStudies.get(batch.id);
-                      if (!study) return null;
-                      return (
-                        <button type="button" className="batch-card" key={batch.id} onClick={() => setViewingBatchId(batch.id)}>
-                          <span>
-                            <b>{batch.supplier}</b>
-                            <small>{`${brDate(batch.purchaseDate)} · ${study.soldQty} de ${study.boughtQty} vendidas · ${study.stockQty} em estoque`}</small>
-                          </span>
-                          <span className="batch-card-result">
-                            <strong className={study.totalCents < 0 ? "bad" : "good"}>{signedMoney(study.totalCents)}</strong>
-                            <small>{`lucro esperado${study.rateOnCost === null ? "" : ` · ${percent(study.rateOnCost)}`}`}</small>
-                          </span>
-                        </button>
                       );
                     })}
                   </div>
@@ -5322,7 +5324,7 @@ export default function Home() {
           rows.length ? rows.map((row) => `${money(row.amountCents / 100)} em ${brDate(row.dueDate).slice(0, 5)}`).join(" · ") : "Nada pendente";
         const receiveRows = toReceive.map((row) => ({ amountCents: Math.round(row.balance * 100), dueDate: row.dueDate }));
         return (
-          <Modal title={`Lote ${batch.supplier} · ${brDate(batch.purchaseDate)}`} close={() => setViewingBatchId(null)}>
+          <Modal title={`Lote ${batch.supplier} · ${brDate(batch.purchaseDate)}`} page pageLabel="" backLabel="Lotes de compra" close={() => setViewingBatchId(null)}>
             <div className="batch-study">
               <p className="batch-sub">{`${study.boughtQty} peças compradas · ${study.soldQty} vendidas · ${study.stockQty} em estoque`}</p>
               <div className={`batch-hero ${study.totalCents < 0 ? "bad" : "good"}`}>
@@ -5416,7 +5418,7 @@ export default function Home() {
         // Peças ativas e, na edição, também as que já estão no lote.
         const rows = products.filter((product) => product.active || entryOf(product.id));
         return (
-          <Modal title={batch ? "Editar lote de compra" : "Lançar lote de compra"} close={() => setBatchForm(null)}>
+          <Modal title={batch ? "Editar lote de compra" : "Lançar lote de compra"} page pageLabel="" backLabel="Voltar" close={() => setBatchForm(null)}>
             <form className="batch-form" onSubmit={saveBatch}>
               <div className="batch-form-head">
                 <Field label="Fornecedor">

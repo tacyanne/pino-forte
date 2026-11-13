@@ -187,7 +187,7 @@ test("tela de estoque lista os lotes e abre o estudo; API grava nos dois caminho
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
   const page = read("../app/page.tsx");
   const api = read("../app/api/stock/route.ts");
-  for (const text of ['["batches", "▧", "Lotes"]', 'screen === "batches" && (', 'title="Lotes de compra"', "batchStudies.get(batch.id)", "allocateBatches({ entries, sales, outs })", "batchId: Number(movement.batchId) || NO_BATCH", "discounted: grossCents - totalCents > items.length", "de nenhum lote, porque a venda passou do estoque lançado", "Lucro esperado do lote", "Pontos de atenção", "Dinheiro do lote"])
+  for (const text of ['["financial-batches", "Lotes de compra"]', 'screen === "financial-batches" && (', 'page pageLabel="" backLabel="Lotes de compra" close={() => setViewingBatchId(null)}', "batchStudies.get(batch.id)", "allocateBatches({ entries, sales, outs })", "batchId: Number(movement.batchId) || NO_BATCH", "discounted: grossCents - totalCents > items.length", "de nenhum lote, porque a venda passou do estoque lançado", "Lucro esperado do lote", "Pontos de atenção", "Dinheiro do lote"])
     assert.ok(page.includes(text), text);
   assert.ok(api.includes('supabaseInsert<Record<string, unknown>>("purchase_batches"'));
   assert.ok(api.includes(".insert(purchaseBatches)"));
