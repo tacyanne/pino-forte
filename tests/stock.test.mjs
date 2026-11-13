@@ -188,13 +188,13 @@ test("histórico mostra entradas e as saídas das OS entregues que entram no sal
   assert.equal(page.includes('className="stock-history-day"'), false);
 });
 
-test("lista do estoque: zero no lugar do traço, menor quantidade primeiro e um botão só", () => {
+test("lista do estoque: zero no lugar do traço, zeradas primeiro e sem botão de saída", () => {
   assert.ok(page.includes("{row.balance ?? 0}"));
   assert.ok(page.includes("{row.available ?? 0}"));
   assert.equal(page.includes('row.balance === null ? "—"'), false);
   assert.ok(page.includes("(a.row?.available ?? 0) - (b.row?.available ?? 0)"));
-  assert.ok(page.includes("Number(isEmptyStock(a.row)) - Number(isEmptyStock(b.row)) ||"));
-  assert.ok(page.includes("(row?.balance ?? 0) <= 0 && (row?.reserved ?? 0) === 0"));
-  assert.ok(page.includes(">Dar saída</button>"));
+  // zeradas primeiro (menor disponível no topo) e sem botão de saída na lista
+  assert.equal(page.includes("isEmptyStock"), false);
+  assert.equal(page.includes(">Dar saída</button>"), false);
   assert.equal(page.includes(">Contar</button>"), false);
 });
