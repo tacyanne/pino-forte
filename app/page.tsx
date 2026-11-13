@@ -5133,15 +5133,19 @@ export default function Home() {
             )}
           </article>
         );
+        // Lucro que o preço simulado dá hoje sobre o custo em uso; aparece no campo enquanto nada é digitado.
+        const currentRate = baseCost === null ? null : (baseIsPurchase ? simulation.comprada : simulation.fabricada).onCost;
         return (
           <Modal title={`Simular preço · ${product.code}`} close={() => setPricingProduct(null)}>
             <div className="sim-inputs">
               <Field label="Lucro desejado sobre o custo (%)">
                 <input
                   inputMode="decimal"
-                  value={simMargin}
+                  value={simMargin !== "" ? simMargin : currentRate === null ? "" : percent(currentRate)}
                   placeholder={percent(targetRate)}
                   disabled={baseCost === null}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => setSimMargin("")}
                   onChange={(e) => {
                     setSimMargin(e.target.value);
                     const rate = parsePercent(e.target.value);
