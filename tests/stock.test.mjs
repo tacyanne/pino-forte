@@ -97,7 +97,7 @@ test("frase do ritmo de venda", () => {
 
 test("API de estoque exige login e grava nos dois caminhos de banco", () => {
   assert.equal(api.split("requireUser(request)").length - 1, 3);
-  assert.ok(api.includes("parseStockMovement(await request.json(), todayIso())"));
+  assert.ok(api.includes("parseStockMovement(body, todayIso())"));
   assert.ok(api.includes("hasSupabaseRest()"));
   assert.ok(api.includes('supabaseInsert<Record<string, unknown>>("stock_movements"'));
   assert.ok(api.includes("db.insert(stockMovements)"));

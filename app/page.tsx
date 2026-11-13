@@ -24,6 +24,7 @@ import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
+import { allocateBatches, batchStudy, type PurchaseBatch } from "../lib/purchase-batches";
 import { buildDashboardActions, forecastAhead, previousLabel, tightSentence, type DashboardAction } from "../lib/dashboard";
 import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
 import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, costUseAt, latestCostUse, type CostUse, type ProductCost } from "../lib/product-costs";
@@ -507,6 +508,8 @@ export default function Home() {
   const [bulkType, setBulkType] = useState("");
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [stockError, setStockError] = useState("");
+  const [purchaseBatches, setPurchaseBatches] = useState<PurchaseBatch[]>([]);
+  const [viewingBatchId, setViewingBatchId] = useState<number | null>(null);
   const [stockForm, setStockForm] = useState<{ product: Product; kind: StockKind } | null>(null);
   const [pieceTypes, setPieceTypes] = useState<PieceType[]>([]);
   const [typeModal, setTypeModal] = useState(false);
@@ -631,6 +634,7 @@ export default function Home() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível carregar o estoque.");
       setStockMovements(data.movements || []);
+      setPurchaseBatches(data.batches || []);
       setStockError("");
     } catch (error) {
       setStockError(error instanceof Error ? error.message : "Não foi possível carregar o estoque.");
@@ -867,6 +871,46 @@ export default function Home() {
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id),
     [orders],
   );
+  // Lotes de compra: qual venda saiu de qual lote (primeiro que entra, primeiro que sai).
+  const batchData = useMemo(() => {
+    const byKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
+    const sales = orders
+      .filter((order) => order.productionStatus === ORDER_STATUS.delivered)
+      .flatMap((order) => {
+        const items = getOrderItems(order);
+        const totalCents = Math.round(order.total * 100);
+        const revenues = distributeCents(totalCents, items.map((item) => itemUnitPrice(item) * item.quantity));
+        const grossCents = items.reduce((sum, item) => sum + Math.round(itemUnitPrice(item) * item.quantity * 100), 0);
+        return items.flatMap((item, index) => {
+          const piece = byKey.get(normalizePieceCode(item.code));
+          return piece
+            ? [{
+                orderId: order.id,
+                orderNumber: order.number,
+                productId: piece.id,
+                quantity: Number(item.quantity) || 0,
+                revenueCents: revenues[index],
+                date: (order.deliveryDate || dayInSaoPaulo(order.createdAt)).slice(0, 10),
+                discounted: totalCents < grossCents,
+              }]
+            : [];
+        });
+      });
+    const entries = stockMovements
+      .filter((movement) => movement.kind === "entrada" && movement.batchId)
+      .map((movement) => ({
+        movementId: movement.id,
+        batchId: Number(movement.batchId),
+        productId: movement.productId,
+        quantity: movement.quantity,
+        unitCostCents: movement.unitCostCents ?? null,
+        date: movement.movementDate,
+      }));
+    const outs = stockMovements
+      .filter((movement) => movement.kind === "saida")
+      .map((movement) => ({ productId: movement.productId, quantity: movement.quantity, date: movement.movementDate }));
+    return { entries, ...allocateBatches({ entries, sales, outs }) };
+  }, [products, orders, stockMovements]);
   // Estoque: OS entregues baixam o saldo sozinhas; OS na fila ficam como prometido.
   const stock = useMemo(() => {
     const byKey = new Map(products.map((item) => [normalizePieceCode(item.code), item]));
@@ -984,6 +1028,15 @@ export default function Home() {
       saved: chosen,
     };
   };
+  const batchStudyOf = (batchId: number) =>
+    batchStudy({
+      entries: batchData.entries.filter((entry) => entry.batchId === batchId),
+      allocation: batchData.byBatch.get(batchId),
+      products: products.map((product) => ({ id: product.id, code: product.code, priceCents: Math.round(product.price * 100) })),
+      targetRate,
+      format: { money, percent },
+    });
+  const signedMoney = (cents: number) => `${cents < 0 ? "− " : "+ "}${money(Math.abs(cents) / 100)}`;
   const priceHistoryBlock = (productId: number, note?: string) => {
     const timeline = priceTimeline(productPrices, productId);
     if (!timeline.length) return null;
@@ -4399,6 +4452,27 @@ export default function Home() {
                   </div>
                 </section>
                 <section className="panel plain-panel">
+                  <h2>Lotes de compra</h2>
+                  {!purchaseBatches.length && <p className="compact-empty">Nenhum lote de compra lançado ainda.</p>}
+                  <div className="batch-list">
+                    {purchaseBatches.map((batch) => {
+                      const study = batchStudyOf(batch.id);
+                      return (
+                        <button type="button" className="batch-card" key={batch.id} onClick={() => setViewingBatchId(batch.id)}>
+                          <span>
+                            <b>{batch.supplier}</b>
+                            <small>{`${brDate(batch.purchaseDate)} · ${study.soldQty} de ${study.boughtQty} vendidas · ${study.stockQty} em estoque`}</small>
+                          </span>
+                          <span className="batch-card-result">
+                            <strong className={study.totalCents < 0 ? "bad" : "good"}>{signedMoney(study.totalCents)}</strong>
+                            <small>{`lucro esperado${study.rateOnCost === null ? "" : ` · ${percent(study.rateOnCost)}`}`}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+                <section className="panel plain-panel">
                   <h2>Histórico do estoque</h2>
                   {!stock.history.length && <p className="compact-empty">Nenhum lançamento ainda. Depois da primeira contagem ou entrada, as OS entregues aparecem aqui como saída.</p>}
                   {(() => {
@@ -5173,6 +5247,97 @@ export default function Home() {
               <button type="button" className="primary-button" disabled={saving || priceCents <= 0 || priceCents === currentCents} onClick={() => applySimulatedPrice(product, priceCents)}>
                 Aplicar preço
               </button>
+            </div>
+          </Modal>
+        );
+      })()}
+      {viewingBatchId !== null && (() => {
+        const batch = purchaseBatches.find((item) => item.id === viewingBatchId);
+        if (!batch) return null;
+        const study = batchStudyOf(batch.id);
+        const orderIds = new Set(study.orders.map((row) => row.orderId));
+        const toReceive = openReceivableRows.filter((row) => row.order && orderIds.has(row.order.id));
+        const payables = financeData.accountsPayable.filter((payable) => payable.serviceOrderId != null && orderIds.has(payable.serviceOrderId) && payable.status !== "Cancelado");
+        const toPay = payables.filter((payable) => payable.status !== "Pago");
+        const receivedCents = [...orderIds].reduce((sum, id) => sum + Math.round((ordersById.get(id)?.received ?? 0) * 100), 0);
+        const paidCents = payables.filter((payable) => payable.status === "Pago").reduce((sum, payable) => sum + payable.amountCents, 0);
+        const dates = (rows: { amountCents: number; dueDate: string }[]) =>
+          rows.length ? rows.map((row) => `${money(row.amountCents / 100)} em ${brDate(row.dueDate).slice(0, 5)}`).join(" · ") : "Nada pendente";
+        const receiveRows = toReceive.map((row) => ({ amountCents: Math.round(row.balance * 100), dueDate: row.dueDate }));
+        return (
+          <Modal title={`Lote ${batch.supplier} · ${brDate(batch.purchaseDate)}`} close={() => setViewingBatchId(null)}>
+            <div className="batch-study">
+              <p className="batch-sub">{`${study.boughtQty} peças compradas · ${study.soldQty} vendidas · ${study.stockQty} em estoque`}</p>
+              <div className={`batch-hero ${study.totalCents < 0 ? "bad" : "good"}`}>
+                <span>{study.totalCents < 0 ? "Prejuízo esperado do lote" : "Lucro esperado do lote"}</span>
+                <strong>{signedMoney(study.totalCents)}</strong>
+                <small>
+                  {study.rateOnCost === null
+                    ? "Cadastre o custo das peças do lote para calcular."
+                    : `${percent(study.rateOnCost)} sobre o custo de ${money(study.costCents / 100)} · meta de ${percent(targetRate)}`}
+                </small>
+                <div className="batch-bar"><i style={{ width: `${Math.min(100, Math.round(study.soldShare * 100))}%` }} /></div>
+                <small>{`${Math.round(study.soldShare * 100)}% do lote vendido`}</small>
+              </div>
+              <div className="dash-kpis batch-kpis">
+                <div><span>Custo do lote</span><strong>{money(study.costCents / 100)}</strong><small>{`${study.boughtQty} peças`}</small></div>
+                <div><span>Já vendido</span><strong>{money(study.soldRevenueCents / 100)}</strong><small>{`${study.soldQty} peças em ${study.orders.length} OS`}</small></div>
+                <div className={study.realizedCents < 0 ? "bad" : "good"}><span>Lucro já feito</span><strong>{signedMoney(study.realizedCents)}</strong><small>nas peças vendidas</small></div>
+                <div className={study.expectedStockCents < 0 ? "bad" : "good"}><span>Lucro que falta</span><strong>{signedMoney(study.expectedStockCents)}</strong><small>{`${study.stockQty} peças a preço de tabela`}</small></div>
+              </div>
+              <section className="batch-block">
+                <h3>Pontos de atenção</h3>
+                {!study.notes.length && <p className="dash-clear">Nenhum ponto de atenção neste lote.</p>}
+                {study.notes.map((note) => (
+                  <p className="batch-note" key={note.text}><i className={note.tone} aria-hidden="true" /><span>{note.text}</span></p>
+                ))}
+              </section>
+              <section className="batch-block">
+                <h3>Já vendidas</h3>
+                {!study.orders.length && <p className="compact-empty">Nenhuma peça deste lote foi vendida ainda.</p>}
+                {study.orders.map((row) => (
+                  <div className="batch-row" key={row.orderId}>
+                    <span>{`${row.orderNumber} · ${row.quantity === 1 ? "1 peça" : `${row.quantity} peças`}`}</span>
+                    <b className={row.profitCents < 0 ? "bad" : "good"}>{signedMoney(row.profitCents)}</b>
+                    <small>{`Vendeu ${money(row.revenueCents / 100)}${row.discounted ? " (com desconto)" : ""} · custou ${money(row.costCents / 100)}`}</small>
+                  </div>
+                ))}
+              </section>
+              <section className="batch-block">
+                <h3>Dinheiro do lote</h3>
+                <div className="batch-row">
+                  <span>A receber dos clientes</span>
+                  <b>{money(receiveRows.reduce((sum, row) => sum + row.amountCents, 0) / 100)}</b>
+                  <small>{dates(receiveRows)}</small>
+                </div>
+                <div className="batch-row">
+                  <span>A pagar ao fornecedor</span>
+                  <b>{money(toPay.reduce((sum, payable) => sum + payable.amountCents, 0) / 100)}</b>
+                  <small>{dates(toPay)}</small>
+                </div>
+                <div className="batch-row">
+                  <span>Já recebido / já pago</span>
+                  <b>{`${money(receivedCents / 100)} / ${money(paidCents / 100)}`}</b>
+                  <small>Valores das OS deste lote. Você paga ao fornecedor só o que vende.</small>
+                </div>
+              </section>
+              <section className="batch-block">
+                <h3>Em estoque · lucro a preço de tabela</h3>
+                {!study.stock.length && <p className="compact-empty">O lote já foi todo vendido.</p>}
+                {study.stock.map((row) => (
+                  <div className="batch-row" key={row.productId}>
+                    <span>{`${row.code} · ${row.quantity === 1 ? "1 peça" : `${row.quantity} peças`}`}</span>
+                    <b className={row.profitCents === null ? "" : row.profitCents < 0 ? "bad" : "good"}>{row.profitCents === null ? "—" : signedMoney(row.profitCents)}</b>
+                    <small>
+                      {row.unitProfitCents === null
+                        ? "Falta o custo desta peça no lote"
+                        : row.unitProfitCents < 0
+                          ? `Prejuízo de ${money(-row.unitProfitCents / 100)} por peça`
+                          : `${money(row.unitProfitCents / 100)} por peça${row.onCost === null ? "" : ` · ${percent(row.onCost)} sobre o custo`}`}
+                    </small>
+                  </div>
+                ))}
+              </section>
             </div>
           </Modal>
         );
