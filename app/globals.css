@@ -1243,3 +1243,20 @@ button.plain-row{cursor:pointer}
 .batch-note i{width:9px;height:9px;border-radius:50%;background:#d08a00}
 .batch-note i.red{background:#c0392b}
 @media(min-width:760px){.batch-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* Lançar e editar lote de compra */
+.batch-actions{justify-content:space-between}
+.batch-actions .record-inactivate{min-height:44px;padding:0 16px;border-radius:10px;font-weight:800}
+.batch-form{display:grid;gap:12px}
+.batch-form-head{display:grid;gap:12px}
+.batch-form-list{display:grid;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.batch-form-row{display:grid;grid-template-columns:minmax(0,1.2fr) 84px minmax(0,1fr);gap:8px;align-items:center;padding:8px 10px;border-top:1px solid #e5e9e8}
+.batch-form-row:first-child{border-top:0}
+.batch-form-row .stock-main{grid-column:auto}
+.batch-form-labels{background:#f8faf9;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.batch-form-row input{width:100%;min-height:40px;padding:0 10px;border:1px solid #cfd7d5;border-radius:9px;background:#fff;color:var(--ink)}
+.batch-form-row input:focus{border-color:#31818b;outline:none;box-shadow:0 0 0 3px #31818b18}
+@media(min-width:720px){
+  .batch-form-head{grid-template-columns:1.2fr 180px 1.4fr}
+  .batch-form-row{grid-template-columns:minmax(0,1.4fr) 140px 200px;padding:8px 14px}
+}

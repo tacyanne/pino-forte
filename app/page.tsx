@@ -46,6 +46,7 @@ type Screen =
   | "financial-cash"
   | "financial-payables"
   | "financial-pricing"
+  | "batches"
   | "wallet"
   | "reports"
   | "settings";
@@ -510,6 +511,8 @@ export default function Home() {
   const [stockError, setStockError] = useState("");
   const [purchaseBatches, setPurchaseBatches] = useState<PurchaseBatch[]>([]);
   const [viewingBatchId, setViewingBatchId] = useState<number | null>(null);
+  // Lote em lançamento (id null) ou em edição.
+  const [batchForm, setBatchForm] = useState<{ id: number | null } | null>(null);
   const [stockForm, setStockForm] = useState<{ product: Product; kind: StockKind } | null>(null);
   const [pieceTypes, setPieceTypes] = useState<PieceType[]>([]);
   const [typeModal, setTypeModal] = useState(false);
@@ -670,24 +673,60 @@ export default function Home() {
       setSaving(false);
     }
   }
-  async function deleteStockMovement(movement: StockMovement) {
-    const question = movement.batchId
-      ? "Esta entrada pertence a um lote de compra. Excluir tira a peça do lote; se for a última, o lote também é excluído. Continuar?"
-      : "Excluir este lançamento de estoque? O saldo da peça será recalculado.";
-    if (!window.confirm(question)) return;
+  // Lança um lote novo ou grava a edição: só entram as peças com quantidade.
+  async function saveBatch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!batchForm) return;
+    const form = new FormData(event.currentTarget);
+    const items = products.flatMap((product) => {
+      const quantity = Number(String(form.get(`batchQty-${product.id}`) || "").trim() || 0);
+      return quantity > 0
+        ? [{ productId: product.id, quantity, unitCostCents: Math.round(parseCurrency(String(form.get(`batchCost-${product.id}`) || "")) * 100) }]
+        : [];
+    });
+    setSaving(true);
+    try {
+      const response = await fetch("/api/stock", {
+        method: batchForm.id ? "PUT" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "batch",
+          id: batchForm.id ?? undefined,
+          supplier: form.get("batchSupplier"),
+          purchaseDate: form.get("batchDate"),
+          notes: form.get("batchNotes"),
+          items,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar o lote.");
+      setStockMovements(data.movements || []);
+      setPurchaseBatches(data.batches || []);
+      setBatchForm(null);
+      flash(batchForm.id ? "Lote atualizado." : "Lote lançado. As peças já entraram no estoque.");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Não foi possível salvar o lote.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function deleteBatch(batch: PurchaseBatch) {
+    if (!window.confirm(`Excluir o lote ${batch.supplier} de ${brDate(batch.purchaseDate)}? As peças dele saem do estoque. As vendas e as contas a pagar não são alteradas.`)) return;
     setSaving(true);
     try {
       const response = await fetch("/api/stock", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: movement.id }),
+        body: JSON.stringify({ batchId: batch.id }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Não foi possível excluir o lançamento.");
-      await refreshStock();
-      flash("Lançamento excluído.");
+      if (!response.ok) throw new Error(data.error || "Não foi possível excluir o lote.");
+      setStockMovements(data.movements || []);
+      setPurchaseBatches(data.batches || []);
+      setViewingBatchId(null);
+      flash("Lote excluído.");
     } catch (error) {
-      flash(error instanceof Error ? error.message : "Não foi possível excluir o lançamento.", "error");
+      flash(error instanceof Error ? error.message : "Não foi possível excluir o lote.", "error");
     } finally {
       setSaving(false);
     }
@@ -2928,6 +2967,7 @@ export default function Home() {
     ["dashboard", "⌂", "Início"],
     ["orders", "▤", "OS"],
     ["stock", "▥", "Estoque"],
+    ["batches", "▧", "Lotes"],
     ["wallet", "▣", "Carteira"],
     ["catalog", "▦", "Catálogo"],
     ["financial", "$", "Financeiro"],
@@ -3112,6 +3152,10 @@ export default function Home() {
                     today,
                     receivables,
                     payables: pendingPayables,
+                    batches: purchaseBatches.flatMap((batch) => {
+                      const study = batchStudies.get(batch.id);
+                      return study ? [{ id: batch.id, supplier: batch.supplier, totalCents: study.totalCents, stockQty: study.stockQty, boughtQty: study.boughtQty }] : [];
+                    }),
                     queue: queueOrders.map((order) => ({
                       orderId: order.id,
                       orderNumber: order.number,
@@ -3131,6 +3175,10 @@ export default function Home() {
                     format: { money, brDate, percent },
                   });
                   const openAction = (action: DashboardAction) => {
+                    if (action.target === "batch") {
+                      go("batches");
+                      return setViewingBatchId(action.batchId ?? null);
+                    }
                     if (action.target === "order") {
                       const order = action.orderId ? ordersById.get(action.orderId) : undefined;
                       return order ? setOrderModal(order) : go("orders");
@@ -4479,8 +4527,18 @@ export default function Home() {
                     })}
                   </div>
                 </section>
-                <section className="panel plain-panel">
-                  <h2>Lotes de compra</h2>
+              </div>
+            )}
+            {screen === "batches" && (
+              <div className="page">
+                <Heading
+                  eyebrow="COMPRAS"
+                  title="Lotes de compra"
+                  subtitle="Cada compra do fornecedor, o que já vendeu e quanto ela rende."
+                  action={<button className="primary-button" onClick={() => setBatchForm({ id: null })}>＋ Lançar lote</button>}
+                />
+                {stockError && <p className="modal-error">{stockError}</p>}
+                <section className="panel plain-panel batch-panel">
                   {!purchaseBatches.length && <p className="compact-empty">Nenhum lote de compra lançado ainda.</p>}
                   {batchData.outsideQty > 0 && (
                     <p className="plain-warning">
@@ -5341,7 +5399,65 @@ export default function Home() {
                   </div>
                 ))}
               </section>
+              <div className="form-actions batch-actions">
+                <button type="button" className="record-inactivate" disabled={saving} onClick={() => deleteBatch(batch)}>Excluir lote</button>
+                <button type="button" className="primary-button" disabled={saving} onClick={() => { setViewingBatchId(null); setBatchForm({ id: batch.id }); }}>
+                  Editar lote
+                </button>
+              </div>
             </div>
+          </Modal>
+        );
+      })()}
+      {batchForm && (() => {
+        const batch = batchForm.id ? purchaseBatches.find((item) => item.id === batchForm.id) : undefined;
+        const entryOf = (productId: number) =>
+          batch ? stockMovements.find((movement) => movement.kind === "entrada" && movement.batchId === batch.id && movement.productId === productId) : undefined;
+        // Peças ativas e, na edição, também as que já estão no lote.
+        const rows = products.filter((product) => product.active || entryOf(product.id));
+        return (
+          <Modal title={batch ? "Editar lote de compra" : "Lançar lote de compra"} close={() => setBatchForm(null)}>
+            <form className="batch-form" onSubmit={saveBatch}>
+              <div className="batch-form-head">
+                <Field label="Fornecedor">
+                  <input name="batchSupplier" required maxLength={120} defaultValue={batch?.supplier || ""} />
+                </Field>
+                <Field label="Data da compra">
+                  <input type="date" name="batchDate" required max={todayIso()} defaultValue={batch?.purchaseDate || todayIso()} />
+                </Field>
+                <Field label="Observação">
+                  <input name="batchNotes" maxLength={200} defaultValue={batch?.notes || ""} />
+                </Field>
+              </div>
+              <p className="sim-note">Preencha a quantidade só das peças que vieram neste lote. O custo é o valor pago por peça nesta compra.</p>
+              <div className="batch-form-list">
+                <div className="batch-form-row batch-form-labels" aria-hidden="true"><span>Peça</span><span>Quantidade</span><span>Custo pago por peça</span></div>
+                {rows.map((product) => {
+                  const entry = entryOf(product.id);
+                  const suggested = entry?.unitCostCents ?? costOfSourceAt(productCosts, product.id, "comprada", todayIso())?.unitCostCents ?? 0;
+                  return (
+                    <div className="batch-form-row" key={product.id}>
+                      <span className="stock-main"><b>{product.code}</b><small>{product.measure}</small></span>
+                      <input name={`batchQty-${product.id}`} inputMode="numeric" placeholder="0" aria-label={`Quantidade de ${product.code}`} defaultValue={entry ? String(entry.quantity) : ""} />
+                      <input
+                        name={`batchCost-${product.id}`}
+                        inputMode="numeric"
+                        aria-label={`Custo pago por peça de ${product.code}`}
+                        defaultValue={money(suggested / 100)}
+                        onChange={(e) => {
+                          e.currentTarget.value = maskCurrency(e.currentTarget.value);
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              {batch && <p className="sim-note">Para tirar uma peça do lote, apague a quantidade dela. As vendas já feitas não são alteradas.</p>}
+              <div className="form-actions">
+                <button type="button" className="cancel-button" onClick={() => setBatchForm(null)}>Cancelar</button>
+                <button type="submit" className="primary-button" disabled={saving}>{batch ? "Salvar lote" : "Lançar lote"}</button>
+              </div>
+            </form>
           </Modal>
         );
       })()}

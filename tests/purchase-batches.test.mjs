@@ -187,7 +187,7 @@ test("tela de estoque lista os lotes e abre o estudo; API grava nos dois caminho
   const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
   const page = read("../app/page.tsx");
   const api = read("../app/api/stock/route.ts");
-  for (const text of ["<h2>Lotes de compra</h2>", "batchStudies.get(batch.id)", "allocateBatches({ entries, sales, outs })", "batchId: Number(movement.batchId) || NO_BATCH", "discounted: grossCents - totalCents > items.length", "de nenhum lote, porque a venda passou do estoque lançado", "Lucro esperado do lote", "Pontos de atenção", "Dinheiro do lote"])
+  for (const text of ['["batches", "▧", "Lotes"]', 'screen === "batches" && (', 'title="Lotes de compra"', "batchStudies.get(batch.id)", "allocateBatches({ entries, sales, outs })", "batchId: Number(movement.batchId) || NO_BATCH", "discounted: grossCents - totalCents > items.length", "de nenhum lote, porque a venda passou do estoque lançado", "Lucro esperado do lote", "Pontos de atenção", "Dinheiro do lote"])
     assert.ok(page.includes(text), text);
   assert.ok(api.includes('supabaseInsert<Record<string, unknown>>("purchase_batches"'));
   assert.ok(api.includes(".insert(purchaseBatches)"));
@@ -201,5 +201,11 @@ test("tela de estoque lista os lotes e abre o estudo; API grava nos dois caminho
   assert.ok(api.includes('await supabaseDelete("purchase_batches", { id: `eq.${batchId}` }).catch(() => undefined);'));
   assert.ok(api.includes('if (!rest.length) await supabaseDelete("purchase_batches", { id: `eq.${batchId}` });'));
   assert.ok(api.includes('batch_id: "not.is.null"'));
-  assert.ok(page.includes("Esta entrada pertence a um lote de compra."));
+  // lançar, editar e excluir lote pela tela, nos dois caminhos de banco
+  for (const text of ["＋ Lançar lote", "Editar lote", "Excluir lote", 'method: batchForm.id ? "PUT" : "POST"', "JSON.stringify({ batchId: batch.id })", "Para tirar uma peça do lote, apague a quantidade dela."])
+    assert.ok(page.includes(text), text);
+  assert.ok(api.includes("export async function PUT(request: Request)"));
+  assert.ok(api.includes("notInArray(stockMovements.productId, input.items.map((item) => item.productId))"));
+  assert.ok(api.includes('await supabaseDelete("stock_movements", { batch_id: `eq.${id}` });'));
+  assert.ok(api.includes("if (body.batchId !== undefined) {"));
 });

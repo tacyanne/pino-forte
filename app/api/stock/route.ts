@@ -1,4 +1,4 @@
-import { desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, notInArray } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { purchaseBatches, stockMovements } from "../../../db/schema";
 import { requireUser } from "../../../lib/auth";
@@ -6,7 +6,7 @@ import { todayIso } from "../../../lib/finance";
 import { StockError, parseStockMovement, type StockKind, type StockMovement } from "../../../lib/stock";
 import { PurchaseBatchError, parsePurchaseBatch, type PurchaseBatch } from "../../../lib/purchase-batches";
 import { camelizeRows } from "../../../lib/supabase-mappers";
-import { hasSupabaseRest, supabaseDelete, supabaseInsert, supabaseSelect } from "../../../lib/supabase-rest";
+import { hasSupabaseRest, supabaseDelete, supabaseInsert, supabasePatch, supabaseSelect } from "../../../lib/supabase-rest";
 
 export const dynamic = "force-dynamic";
 const headers = { "cache-control": "no-store, no-cache, must-revalidate" };
@@ -133,6 +133,74 @@ async function createBatch(raw: unknown, userId: number) {
   });
 }
 
+// Edição do lote: atualiza fornecedor e data e deixa as entradas iguais à lista enviada
+// (muda quantidade e custo, inclui peça nova e tira a que saiu da lista).
+async function updateBatch(raw: unknown, userId: number) {
+  const id = Number((raw as { id?: unknown } | null)?.id);
+  if (!Number.isInteger(id) || id <= 0) throw new PurchaseBatchError("Lote não encontrado.");
+  const input = parsePurchaseBatch(raw, todayIso());
+  const note = `Lote ${input.supplier}`;
+  if (hasSupabaseRest()) {
+    const updated = await supabasePatch<Record<string, unknown>>("purchase_batches", { id: `eq.${id}` }, {
+      supplier: input.supplier,
+      purchase_date: input.purchaseDate,
+      notes: input.notes,
+    });
+    if (!updated) throw new PurchaseBatchError("Lote não encontrado.");
+    const current = await supabaseSelect<Record<string, unknown>>("stock_movements", { select: "id,product_id", batch_id: `eq.${id}` });
+    for (const item of input.items) {
+      const existing = current.find((row) => Number(row.product_id) === item.productId);
+      const values = { quantity: item.quantity, unit_cost_cents: item.unitCostCents, movement_date: input.purchaseDate, notes: note };
+      if (existing) await supabasePatch("stock_movements", { id: `eq.${Number(existing.id)}` }, values);
+      else await supabaseInsert("stock_movements", { product_id: item.productId, kind: "entrada", batch_id: id, created_by: userId, ...values });
+    }
+    const kept = new Set(input.items.map((item) => item.productId));
+    for (const row of current) if (!kept.has(Number(row.product_id))) await supabaseDelete("stock_movements", { id: `eq.${Number(row.id)}` });
+    return;
+  }
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(purchaseBatches)
+      .set({ supplier: input.supplier, purchaseDate: input.purchaseDate, notes: input.notes })
+      .where(eq(purchaseBatches.id, id))
+      .returning();
+    if (!updated) throw new PurchaseBatchError("Lote não encontrado.");
+    const current = await tx.select({ id: stockMovements.id, productId: stockMovements.productId }).from(stockMovements).where(eq(stockMovements.batchId, id));
+    for (const item of input.items) {
+      const existing = current.find((row) => row.productId === item.productId);
+      const values = { quantity: item.quantity, unitCostCents: item.unitCostCents, movementDate: input.purchaseDate, notes: note };
+      if (existing) await tx.update(stockMovements).set(values).where(eq(stockMovements.id, existing.id));
+      else await tx.insert(stockMovements).values({ productId: item.productId, kind: "entrada", batchId: id, createdBy: userId, ...values });
+    }
+    await tx
+      .delete(stockMovements)
+      .where(and(eq(stockMovements.batchId, id), notInArray(stockMovements.productId, input.items.map((item) => item.productId))));
+  });
+}
+
+// Exclui o lote inteiro: as entradas dele saem do estoque junto.
+async function deleteBatch(id: number) {
+  if (hasSupabaseRest()) {
+    await supabaseDelete("stock_movements", { batch_id: `eq.${id}` });
+    await supabaseDelete("purchase_batches", { id: `eq.${id}` });
+    return;
+  }
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    await tx.delete(stockMovements).where(eq(stockMovements.batchId, id));
+    await tx.delete(purchaseBatches).where(eq(purchaseBatches.id, id));
+  });
+}
+
+export async function PUT(request: Request) {
+  try {
+    const auth = await requireUser(request); if (auth instanceof Response) return auth;
+    await updateBatch(await request.json(), auth.id);
+    return Response.json({ movements: await listMovements(), batches: await listBatchesSafe() }, { headers });
+  } catch (error) { return failure(error); }
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await requireUser(request); if (auth instanceof Response) return auth;
@@ -169,7 +237,13 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const auth = await requireUser(request); if (auth instanceof Response) return auth;
-    const body = (await request.json().catch(() => ({}))) as { id?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { id?: unknown; batchId?: unknown };
+    if (body.batchId !== undefined) {
+      const batchId = Number(body.batchId);
+      if (!Number.isInteger(batchId) || batchId <= 0) throw new PurchaseBatchError("Lote não encontrado.");
+      await deleteBatch(batchId);
+      return Response.json({ movements: await listMovements(), batches: await listBatchesSafe() }, { headers });
+    }
     const id = Number(body.id);
     if (!Number.isInteger(id) || id <= 0) throw new StockError("Lançamento não encontrado.");
     // Entrada de lote: se era a última peça do lote, o lote sai junto para não ficar vazio.

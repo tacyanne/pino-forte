@@ -134,3 +134,24 @@ test("tela inicial tem as três faixas e não repete o histórico mensal", () =>
   assert.ok(page.includes('{`${leftCents < 0 ? "− " : "+ "}${money(Math.abs(leftCents) / 100)}`}'));
   assert.ok(page.indexOf("O que vem pela frente · próximos 30 dias") < page.indexOf("Como estou em ${monthName(dashboardMonth)}"));
 });
+
+test("lote que caminha para prejuízo ou está acabando vira ação do painel", () => {
+  const actions = buildDashboardActions({
+    ...base,
+    batches: [
+      { id: 1, supplier: "Fornecedor Y", totalCents: -4500, stockQty: 30, boughtQty: 80 },
+      { id: 2, supplier: "Fornecedor Z", totalCents: 9000, stockQty: 4, boughtQty: 40 },
+      { id: 3, supplier: "Fornecedor W", totalCents: 9000, stockQty: 30, boughtQty: 40 },
+      { id: 4, supplier: "Fornecedor V", totalCents: 9000, stockQty: 0, boughtQty: 40 },
+    ],
+  });
+  assert.deepEqual(actions.map((action) => action.key), ["lote-prejuizo-1", "lote-acabando-2"]);
+  assert.equal(actions[0].title, "Lote Fornecedor Y caminha para prejuízo de R$ 45,00");
+  assert.equal(actions[0].tone, "red");
+  assert.equal(actions[0].target, "batch");
+  assert.equal(actions[0].batchId, 1);
+  assert.equal(actions[1].title, "Lote Fornecedor Z está acabando: 4 peças restantes");
+  assert.equal(actions[1].detail, "36 de 40 já saíram · hora de pensar na próxima compra");
+  assert.ok(page.includes('if (action.target === "batch") {'));
+  assert.ok(page.includes('go("batches");'));
+});
