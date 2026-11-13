@@ -40,6 +40,7 @@ npm run import:production # importa dados de produção (scripts/import-producti
 - Autenticação própria em `app_users`/`app_sessions` (cookie `pino_session`), sem Supabase Auth.
 - Mudanças de schema: nova migration em `supabase/migrations/`; não editar migrations já aplicadas.
 - Custo por peça fica em `product_cost_history`, com histórico por vigência (`lib/product-costs.ts`, `lib/product-cost-store.ts`). O lucro é calculado com o custo vigente na data da venda. Custo é dado interno: nunca incluir no catálogo público nem nos PDFs.
+- Estoque de peças prontas: `stock_movements` guarda só o que é lançado à mão (contagem, entrada, saída). A venda não é gravada ali: o saldo desconta as OS entregues depois da última contagem e trata as OS na fila como prometido (`lib/stock.ts`).
 - O repositório é público: nunca commitar custos, margens ou outros valores reais do negócio (nem em migrations, testes ou comentários). Carga de dados vai direto no banco.
 - Não commitar arquivos `.env*` (todos ignorados pelo `.gitignore`).
 

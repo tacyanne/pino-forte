@@ -1031,3 +1031,32 @@ button.plain-row{cursor:pointer}
   .forecast-table th:nth-child(4),.forecast-table td:nth-child(4){display:table-cell}
 }
 .piece-bar-row+.plain-text{margin-top:12px}
+/* Estoque de peças prontas (mobile first) */
+.stock-panel{overflow:hidden;margin-bottom:16px}
+.stock-list{display:grid}
+.stock-head{display:none}
+.stock-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px;align-items:center;padding:14px 16px;border-top:1px solid var(--border)}
+.stock-row:first-of-type{border-top:0}
+.stock-main{grid-column:1/3;display:grid;gap:3px;min-width:0}
+.stock-main b{font-size:14px;color:var(--ink);white-space:nowrap}
+.stock-main small{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.stock-status{grid-column:3;grid-row:1;justify-self:end}
+.stock-number{display:grid;gap:2px;font-size:18px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.stock-number::before{content:attr(data-label);font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+.stock-number.negative{color:#b3401d}
+.stock-pace{grid-column:1/-1;font-size:12px;color:#526164}
+.stock-action{grid-column:1/-1;display:flex;gap:8px}
+.stock-action .outline-button{flex:1;min-height:38px;height:38px;padding:0 12px;font-size:12px;white-space:nowrap}
+.plain-row>.outline-button{flex:0 0 auto;min-height:34px;height:34px;padding:0 12px;font-size:11px}
+@media(min-width:900px){
+  .stock-head,.stock-row{grid-template-columns:minmax(0,1.2fr) 92px 92px 92px minmax(0,1.3fr) 110px 170px;gap:12px}
+  .stock-head{display:grid;align-items:center;padding:10px 16px;background:#f8faf9;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .stock-row,.stock-row:first-of-type{border-top:1px solid var(--border);padding:12px 16px}
+  .stock-row>*{grid-column:auto;grid-row:auto}
+  .stock-main,.stock-status,.stock-pace,.stock-action{grid-column:auto;grid-row:auto}
+  .stock-status{justify-self:start}
+  .stock-number{font-size:15px}
+  .stock-number::before{content:none}
+  .stock-action{justify-content:flex-end}
+  .stock-action .outline-button{flex:0 0 auto;min-height:34px;height:34px}
+}

@@ -311,6 +311,19 @@ export const productCostHistory = pgTable("product_cost_history", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
 
+export const stockMovements = pgTable("stock_movements", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull().references(() => products.id),
+  kind: text("kind").notNull(),
+  quantity: integer("quantity").notNull(),
+  movementDate: text("movement_date").notNull(),
+  notes: text("notes").notNull().default(""),
+  createdBy: integer("created_by"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => ({
+  productDateIdx: index("stock_movements_product_date_idx").on(table.productId, table.movementDate),
+}));
+
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   userId: integer("user_id"),
