@@ -985,7 +985,8 @@ export default function Home() {
     },
     { forecast: 0, received: 0, pending: 0, overdue: 0 },
   );
-  const dashboardReceivables = financeData.accountsReceivable
+  // Tudo o que está em aberto para receber hoje, sem filtro de período.
+  const openReceivableRows = financeData.accountsReceivable
     .filter(
       (receivable) =>
         receivable.status !== "Pago" &&
@@ -1019,8 +1020,8 @@ export default function Home() {
       const dueDifference = dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
       if (dueDifference !== 0) return dueDifference;
       return b.receivable.id - a.receivable.id;
-    })
-    .slice(0, 6);
+    });
+  const dashboardReceivables = openReceivableRows.slice(0, 6);
   // OS em fila entram como linhas da mesma tabela, sempre no topo.
   const dashboardRows = [
     ...queueOrders.map((order) => ({
@@ -1047,7 +1048,8 @@ export default function Home() {
       if (statusDifference !== 0) return statusDifference;
       return dateTimestamp(b.dueDate) - dateTimestamp(a.dueDate);
     });
-  const attentionRows = financialRows
+  // Pendências valem para hoje, qualquer que seja o período escolhido na tela.
+  const attentionRows = openReceivableRows
     .filter((row) => row.status === "Atrasado" && row.balance > 0)
     .slice()
     .sort((a, b) => dateTimestamp(a.dueDate) - dateTimestamp(b.dueDate))
@@ -1065,6 +1067,17 @@ export default function Home() {
   // Indicadores da tela Contas a pagar: sempre sobre as contas listadas no período escolhido.
   const payableTotals = payableKpis(payableRows, fabricationIds, todayIso());
   const payablePeriodLabel = financePeriod === "this" ? " deste mês" : financePeriod === "last" ? " do mês passado" : "";
+  // Resumo executivo: resultado do período e a posição de hoje do que falta receber e pagar.
+  const summaryPeriodLabel = financePeriod === "this" ? "neste mês" : financePeriod === "last" ? "no mês passado" : "até hoje";
+  const receivableOpen = openReceivableRows.reduce((sum, row) => sum + row.balance, 0);
+  const receivableOverdue = openReceivableRows
+    .filter((row) => row.status === "Atrasado")
+    .reduce((sum, row) => sum + row.balance, 0);
+  const openPayableTotals = payableKpis(
+    financeData.accountsPayable.filter((payable) => payable.status !== "Pago"),
+    fabricationIds,
+    todayIso(),
+  );
   const upcomingPayables = financeData.accountsPayable
     .filter((payable) => payable.status !== "Pago" && payable.status !== "Cancelado")
     .map((payable) => ({ payable, days: daysBetween(todayIso(), payable.dueDate) }))
@@ -3715,37 +3728,48 @@ export default function Home() {
                 {financeError && <p className="modal-error">{financeError}</p>}
                 {(screen === "financial" || screen === "reports") && (
                 <>
-                <section className="plain-summary">
-                  <article className="plain-card">
+                <section className={`plain-card plain-result month-hero ${plain.leftCents < 0 ? "negative" : "positive"}`}>
+                  <span>{`${plain.leftCents < 0 ? "Quanto faltou" : "Quanto sobrou"} ${summaryPeriodLabel}`}</span>
+                  <strong>{money(plain.leftCents / 100)}</strong>
+                  <p>{leftSentence(plain.leftPer100Cents, money)}</p>
+                </section>
+                <section className="finance-kpi-grid payable-kpis">
+                  <article>
                     <span>Quanto vendi</span>
                     <strong>{money(plain.salesCents / 100)}</strong>
-                    <p>
-                      {plain.salesCents > 0
-                        ? `Já recebi ${money(plain.receivedCents / 100)}. Falta receber ${money(plain.toReceiveCents / 100)}.`
-                        : "Nenhuma venda entregue neste período."}
-                    </p>
+                    <small>{reportOrders.length === 1 ? "1 OS entregue" : `${reportOrders.length} OS entregues`}</small>
                   </article>
-                  <article className="plain-card">
+                  <article>
                     <span>Quanto gastei</span>
                     <strong>{money(plain.spentCents / 100)}</strong>
-                    <p>{`${money(plain.pieceCostCents / 100)} para fabricar as peças vendidas e ${money(plain.otherExpensesCents / 100)} em outras contas.`}</p>
-                    {salesProfit.uncoveredRevenueCents > 0 && (
-                      <p className="plain-note">{`Falta o custo de peças que somam ${money(salesProfit.uncoveredRevenueCents / 100)} em vendas. Cadastre em Peças.`}</p>
-                    )}
+                    <small>{`${money(plain.pieceCostCents / 100)} em peças · ${money(plain.otherExpensesCents / 100)} em outras contas`}</small>
                   </article>
-                  <article className={`plain-card plain-result ${plain.leftCents < 0 ? "negative" : "positive"}`}>
-                    <span>Quanto sobrou</span>
-                    <strong>{money(plain.leftCents / 100)}</strong>
-                    <p>{leftSentence(plain.leftPer100Cents, money)}</p>
-                    {plain.salesCents > 0 && plain.toReceiveCents > 0 && (
-                      <p className="plain-note">{`Essa conta inclui ${money(plain.toReceiveCents / 100)} que você ainda não recebeu.`}</p>
-                    )}
+                  <article className={receivableOverdue > 0 ? "attention" : ""}>
+                    <span>A receber hoje</span>
+                    <strong>{money(receivableOpen)}</strong>
+                    <small>
+                      {receivableOverdue > 0
+                        ? `${money(receivableOverdue)} em atraso`
+                        : receivableOpen > 0 ? "Tudo dentro do prazo" : "Nada a receber"}
+                    </small>
+                  </article>
+                  <article className={openPayableTotals.overdueCents > 0 ? "attention" : ""}>
+                    <span>A pagar hoje</span>
+                    <strong>{money(openPayableTotals.openCents / 100)}</strong>
+                    <small>{openHint(openPayableTotals, money)}</small>
                   </article>
                 </section>
-                <p className="plain-cash">
-                  <b>Dinheiro que entrou e saiu:</b>{" "}
-                  {`entraram ${money(periodCashIn / 100)} e saíram ${money(periodCashOut / 100)} neste período.`}
-                </p>
+                <section className="business-health-strip cash-strip">
+                  <div><span>Entrou no caixa</span><b>{money(periodCashIn / 100)}</b></div>
+                  <div><span>Saiu do caixa</span><b>{money(periodCashOut / 100)}</b></div>
+                  <div>
+                    <span>Saldo do caixa</span>
+                    <b className={periodCashIn - periodCashOut < 0 ? "negative" : "positive"}>{money((periodCashIn - periodCashOut) / 100)}</b>
+                  </div>
+                </section>
+                {salesProfit.uncoveredRevenueCents > 0 && (
+                  <p className="plain-warning">{`Falta o custo de peças que somam ${money(salesProfit.uncoveredRevenueCents / 100)} em vendas. Cadastre em Peças para o resultado ficar certo.`}</p>
+                )}
                 <section className="panel plain-panel">
                   <h2>Precisa da sua atenção</h2>
                   {!attentionRows.length && !upcomingPayables.length && (
