@@ -268,9 +268,10 @@ export async function POST(request: Request) {
       return Response.json({ movements: await listMovements(), batches: await listBatchesSafe() }, { status: 201, headers });
     }
     const input = parseStockMovement(body, todayIso());
-    // Peça nova só entra pelo lote de compra, que guarda fornecedor e custo pago.
-    if (input.kind === "entrada")
-      throw new StockError("Peça nova entra no estoque pelo lote de compra (Financeiro → Lotes de compra).");
+    // O saldo vem dos lotes de compra: aqui só entra saída sem venda.
+    // Entrada e contagem à mão criariam estoque sem fornecedor e sem custo.
+    if (input.kind !== "saida")
+      throw new StockError("O estoque vem dos lotes de compra (Financeiro → Lotes de compra). Aqui só é possível dar saída sem venda.");
     if (hasSupabaseRest()) {
       const created = await supabaseInsert<Record<string, unknown>>("stock_movements", {
         product_id: input.productId,

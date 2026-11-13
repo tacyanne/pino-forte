@@ -4527,14 +4527,14 @@ export default function Home() {
                 {stockError && <p className="modal-error">{stockError}</p>}
                 {!stockError && stock.totals.uncounted > 0 && (
                   <p className="plain-warning">
-                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não foi contada" : `${stock.totals.uncounted} peças ainda não foram contadas`}. A peça entra no estoque quando você lança o lote de compra (Financeiro → Lotes de compra): a partir daí, cada OS entregue baixa o estoque sozinha.`}
+                    {`${stock.totals.uncounted === 1 ? "1 peça ainda não entrou em nenhum lote" : `${stock.totals.uncounted} peças ainda não entraram em nenhum lote`}. A peça entra no estoque quando você lança o lote de compra (Financeiro → Lotes de compra): a partir daí, cada OS entregue baixa o estoque sozinha.`}
                   </p>
                 )}
                 <section className="finance-kpi-grid payable-kpis">
                   <article>
                     <span>Peças em estoque</span>
                     <strong>{stock.totals.inStock}</strong>
-                    <small>Somando as peças já contadas</small>
+                    <small>O que entrou pelos lotes, menos o que já saiu</small>
                   </article>
                   <article>
                     <span>Prometidas na fila</span>
@@ -4549,7 +4549,7 @@ export default function Home() {
                   <article>
                     <span>Sem estoque</span>
                     <strong>{stock.totals.uncounted}</strong>
-                    <small>{stock.totals.uncounted > 0 ? "Peças sem lançamento de estoque" : "Todas as peças com estoque lançado"}</small>
+                    <small>{stock.totals.uncounted > 0 ? "Peças que não entraram em lote" : "Todas as peças já entraram em lote"}</small>
                   </article>
                 </section>
                 <section className="panel stock-panel">
@@ -4575,7 +4575,7 @@ export default function Home() {
                           <span className="stock-pace">{paceSentence(row)}</span>
                           <span className="stock-status"><span className={`status ${tone}`}>{STOCK_STATUS_LABEL[row.status]}</span></span>
                           <span className="stock-action">
-                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "saida" })} disabled={saving}>Ajustar</button>
+                            <button className="outline-button" onClick={() => setStockForm({ product: item, kind: "saida" })} disabled={saving}>Dar saída</button>
                           </span>
                         </div>
                       );
@@ -5645,16 +5645,11 @@ export default function Home() {
         </Modal>
       )}
       {stockForm && (
-        <Modal title={`Estoque de ${stockForm.product.code}`} close={() => setStockForm(null)}>
+        <Modal title={`Saída sem venda · ${stockForm.product.code}`} close={() => setStockForm(null)}>
           <form key={`${stockForm.product.id}-${stockForm.kind}`} onSubmit={saveStockMovement} noValidate>
             <div className="form-grid">
-              <Field label="O que aconteceu *">
-                <select name="kind" defaultValue={stockForm.kind}>
-                  <option value="saida">Saída: perdi, quebrei ou usei</option>
-                  <option value="contagem">Contei: é isso que tenho agora</option>
-                </select>
-              </Field>
-              <Field label="Quantidade de peças *">
+              <input type="hidden" name="kind" value="saida" />
+              <Field label="Quantas peças saíram *">
                 <input name="quantity" inputMode="numeric" pattern="[0-9]*" required autoFocus />
               </Field>
               <Field label="Data *">
@@ -5664,8 +5659,8 @@ export default function Home() {
                 <input name="notes" maxLength={200} />
               </Field>
             </div>
-            <p className="plain-text muted">Peça nova entra no estoque só pelo lote de compra (Financeiro → Lotes de compra). Aqui ficam os ajustes: saída sem venda e contagem.</p>
-            <p className="plain-text muted">A contagem vale como fim do dia: as OS entregues depois dessa data baixam o estoque sozinhas.</p>
+            <p className="plain-text muted">Use para peça perdida, quebrada ou usada sem venda. Ela sai do estoque e entra como perda no lote de onde saiu.</p>
+            <p className="plain-text muted">O saldo vem dos lotes de compra: o que entrou, menos as OS entregues e estas saídas. Peça nova entra só pelo lote (Financeiro → Lotes de compra).</p>
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setStockForm(null)}>Cancelar</button>
               <button className="primary-button" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button>
