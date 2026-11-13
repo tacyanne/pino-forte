@@ -25,7 +25,7 @@ import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, peri
 import { STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { priceChangeLabel, priceTimeline, type ProductPrice } from "../lib/product-prices";
 import { DEFAULT_TARGET_PROFIT_RATE, adjustPrice, parsePercent, priceForMargin, simulatePrice, sourceComparison, targetRateOf, type SourceSimulation } from "../lib/pricing";
-import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
+import { costAt, costOfSourceAt, costSourceOf, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, costUseAt, latestCostUse, type CostUse, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
 
@@ -492,6 +492,7 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productCosts, setProductCosts] = useState<ProductCost[]>([]);
   const [productPrices, setProductPrices] = useState<ProductPrice[]>([]);
+  const [productCostUses, setProductCostUses] = useState<CostUse[]>([]);
   const [targetRate, setTargetRate] = useState(DEFAULT_TARGET_PROFIT_RATE);
   const [targetInput, setTargetInput] = useState("");
   const [pricingProduct, setPricingProduct] = useState<Product | null>(null);
@@ -692,6 +693,7 @@ export default function Home() {
       setProducts(cat.products || []);
       setProductCosts(cat.productCosts || []);
       setProductPrices(cat.productPrices || []);
+      setProductCostUses(cat.productCostUses || []);
       setPieceTypes(cat.pieceTypes || []); setPieceLines(cat.pieceLines || []);
       setOrders(sortOrdersDesc(ord.orders || []));
       await refreshFinance();
@@ -742,6 +744,7 @@ export default function Home() {
           setProducts(data.products);
           if (Array.isArray(data.productCosts)) setProductCosts(data.productCosts);
           if (Array.isArray(data.productPrices)) setProductPrices(data.productPrices);
+          if (Array.isArray(data.productCostUses)) setProductCostUses(data.productCostUses);
           if (Array.isArray(data.pieceTypes)) setPieceTypes(data.pieceTypes); if (Array.isArray(data.pieceLines)) setPieceLines(data.pieceLines);
         }
       } catch { /* Keep the last confirmed data; exports require a fresh successful read. */ }
@@ -1010,9 +1013,20 @@ export default function Home() {
     }),
     products,
     productCosts,
+    productCostUses,
   );
   const percent = (rate: number) => `${(rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
-  const currentCostOf = (productId: number) => costAt(productCosts, productId, todayIso());
+  const currentCostOf = (productId: number) => costAt(productCosts, productId, todayIso(), productCostUses);
+  // Custo em uso da peça hoje: a escolha registrada ou, sem escolha, a origem do custo vigente.
+  const costUseOf = (productId: number) => {
+    const chosen = costUseAt(productCostUses, productId, todayIso()) ?? latestCostUse(productCostUses, productId);
+    const current = currentCostOf(productId);
+    return {
+      source: chosen?.source ?? costSourceOf(current?.source ?? "comprada"),
+      startsAt: chosen?.startsAt ?? current?.startsAt ?? todayIso(),
+      saved: chosen,
+    };
+  };
   const priceHistoryBlock = (productId: number, note?: string) => {
     const timeline = priceTimeline(productPrices, productId);
     if (!timeline.length) return null;
@@ -1717,6 +1731,12 @@ export default function Home() {
         startsAt: String(f.get("purchaseStartsAt") || todayIso()),
         supplier: String(f.get("purchaseSupplier") || "").trim(),
       };
+      const shownUse = editingProduct ? costUseOf(editingProduct.id) : { source: "comprada" as const, startsAt: todayIso(), saved: null };
+      const costUse = {
+        source: costSourceOf(f.get("costUseSource")),
+        startsAt: String(f.get("costUseStartsAt") || todayIso()),
+      };
+      const costUseChanged = costUse.source !== shownUse.source || costUse.startsAt !== shownUse.startsAt;
       const savedPurchase = editingProduct ? openCost(productCosts, editingProduct.id, "comprada") : null;
       const purchaseChanged = savedPurchase
         ? savedPurchase.rawMaterialCostCents !== purchaseCost.materialCents ||
@@ -1739,6 +1759,7 @@ export default function Home() {
           id: editingProduct?.id,
           ...(costChanged ? { cost } : {}),
           ...(purchaseChanged ? { purchaseCost } : {}),
+          ...(costUseChanged ? { costUse } : {}),
           ...(imageData !== undefined ? { imageData } : {}),
           code: f.get("code"),
           pieceType: f.get("pieceType"),
@@ -1748,7 +1769,7 @@ export default function Home() {
           price: parseCurrency(String(f.get("price"))),
         }),
       });
-      const j = await r.json().catch(() => ({} as { error?: string; product?: Product; productCosts?: ProductCost[]; productPrices?: ProductPrice[] }));
+      const j = await r.json().catch(() => ({} as { error?: string; product?: Product; productCosts?: ProductCost[]; productPrices?: ProductPrice[]; productCostUses?: CostUse[] }));
       if (!r.ok)
         throw new Error(
           j.error ||
@@ -1771,6 +1792,10 @@ export default function Home() {
       if (Array.isArray(j.productPrices)) {
         const savedPrices = j.productPrices;
         setProductPrices((v) => [...v.filter((row) => row.productId !== j.product.id), ...savedPrices]);
+      }
+      if (costUseChanged && Array.isArray(j.productCostUses)) {
+        const savedUses = j.productCostUses;
+        setProductCostUses((v) => [...v.filter((row) => row.productId !== j.product.id), ...savedUses]);
       }
       setProductModal(false);
       setEditingProduct(null);
@@ -3832,8 +3857,11 @@ export default function Home() {
                       ? [{ product: row.product, priceCents: row.newPriceCents }]
                       : [],
                   );
-                  // Situação atual: a peça é comprada pronta; sem esse custo, vale o de fabricação.
-                  const inUse = (row: (typeof rows)[number]) => (row.simulation.comprada.costCents !== null ? row.simulation.comprada : row.simulation.fabricada);
+                  // Custo em uso de cada peça (escolhido na peça); sem esse custo cadastrado, vale o outro.
+                  const inUse = (row: (typeof rows)[number]) => {
+                    const chosen = row.simulation[costUseOf(row.product.id).source];
+                    return chosen.costCents !== null ? chosen : chosen.source === "comprada" ? row.simulation.fabricada : row.simulation.comprada;
+                  };
                   const belowTarget = rows.filter((row) => inUse(row).reachesTarget === false).length;
                   const withoutPurchase = rows.filter((row) => row.simulation.comprada.costCents === null).length;
                   const cheaperToBuy = rows.filter((row) => row.simulation.cheaper === "comprada").length;
@@ -4901,8 +4929,16 @@ export default function Home() {
                   ? "Custo não cadastrado."
                   : `Custo total de ${money(costValue)}. Lucro por peça: ${money(viewingProduct.price - costValue)} · ${percent(rate)} sobre o custo.`;
               };
+              const use = costUseOf(viewingProduct.id);
               return (
                 <>
+                  <fieldset className="product-cost-fields product-cost-readonly">
+                    <legend>Custo em uso</legend>
+                    <div className="product-cost-row">
+                      <ReviewField label="Custo usado no lucro" value={use.source === "comprada" ? "Custo revenda" : "Custo fabricação"} />
+                      <ReviewField label="A partir de" value={brDate(use.startsAt)} />
+                    </div>
+                  </fieldset>
                   <fieldset className="product-cost-fields product-cost-readonly">
                     <legend>Custo revenda</legend>
                     <div className="product-cost-row">
@@ -5077,7 +5113,9 @@ export default function Home() {
         const priceCents = Math.round(parseCurrency(simPrice) * 100);
         const fabricated = costOfSourceAt(productCosts, product.id, "fabricada", todayIso())?.unitCostCents ?? null;
         const purchased = costOfSourceAt(productCosts, product.id, "comprada", todayIso())?.unitCostCents ?? null;
-        const baseCost = purchased ?? fabricated;
+        const useSource = costUseOf(product.id).source;
+        const baseCost = (useSource === "comprada" ? purchased ?? fabricated : fabricated ?? purchased);
+        const baseIsPurchase = baseCost !== null && (useSource === "comprada" ? purchased !== null : fabricated === null);
         const simulation = simulatePrice({ priceCents, fabricatedCostCents: fabricated, purchasedCostCents: purchased, targetRate });
         const column = (source: SourceSimulation, label: string) => (
           <article className={`sim-col ${source.reachesTarget === null ? "" : source.reachesTarget ? "ok" : (source.profitCents ?? 0) < 0 ? "bad" : "warn"}`}>
@@ -5125,7 +5163,7 @@ export default function Home() {
             </div>
             <p className="sim-note">
               {`Preço atual: ${money(currentCents / 100)}. `}
-              {baseCost === null ? "Cadastre o custo da peça para simular o lucro." : `O lucro desejado é calculado sobre o ${purchased !== null ? "custo revenda" : "custo fabricação"}.`}
+              {baseCost === null ? "Cadastre o custo da peça para simular o lucro." : `O lucro desejado é calculado sobre o ${baseIsPurchase ? "custo revenda" : "custo fabricação"}, o custo em uso da peça.`}
             </p>
             <div className="sim-grid">
               {column(simulation.comprada, "Custo revenda")}
@@ -5192,8 +5230,24 @@ export default function Home() {
                   }}
                 />
               );
+              const use = editingProduct ? costUseOf(editingProduct.id) : { source: "comprada" as const, startsAt: todayIso(), saved: null };
               return (
                 <>
+                <fieldset className="product-cost-fields">
+                  <legend>Custo em uso</legend>
+                  <div className="product-cost-row">
+                    <Field label="Custo usado no lucro">
+                      <select name="costUseSource" defaultValue={use.source}>
+                        <option value="comprada">Custo revenda</option>
+                        <option value="fabricada">Custo fabricação</option>
+                      </select>
+                    </Field>
+                    <Field label="A partir de">
+                      <input type="date" name="costUseStartsAt" defaultValue={use.startsAt} />
+                    </Field>
+                  </div>
+                  <small>Vale para o lucro em todo o sistema a partir da data informada. As vendas anteriores continuam com o custo que estava em uso na época.</small>
+                </fieldset>
                 <fieldset className="product-cost-fields">
                   <legend>Custo revenda</legend>
                   <div className="product-cost-row">
@@ -5227,7 +5281,6 @@ export default function Home() {
                       ? `Custo atual de ${money(cost.unitCostCents / 100)} desde ${brDate(cost.startsAt)}. Para guardar o custo anterior no histórico, mude os valores e informe a data em que o novo começa a valer.`
                       : "Quanto custa fabricar a peça. Não aparece no catálogo nem nos PDFs."}
                   </small>
-                  <small>O lucro usa o custo que começou a valer por último entre os dois.</small>
                 </fieldset>
                 </>
               );

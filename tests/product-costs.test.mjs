@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   COST_SOURCE_LABEL,
+  costUseAt,
+  latestCostUse,
+  parseCostUseInput,
+  planCostUseChange,
   ProductCostError,
   costOfSourceAt,
   costSourceOf,
@@ -202,4 +206,63 @@ test("peça tem um custo fabricando e outro comprando pronta, cada um com o pró
   assert.ok(page.includes("<legend>Custo revenda</legend>"));
   assert.ok(page.includes("...(purchaseChanged ? { purchaseCost } : {})"));
   assert.ok(/add column if not exists source/i.test(read("../supabase/migrations/20261113030000_product_cost_source.sql")));
+});
+
+test("custo em uso é escolhido na peça, com data, e vale para todo o sistema", () => {
+  const history = [
+    row({ id: 1, unitCostCents: 2000, startsAt: "2026-06-01", source: "fabricada" }),
+    row({ id: 2, unitCostCents: 3000, startsAt: "2026-11-11", source: "comprada" }),
+  ];
+  const use = (values) => ({ id: 1, productId: 7, source: "fabricada", startsAt: "2026-11-01", ...values });
+
+  // sem escolha: regra antiga (o custo que começou por último)
+  assert.equal(costAt(history, 7, "2026-11-12").id, 2);
+  // escolha de fabricação mantém o custo de fabricação, mesmo com revenda cadastrada depois
+  const uses = [use({ id: 1, source: "fabricada", startsAt: "2026-11-01" }), use({ id: 2, source: "comprada", startsAt: "2026-12-01" })];
+  assert.equal(costAt(history, 7, "2026-11-12", uses).id, 1);
+  assert.equal(costAt(history, 7, "2026-12-01", uses).id, 2);
+  // antes da primeira escolha, segue a regra antiga
+  assert.equal(costAt(history, 7, "2026-10-01", uses).id, 1);
+  // escolha de outra peça não interfere
+  assert.equal(costAt(history, 7, "2026-11-12", [use({ productId: 8 })]).id, 2);
+  // origem escolhida sem custo cadastrado: usa o que houver
+  assert.equal(costAt([history[0]], 7, "2026-12-05", uses).id, 1);
+
+  assert.equal(costUseAt(uses, 7, "2026-11-15").id, 1);
+  assert.equal(costUseAt(uses, 7, "2026-10-15"), null);
+  assert.equal(latestCostUse(uses, 7).id, 2);
+  assert.equal(latestCostUse(uses, 99), null);
+
+  const latest = use({ id: 5, source: "comprada", startsAt: "2026-11-11" });
+  assert.deepEqual(planCostUseChange(null, { source: "fabricada", startsAt: "2026-11-13" }), { kind: "insert" });
+  assert.deepEqual(planCostUseChange(latest, { source: "comprada", startsAt: "2026-11-11" }), { kind: "none" });
+  assert.deepEqual(planCostUseChange(latest, { source: "comprada", startsAt: "2026-11-05" }), { kind: "update", id: 5 });
+  assert.deepEqual(planCostUseChange(latest, { source: "fabricada", startsAt: "2026-11-11" }), { kind: "update", id: 5 });
+  assert.deepEqual(planCostUseChange(latest, { source: "fabricada", startsAt: "2026-11-20" }), { kind: "insert" });
+  assert.throws(() => planCostUseChange(latest, { source: "fabricada", startsAt: "2026-11-01" }), /11\/11\/2026/);
+
+  assert.equal(parseCostUseInput(undefined, "2026-11-13"), null);
+  assert.deepEqual(parseCostUseInput({ source: "fabricada" }, "2026-11-13"), { source: "fabricada", startsAt: "2026-11-13" });
+  assert.throws(() => parseCostUseInput({ source: "outra" }, "2026-11-13"), ProductCostError);
+  assert.throws(() => parseCostUseInput({ source: "comprada", startsAt: "13/11/2026" }, "2026-11-13"), ProductCostError);
+
+  // lucro das vendas respeita a escolha na data de cada venda
+  const summary = summarizeSalesProfit(
+    [
+      { code: "PF-AA-100", quantity: 1, revenueCents: 5000, date: "2026-11-12" },
+      { code: "PF-AA-100", quantity: 1, revenueCents: 5000, date: "2026-12-02" },
+    ],
+    [{ id: 7, code: "PF-AA-100" }],
+    history,
+    uses,
+  );
+  assert.equal(summary.costCents, 2000 + 3000);
+
+  assert.equal(catalogApi.split("parseCostUseInput(body.costUse, todayIso())").length - 1, 4);
+  assert.equal(catalogApi.split("saveCostUse(").length - 1, 4);
+  assert.equal(catalogApi.split("productCostUses: await listCostUsesSafe()").length - 1, 2);
+  assert.equal(page.split("<legend>Custo em uso</legend>").length - 1, 2);
+  assert.ok(page.includes('name="costUseSource" defaultValue={use.source}'));
+  assert.ok(page.includes("costAt(productCosts, productId, todayIso(), productCostUses)"));
+  assert.ok(/create table if not exists public\.product_cost_in_use/i.test(read("../supabase/migrations/20261113050000_product_cost_in_use.sql")));
 });

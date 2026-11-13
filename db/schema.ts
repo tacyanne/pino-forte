@@ -314,6 +314,14 @@ export const productCostHistory = pgTable("product_cost_history", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
 
+export const productCostInUse = pgTable("product_cost_in_use", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  source: text("source").notNull(),
+  startsAt: text("starts_at").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+});
+
 export const productPriceHistory = pgTable("product_price_history", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
