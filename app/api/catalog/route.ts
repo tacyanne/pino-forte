@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       if (existing.length)
         return Response.json({ error: `Já existe uma peça cadastrada com o código ${code}.` }, { status: 409 });
       const cost = parseProductCostInput(body.cost, todayIso());
-      const [product] = await db.insert(products).values({ code, sku, pieceType, name, lineName, measure, price, imageData: body.imageData ?? null }).returning();
+      const [product] = await db.insert(products).values({ code, sku, pieceType, name, lineName, measure, price, priceCents: Math.round(price * 100), imageData: body.imageData ?? null }).returning();
       const productCosts = cost ? await saveProductCost(product.id, cost) : [];
       return Response.json({ product: displayProductLine(product), productCosts }, { status: 201 });
     }
@@ -124,7 +124,11 @@ export async function PATCH(request: Request) {
       const changes: Partial<typeof products.$inferInsert> = {};
       if (body.imageData !== undefined) changes.imageData = body.imageData;
       if (body.active !== undefined) changes.active = body.active;
-      if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
+      if (body.price !== undefined) {
+        changes.price = Math.max(0, Number(body.price));
+        // O preço em centavos acompanha o preço: os dois são gravados juntos.
+        changes.priceCents = Math.round(changes.price * 100);
+      }
       if (body.code) {
         const code = body.code.trim().toUpperCase();
         const duplicate = await db.select({ id: products.id }).from(products).where(and(eq(products.code, code), ne(products.id, id))).limit(1);
@@ -241,6 +245,7 @@ async function postCatalogWithRest(body: { type?: string; name?: string; whatsap
       name,
       measure,
       price,
+      price_cents: Math.round(price * 100),
     });
     const productCosts = cost ? await saveProductCost(Number(product.id), cost) : [];
     return Response.json({ product: displayProductLine(camelizeRow(product)), productCosts }, { status: 201 });
@@ -279,7 +284,11 @@ async function patchCatalogWithRest(body: { type?: string; id?: number; active?:
     const changes: Record<string, string | number | boolean | null> = {};
     if (body.imageData !== undefined) changes.image_data = body.imageData;
     if (body.active !== undefined) changes.active = body.active;
-    if (body.price !== undefined) changes.price = Math.max(0, Number(body.price));
+    if (body.price !== undefined) {
+      const price = Math.max(0, Number(body.price));
+      changes.price = price;
+      changes.price_cents = Math.round(price * 100);
+    }
     if (body.code) {
       const code = body.code.trim().toUpperCase();
       const duplicate = await supabaseGetOne<Record<string, unknown>>("products", { select: "id", code: `eq.${code}` });

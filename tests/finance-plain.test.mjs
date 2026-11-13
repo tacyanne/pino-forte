@@ -113,7 +113,8 @@ test("conta pendente pode ser editada, inclusive a marcação de fabricação", 
   assert.ok(page.includes('editingPayable ? "Editar conta a pagar" : "Cadastrar conta a pagar"'));
   assert.ok(page.includes('{ entity: "accountsPayable", id: editingPayable.id, ...fields, ...categoryChange }'));
   assert.ok(page.includes("onClick={() => openPayableForm(payable)}"));
-  assert.ok(page.includes('type="checkbox"\n                  name="isFabrication"'));
+  // sem depender do tipo de quebra de linha do arquivo (LF ou CRLF)
+  assert.match(page, /type="checkbox"\s+name="isFabrication"/);
   assert.ok(page.includes("!isFabrication && wasFabrication ? { categoryId: null }"));
 });
 
