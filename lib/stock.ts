@@ -20,7 +20,7 @@ export type StockMovement = {
 export type StockMovementInput = Omit<StockMovement, "id">;
 
 // Peças de uma OS, já ligadas ao cadastro: vendidas (OS entregue) ou prometidas (OS na fila).
-export type StockLine = { productId: number; quantity: number; date: string };
+export type StockLine = { productId: number; quantity: number; date: string; orderNumber?: string };
 
 export type StockStatus = "sem-contagem" | "falta" | "zerado" | "baixo" | "ok";
 
@@ -73,6 +73,23 @@ const isAfter = (movement: StockMovement, reference: StockMovement) =>
   movement.movementDate > reference.movementDate ||
   (movement.movementDate === reference.movementDate && movement.id > reference.id);
 
+// De onde o saldo da peça parte: a última contagem (vendas do dia já estão fora dela) ou,
+// sem contagem, o primeiro lançamento (vendas desse dia já descontam).
+function stockStart(movements: StockMovement[]) {
+  const count = movements
+    .filter((movement) => movement.kind === "contagem")
+    .reduce<StockMovement | null>((last, movement) => (!last || isAfter(movement, last) ? movement : last), null);
+  if (count) return { count, date: count.movementDate, sameDaySales: false };
+  if (!movements.length) return null;
+  const first = movements.reduce((earliest, movement) => (isAfter(earliest, movement) ? movement : earliest), movements[0]);
+  return { count: null, date: first.movementDate, sameDaySales: true };
+}
+
+const countsSale = (start: { date: string; sameDaySales: boolean }, line: StockLine) => {
+  const day = line.date.slice(0, 10);
+  return start.sameDaySales ? day >= start.date : day > start.date;
+};
+
 export function stockPosition(input: {
   productIds: number[];
   movements: StockMovement[];
@@ -85,24 +102,17 @@ export function stockPosition(input: {
     const movements = input.movements.filter((movement) => movement.productId === productId);
     const sold = input.sold.filter((line) => line.productId === productId);
     const reserved = input.reserved.filter((line) => line.productId === productId).reduce((sum, line) => sum + line.quantity, 0);
-    const count = movements
-      .filter((movement) => movement.kind === "contagem")
-      .reduce<StockMovement | null>((last, movement) => (!last || isAfter(movement, last) ? movement : last), null);
+    const start = stockStart(movements);
+    const count = start?.count ?? null;
 
     let balance: number | null = null;
-    if (count) {
-      balance = count.quantity;
+    if (start) {
+      balance = count ? count.quantity : 0;
       for (const movement of movements) {
-        if (movement.kind === "contagem" || !isAfter(movement, count)) continue;
+        if (movement.kind === "contagem" || (count && !isAfter(movement, count))) continue;
         balance += movement.kind === "entrada" ? movement.quantity : -movement.quantity;
       }
-      for (const line of sold) if (line.date.slice(0, 10) > count.movementDate) balance -= line.quantity;
-    } else if (movements.length) {
-      // Sem contagem, mas com entrada ou saída lançada: o estoque começa em zero no dia do
-      // primeiro lançamento, e as OS entregues a partir desse dia já descontam.
-      const first = movements.reduce((earliest, movement) => (isAfter(earliest, movement) ? movement : earliest), movements[0]);
-      balance = movements.reduce((sum, movement) => sum + (movement.kind === "entrada" ? movement.quantity : -movement.quantity), 0);
-      for (const line of sold) if (line.date.slice(0, 10) >= first.movementDate) balance -= line.quantity;
+      for (const line of sold) if (countsSale(start, line)) balance -= line.quantity;
     }
 
     const soldRecently = sold.filter((line) => line.date.slice(0, 10) > paceStart).reduce((sum, line) => sum + line.quantity, 0);
@@ -122,6 +132,48 @@ export function stockPosition(input: {
               : "ok";
     return { productId, countedAt: count?.movementDate ?? null, balance, reserved, available, missing, monthlyPace, coverageMonths, status };
   });
+}
+
+export type StockHistoryItem = {
+  key: string;
+  productId: number;
+  kind: StockKind | "os";
+  quantity: number;
+  date: string;
+  orderNumber?: string;
+  movement?: StockMovement;
+};
+
+// Histórico da tela: os lançamentos à mão e as saídas automáticas das OS entregues que
+// entraram no saldo, do mais recente para o mais antigo.
+export function stockHistory(input: { productIds: number[]; movements: StockMovement[]; sold: StockLine[] }): StockHistoryItem[] {
+  const items: StockHistoryItem[] = input.movements.map((movement) => ({
+    key: `m-${movement.id}`,
+    productId: movement.productId,
+    kind: movement.kind,
+    quantity: movement.quantity,
+    date: movement.movementDate,
+    movement,
+  }));
+  for (const productId of input.productIds) {
+    const start = stockStart(input.movements.filter((movement) => movement.productId === productId));
+    if (!start) continue;
+    input.sold
+      .filter((line) => line.productId === productId && countsSale(start, line))
+      .forEach((line, index) =>
+        items.push({
+          key: `os-${productId}-${line.orderNumber || index}-${index}`,
+          productId,
+          kind: "os",
+          quantity: line.quantity,
+          date: line.date.slice(0, 10),
+          orderNumber: line.orderNumber,
+        }),
+      );
+  }
+  // No mesmo dia, a saída da OS aparece acima da entrada (entrou primeiro, saiu depois).
+  const order = (item: StockHistoryItem) => (item.kind === "os" ? 1 : 0);
+  return items.sort((a, b) => b.date.localeCompare(a.date) || order(b) - order(a) || (b.movement?.id ?? 0) - (a.movement?.id ?? 0));
 }
 
 export function stockTotals(rows: StockRow[]) {

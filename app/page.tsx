@@ -22,7 +22,7 @@ import { fetchCatalogProducts, notifyCatalogUpdate, watchCatalogUpdates } from "
 import { catalogPdfDetails, drawCatalogPdfDetails } from "../lib/catalog-product-pdf";
 import type { PieceType } from "../lib/piece-types";
 import { activePeriod, allocateSpent, fabricationCategoryIds, leftSentence, periodMonth, plainResult, preferredFabricationCategoryId, splitPaidExpenses, type FinancePeriod } from "../lib/finance-plain";
-import { STOCK_KIND_LABEL, STOCK_STATUS_LABEL, paceSentence, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
+import { STOCK_KIND_LABEL, STOCK_STATUS_LABEL, paceSentence, stockHistory, stockPosition, stockTotals, type StockKind, type StockMovement } from "../lib/stock";
 import { TARGET_PROFIT_ON_COST, costAt, normalizePieceCode, openCost, profitOnCost, summarizeSalesProfit, totalCostCents, type ProductCost } from "../lib/product-costs";
 import { countLabel, openHint, payableKpis, wholePercent } from "../lib/payable-kpis";
 import { barHeights, cashForecast, dedupeReceipts, distributeCents, divergingBars, forecastCurrentMonth, monthlyCash, monthlyResult, shortMonth } from "../lib/finance-monthly";
@@ -873,18 +873,20 @@ export default function Home() {
       list.flatMap((order) =>
         getOrderItems(order).flatMap((item) => {
           const piece = byKey.get(normalizePieceCode(item.code));
-          return piece ? [{ productId: piece.id, quantity: Number(item.quantity) || 0, date: dateOf(order) }] : [];
+          return piece ? [{ productId: piece.id, quantity: Number(item.quantity) || 0, date: dateOf(order), orderNumber: order.number }] : [];
         }),
       );
     const delivered = orders.filter((order) => order.productionStatus === ORDER_STATUS.delivered);
+    const sold = linesOf(delivered, (order) => (order.deliveryDate || dayInSaoPaulo(order.createdAt)).slice(0, 10));
+    const productIds = products.map((item) => item.id);
     const rows = stockPosition({
-      productIds: products.map((item) => item.id),
+      productIds,
       movements: stockMovements,
-      sold: linesOf(delivered, (order) => (order.deliveryDate || dayInSaoPaulo(order.createdAt)).slice(0, 10)),
+      sold,
       reserved: linesOf(queueOrders, (order) => dayInSaoPaulo(order.createdAt)),
       today: todayIso(),
     });
-    return { rows, totals: stockTotals(rows) };
+    return { rows, totals: stockTotals(rows), history: stockHistory({ productIds, movements: stockMovements, sold }) };
   }, [products, orders, queueOrders, stockMovements]);
   const dashboardHistory = useMemo(() => {
     const grouped = orders.reduce(
@@ -4115,17 +4117,21 @@ export default function Home() {
                   </div>
                 </section>
                 <section className="panel plain-panel">
-                  <h2>Últimos lançamentos</h2>
-                  {!stockMovements.length && <p className="compact-empty">Nenhum lançamento ainda. As saídas por OS entregue não aparecem aqui: elas já são descontadas sozinhas.</p>}
-                  {stockMovements.slice(0, 10).map((movement) => {
-                    const piece = products.find((item) => item.id === movement.productId);
+                  <h2>Histórico do estoque</h2>
+                  {!stock.history.length && <p className="compact-empty">Nenhum lançamento ainda. Depois da primeira contagem ou entrada, as OS entregues aparecem aqui como saída.</p>}
+                  {stock.history.slice(0, 15).map((item) => {
+                    const piece = products.find((product) => product.id === item.productId);
+                    const movement = item.movement;
                     return (
-                      <div className="plain-row" key={movement.id}>
+                      <div className="plain-row" key={item.key}>
                         <span>
-                          <b>{piece?.code || "Peça removida"}</b>{` · ${STOCK_KIND_LABEL[movement.kind]}: ${movement.quantity}`}
-                          <small>{` ${brDate(movement.movementDate)}${movement.notes ? ` · ${movement.notes}` : ""}`}</small>
+                          <b>{piece?.code || "Peça removida"}</b>
+                          {item.kind === "os" ? ` · Saída pela ${item.orderNumber || "OS"}: ${item.quantity}` : ` · ${STOCK_KIND_LABEL[item.kind]}: ${item.quantity}`}
+                          <small>{` ${brDate(item.date)}${item.kind === "os" ? " · automática, da OS entregue" : movement?.notes ? ` · ${movement.notes}` : ""}`}</small>
                         </span>
-                        <button className="outline-button" onClick={() => deleteStockMovement(movement)} disabled={saving}>Excluir</button>
+                        {movement && (
+                          <button className="outline-button" onClick={() => deleteStockMovement(movement)} disabled={saving}>Excluir</button>
+                        )}
                       </div>
                     );
                   })}
