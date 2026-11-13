@@ -65,7 +65,12 @@ test("tabela do histórico de preço fica fechada para acesso público", () => {
 
 test("tela da peça mostra o histórico de preço, e o catálogo público não", () => {
   assert.ok(page.includes("<legend>Histórico de preço</legend>"));
-  assert.ok(page.includes("priceTimeline(productPrices, editingProduct.id)"));
+  assert.ok(page.includes("priceHistoryBlock(editingProduct.id,"));
+  // visualizar a peça mostra os mesmos blocos da edição
+  assert.ok(page.includes("{priceHistoryBlock(viewingProduct.id)}"));
+  assert.equal(page.split("<legend>Custo comprando pronta (revenda)</legend>").length - 1, 2);
+  assert.equal(page.split("<legend>Custo fabricando</legend>").length - 1, 2);
+  assert.equal(page.split('label="Custo válido desde"').length - 1, 4);
   assert.ok(page.includes("estimado pelas vendas"));
   assert.equal(/product_price_history|productPrices/.test(read("../app/catalogo/page.tsx")), false);
   assert.equal(/priceHistory|product-prices/.test(read("../lib/catalog-products.ts")), false);
